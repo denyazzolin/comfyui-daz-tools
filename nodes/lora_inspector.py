@@ -189,15 +189,18 @@ def _scan_all() -> dict:
 class LoraInspector:
     @classmethod
     def INPUT_TYPES(cls):
-        # folder_paths.get_filename_list is always up-to-date; no page reload needed
-        lora_files = folder_paths.get_filename_list("loras")
         db = _load_db()
+        if not db:
+            # Auto-scan on first load so labels are stable from the start.
+            # Prevents "value not in list" errors caused by Unknown→Category transitions.
+            db = _scan_all()
 
+        lora_files = folder_paths.get_filename_list("loras")
         items = []
         for rel_path in sorted(lora_files):
             key = rel_path.replace("\\", "/")
             entry = db.get(key)
-            category = entry["general"]["category"] if entry else "Unknown"
+            category = entry["general"]["category"] if entry else "Others"
             items.append(f"{category} - {key}")
 
         if not items:
@@ -219,7 +222,7 @@ class LoraInspector:
     def inspect(self, lora: str, rescan: bool):
         db = _load_db()
 
-        if rescan or not db:
+        if rescan:
             print("[DAZ TOOLS] LoraInspector: scanning loras folder…")
             db = _scan_all()
             print(f"[DAZ TOOLS] LoraInspector: {len(db)} loras indexed.")
