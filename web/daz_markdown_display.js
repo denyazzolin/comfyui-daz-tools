@@ -7,7 +7,8 @@ const CSS = `
   box-sizing: border-box;
   padding: 10px 14px;
   overflow-y: auto;
-  max-height: 600px;
+  overflow-x: hidden;
+  width: 100%;
   color: #ddd;
   font-family: monospace;
   font-size: 13px;
@@ -155,6 +156,8 @@ app.registerExtension({
 
     injectStyles()
 
+    const TITLE_H = LiteGraph.NODE_TITLE_HEIGHT ?? 30
+
     const onNodeCreated = nodeType.prototype.onNodeCreated
     nodeType.prototype.onNodeCreated = function () {
       onNodeCreated?.apply(this, arguments)
@@ -165,6 +168,7 @@ app.registerExtension({
 
       this._dazMdWrap = wrap
       this._dazMdText = ''
+      this._dazMdHeight = 200
 
       this.addDOMWidget('daz_markdown', 'html', wrap, {
         getValue:     () => this._dazMdText,
@@ -172,11 +176,24 @@ app.registerExtension({
           this._dazMdText = v
           if (v) this._dazMdWrap.innerHTML = renderMarkdown(v)
         },
-        getMinHeight: () => 120,
+        getMinHeight: () => this._dazMdHeight,
         hideOnZoom:   false,
       })
 
       this.setSize([440, 320])
+      this._dazSyncSize()
+    }
+
+    nodeType.prototype._dazSyncSize = function () {
+      const h = Math.max(60, this.size[1] - TITLE_H - 12)
+      this._dazMdHeight = h
+      if (this._dazMdWrap) this._dazMdWrap.style.height = h + 'px'
+    }
+
+    const onResize = nodeType.prototype.onResize
+    nodeType.prototype.onResize = function (size) {
+      onResize?.apply(this, arguments)
+      this._dazSyncSize()
     }
 
     const onExecuted = nodeType.prototype.onExecuted
