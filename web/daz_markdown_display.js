@@ -166,9 +166,12 @@ app.registerExtension({
       this._dazMdWrap = wrap
       this._dazMdText = ''
 
-      this.addDOMWidget('daz_markdown', 'div', wrap, {
+      this.addDOMWidget('daz_markdown', 'html', wrap, {
         getValue:     () => this._dazMdText,
-        setValue:     (v) => { this._dazMdText = v },
+        setValue:     (v) => {
+          this._dazMdText = v
+          if (v) this._dazMdWrap.innerHTML = renderMarkdown(v)
+        },
         getMinHeight: () => 120,
         hideOnZoom:   false,
       })
