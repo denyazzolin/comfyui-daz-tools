@@ -30,14 +30,14 @@ def _classify(metadata: dict) -> str:
         if "2" in sig:
             return "LTX2"
         return "LTX"
+    if "chroma" in sig:
+        return "Chroma"
     if "flux" in sig:
         if "klein" in sig:
             return "Flux2 Klein"
         if "2" in sig:
             return "Flux2"
         return "Flux1"
-    if "chroma" in sig:
-        return "Chroma"
     if "zit" in sig or "z-image" in sig or "z_image" in sig:
         return "ZIT"
     if "qwen" in sig:
