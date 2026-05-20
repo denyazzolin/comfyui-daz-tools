@@ -103,7 +103,7 @@ def _inspect(filepath: str, root: str) -> dict:
         "base_model_version": meta.get("ss_base_model_version", ""),
         "network_dim":        meta.get("ss_network_dim", ""),
         "network_alpha":      meta.get("ss_network_alpha", ""),
-        "top_tags":           top_tags,
+        "potential_triggerwords": top_tags,
         "file_size_mb":       round(stat.st_size / (1024 * 1024), 2),
         "last_modified":      stat.st_mtime,
     }

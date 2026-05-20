@@ -45,7 +45,7 @@ Scans all LoRAs in your `models/loras` folder, reads their safetensors metadata,
 - **Inputs:**
   - `lora` — dropdown listing all detected LoRAs, prefixed by category
   - `rescan` (BOOLEAN) — set to `Yes` and run to rebuild the database
-- **Output:** `lora_data` (STRING) — JSON with `filename`, `path`, `category`, `base_model_version`, `network_dim`, `network_alpha`, `top_tags`, `file_size_mb`, `last_modified`
+- **Output:** `lora_data` (STRING) — JSON with `filename`, `path`, `category`, `base_model_version`, `network_dim`, `network_alpha`, `potential_triggerwords`, `file_size_mb`, `last_modified`
 
 **Categories** are inferred from the safetensors metadata (`ss_base_model_version`):
 
