@@ -192,6 +192,85 @@ def _scan_all() -> dict:
     return db
 
 
+# ── Markdown renderer ────────────────────────────────────────────────────────
+
+def _fmt(value) -> str:
+    if value is None or value == "" or value == {}:
+        return "—"
+    if isinstance(value, float):
+        return f"{value:,.2f}"
+    if isinstance(value, dict):
+        return ", ".join(f"{k}: {v}" for k, v in value.items()) or "—"
+    if isinstance(value, list):
+        return ", ".join(f"`{t}`" for t in value) if value else "—"
+    return str(value)
+
+
+def _to_markdown(entry: dict) -> str:
+    if "error" in entry:
+        return f"**Error:** {entry['error']}\n\n_{entry.get('hint', '')}_"
+
+    g = entry.get("general", {})
+    e = entry.get("extended", {})
+    t = entry.get("training", {})
+
+    lines = []
+
+    # Title
+    lines.append(f"# {g.get('category', 'Unknown')} — {g.get('filename', '')}")
+    lines.append("")
+
+    # General
+    lines.append("---")
+    lines.append("## General")
+    lines.append("")
+    lines.append(f"| | |")
+    lines.append(f"|:---|:---|")
+    lines.append(f"| **Base Model** | {_fmt(g.get('base_model_version'))} |")
+    lines.append(f"| **Rank (dim)** | {_fmt(g.get('network_dim'))} |")
+    lines.append(f"| **Alpha** | {_fmt(g.get('network_alpha'))} |")
+    lines.append(f"| **File Size** | {_fmt(g.get('file_size_mb'))} MB |")
+    lines.append("")
+    lines.append(f"**Potential Trigger Words:** {_fmt(g.get('potential_triggerwords'))}")
+    lines.append("")
+
+    # Extended
+    lines.append("---")
+    lines.append("## Extended")
+    lines.append("")
+    lines.append(f"| | |")
+    lines.append(f"|:---|:---|")
+    lines.append(f"| **Network Module** | {_fmt(e.get('network_module'))} |")
+    lines.append(f"| **Network Args** | {_fmt(e.get('network_args'))} |")
+    lines.append(f"| **Steps** | {_fmt(e.get('steps'))} |")
+    lines.append(f"| **Epochs** | {_fmt(e.get('num_epochs'))} |")
+    lines.append(f"| **Checkpoint Epoch** | {_fmt(e.get('epoch'))} |")
+    lines.append(f"| **Resolution** | {_fmt(e.get('resolution'))} |")
+    lines.append(f"| **Training Images** | {_fmt(e.get('num_train_images'))} |")
+    comment = e.get("training_comment") or ""
+    if comment:
+        lines.append(f"| **Training Comment** | {comment} |")
+    lines.append("")
+
+    # Training
+    lines.append("---")
+    lines.append("## Training")
+    lines.append("")
+    lines.append(f"| | |")
+    lines.append(f"|:---|:---|")
+    lines.append(f"| **Optimizer** | {_fmt(t.get('optimizer'))} |")
+    lines.append(f"| **Learning Rate** | {_fmt(t.get('learning_rate'))} |")
+    lines.append(f"| **UNet LR** | {_fmt(t.get('unet_lr'))} |")
+    lines.append(f"| **Text Encoder LR** | {_fmt(t.get('text_encoder_lr'))} |")
+    lines.append(f"| **LR Scheduler** | {_fmt(t.get('lr_scheduler'))} |")
+    lines.append(f"| **Noise Offset** | {_fmt(t.get('noise_offset'))} |")
+    lines.append(f"| **Min SNR Gamma** | {_fmt(t.get('min_snr_gamma'))} |")
+    lines.append(f"| **Mixed Precision** | {_fmt(t.get('mixed_precision'))} |")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
 # ── Node ──────────────────────────────────────────────────────────────────────
 
 class LoraInspector:
@@ -223,8 +302,8 @@ class LoraInspector:
             }
         }
 
-    RETURN_TYPES  = ("STRING",)
-    RETURN_NAMES  = ("lora_data",)
+    RETURN_TYPES  = ("STRING", "STRING")
+    RETURN_NAMES  = ("lora_data", "lora_markdown")
     FUNCTION      = "inspect"
     CATEGORY      = "utils"
     OUTPUT_NODE   = True
@@ -248,7 +327,10 @@ class LoraInspector:
                 "path":  rel_path,
             }
 
+        json_out = json.dumps(selected, indent=2, ensure_ascii=False)
+        md_out   = _to_markdown(selected)
+
         return {
             "ui":     {"text": [_scan_label(db)]},
-            "result": (json.dumps(selected, indent=2, ensure_ascii=False),),
+            "result": (json_out, md_out),
         }
