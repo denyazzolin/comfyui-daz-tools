@@ -235,7 +235,8 @@ class LoraInspector:
         if rescan:
             print("[DAZ TOOLS] LoraInspector: scanning loras folder…")
             db = _scan_all()
-            print(f"[DAZ TOOLS] LoraInspector: {len(db)} loras indexed.")
+            count = sum(1 for k in db if k != "_meta")
+            print(f"[DAZ TOOLS] LoraInspector: {count} loras indexed.")
 
         rel_path = lora.split(" - ", 1)[1] if " - " in lora else lora
         selected = db.get(rel_path)
