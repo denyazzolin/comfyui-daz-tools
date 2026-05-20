@@ -198,12 +198,14 @@ def _fmt(value) -> str:
     if value is None or value == "" or value == {}:
         return "—"
     if isinstance(value, float):
-        return f"{value:,.2f}"
-    if isinstance(value, dict):
-        return ", ".join(f"{k}: {v}" for k, v in value.items()) or "—"
-    if isinstance(value, list):
-        return ", ".join(f"`{t}`" for t in value) if value else "—"
-    return str(value)
+        result = f"{value:,.2f}"
+    elif isinstance(value, dict):
+        result = ", ".join(f"{k}: {v}" for k, v in value.items()) or "—"
+    elif isinstance(value, list):
+        result = ", ".join(f"`{t}`" for t in value) if value else "—"
+    else:
+        result = str(value)
+    return result.replace("|", "\\|")
 
 
 def _to_markdown(entry: dict) -> str:
@@ -229,7 +231,9 @@ def _to_markdown(entry: dict) -> str:
     lines.append(f"| **Base Model** | {_fmt(g.get('base_model_version'))} |")
     lines.append(f"| **Rank (dim)** | {_fmt(g.get('network_dim'))} |")
     lines.append(f"| **Alpha** | {_fmt(g.get('network_alpha'))} |")
-    lines.append(f"| **File Size** | {_fmt(g.get('file_size_mb'))} MB |")
+    size = g.get("file_size_mb")
+    size_str = f"{_fmt(size)} MB" if size is not None else "—"
+    lines.append(f"| **File Size** | {size_str} |")
     lines.append("")
     lines.append(f"**Potential Trigger Words:** {_fmt(g.get('potential_triggerwords'))}")
     lines.append("")
@@ -247,8 +251,8 @@ def _to_markdown(entry: dict) -> str:
     lines.append(f"| **Checkpoint Epoch** | {_fmt(e.get('epoch'))} |")
     lines.append(f"| **Resolution** | {_fmt(e.get('resolution'))} |")
     lines.append(f"| **Training Images** | {_fmt(e.get('num_train_images'))} |")
-    comment = e.get("training_comment") or ""
-    if comment:
+    comment = _fmt(e.get("training_comment"))
+    if comment != "—":
         lines.append(f"| **Training Comment** | {comment} |")
     lines.append("")
 
