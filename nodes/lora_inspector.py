@@ -139,24 +139,25 @@ def _scan_all() -> dict:
     return db
 
 
-def _label(entry: dict) -> str:
-    return f"{entry['category']} - {entry['path']}"
-
-
-def _build_dropdown(db: dict) -> list[str]:
-    if not db:
-        return ["(no loras found — enable Rescan and run)"]
-    items = sorted(db.values(), key=lambda e: (e["category"], e["filename"]))
-    return [_label(e) for e in items]
-
-
 # ── Node ──────────────────────────────────────────────────────────────────────
 
 class LoraInspector:
     @classmethod
     def INPUT_TYPES(cls):
-        db    = _load_db()
-        items = _build_dropdown(db)
+        # folder_paths.get_filename_list is always up-to-date; no page reload needed
+        lora_files = folder_paths.get_filename_list("loras")
+        db = _load_db()
+
+        items = []
+        for rel_path in sorted(lora_files):
+            key = rel_path.replace("\\", "/")
+            entry = db.get(key)
+            category = entry["category"] if entry else "Unknown"
+            items.append(f"{category} - {key}")
+
+        if not items:
+            items = ["(no loras found)"]
+
         return {
             "required": {
                 "lora":   (items,),
@@ -178,12 +179,15 @@ class LoraInspector:
             db = _scan_all()
             print(f"[DAZ TOOLS] LoraInspector: {len(db)} loras indexed.")
 
-        selected = next((e for e in db.values() if _label(e) == lora), None)
+        # Label format is "Category - rel/path"; extract the path part
+        rel_path = lora.split(" - ", 1)[1] if " - " in lora else lora
+        selected = db.get(rel_path)
 
         if selected is None:
             selected = {
-                "error": f"'{lora}' not found in database.",
+                "error": f"'{rel_path}' not found in database.",
                 "hint":  "Enable Rescan and run again to rebuild the database.",
+                "path":  rel_path,
             }
 
         return (json.dumps(selected, indent=2, ensure_ascii=False),)
