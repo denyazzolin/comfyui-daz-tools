@@ -36,3 +36,32 @@ Returns the absolute value of an integer.
 
 - **Input:** `value` (INT)
 - **Output:** `abs_value` (INT)
+
+---
+
+### Lora Inspector (`utils`)
+Scans all LoRAs in your `models/loras` folder, reads their safetensors metadata, and caches the results to `models/loras/dx_lora_db.json`. Exposes a dropdown to select any LoRA and outputs its metadata as a JSON string.
+
+- **Inputs:**
+  - `lora` — dropdown listing all detected LoRAs, prefixed by category
+  - `rescan` (BOOLEAN) — set to `Yes` and run to rebuild the database
+- **Output:** `lora_data` (STRING) — JSON with `filename`, `path`, `category`, `base_model_version`, `network_dim`, `network_alpha`, `top_tags`, `file_size_mb`, `last_modified`
+
+**Categories** are inferred from the safetensors metadata (`ss_base_model_version`):
+
+| Category | Matches |
+|---|---|
+| `WAN2.2` | Wan 2.2 |
+| `WAN2.1` | Wan 2.1 |
+| `LTX2.3` | LTX v2.3 |
+| `LTX2` | LTX v2.x |
+| `LTX` | LTX (any other version) |
+| `Flux1` | Flux.1 |
+| `Flux2` | Flux 2 |
+| `Flux2 Klein` | Flux Klein (all versions) |
+| `Chroma` | Chroma (all versions) |
+| `ZIT` | Z-Image (all versions) |
+| `Qwen` | Qwen (all versions) |
+| `Others` | Anything else or missing metadata |
+
+**First-time setup:** on the initial load all entries show as `Unknown` since the database doesn't exist yet. Tick **Rescan = Yes**, run the node once, then reload the ComfyUI page — the dropdown will show full category labels from that point on.
