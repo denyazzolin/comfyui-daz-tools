@@ -37,16 +37,23 @@ async function renderMarkdown(text) {
       return await MTB.mdParser.parse(text)
     } catch (_) {}
   }
-  // Fallback: minimal markdown → HTML (headers, bold, hr, tables, code)
+  // Fallback: minimal markdown → HTML (no table support; MTB handles those)
+  const BLOCK = /^(<h[123]>|<hr>)/
   return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/^### (.+)$/gm,  '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm,   '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm,    '<h1>$1</h1>')
-    .replace(/^---$/gm,       '<hr>')
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-    .replace(/`([^`]+)`/g,    '<code>$1</code>')
-    .replace(/\n/g,           '<br>')
+    .split('\n')
+    .map(line => {
+      const esc = line
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const processed = esc
+        .replace(/^### (.+)$/, '<h3>$1</h3>')
+        .replace(/^## (.+)$/,  '<h2>$1</h2>')
+        .replace(/^# (.+)$/,   '<h1>$1</h1>')
+        .replace(/^---$/,      '<hr>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g,     '<code>$1</code>')
+      return BLOCK.test(processed) ? processed : (processed || '<br>')
+    })
+    .join('\n')
 }
 
 app.registerExtension({
