@@ -90,7 +90,10 @@ def _parse_network_args(meta: dict) -> dict:
 def _inspect(filepath: str, root: str) -> dict:
     rel  = os.path.relpath(filepath, root).replace("\\", "/")
     name = os.path.basename(filepath)
-    stat = os.stat(filepath)
+    try:
+        stat = os.stat(filepath)
+    except OSError:
+        stat = None
     meta = _read_metadata(filepath)
 
     potential_triggerwords = []
@@ -118,8 +121,8 @@ def _inspect(filepath: str, root: str) -> dict:
             "network_dim":            get("ss_network_dim"),
             "network_alpha":          get("ss_network_alpha"),
             "potential_triggerwords": potential_triggerwords,
-            "file_size_mb":           round(stat.st_size / (1024 * 1024), 2),
-            "last_modified":          stat.st_mtime,
+            "file_size_mb":           round(stat.st_size / (1024 * 1024), 2) if stat else None,
+            "last_modified":          stat.st_mtime if stat else None,
         },
         "extended": {
             "network_module":   get("ss_network_module"),
@@ -172,8 +175,11 @@ def _scan_all() -> dict:
         return {}
     db = {}
     for filepath, root in _all_lora_files():
-        entry = _inspect(filepath, root)
-        db[entry["general"]["path"]] = entry
+        try:
+            entry = _inspect(filepath, root)
+            db[entry["general"]["path"]] = entry
+        except Exception as e:
+            print(f"[DAZ TOOLS] LoraInspector: skipping {filepath} — {e}")
     _save_db(db)
     return db
 
