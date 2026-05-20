@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import datetime
 
 import folder_paths
 
@@ -161,11 +162,18 @@ def _load_db() -> dict:
 
 
 def _save_db(db: dict) -> None:
+    db["_meta"] = {"created_at": datetime.now().strftime("%m/%d/%Y %H:%M")}
     try:
         with open(_db_path(), "w", encoding="utf-8") as f:
             json.dump(db, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"[DAZ TOOLS] LoraInspector: could not write dx_lora_db.json — {e}")
+
+
+def _scan_label(db: dict) -> str:
+    meta = db.get("_meta", {})
+    ts = meta.get("created_at", "")
+    return f"Scanned on {ts}" if ts else "Not yet scanned"
 
 
 def _scan_all() -> dict:
@@ -200,6 +208,8 @@ class LoraInspector:
         for rel_path in sorted(lora_files):
             key = rel_path.replace("\\", "/")
             entry = db.get(key)
+            if not isinstance(entry, dict) or "general" not in entry:
+                entry = None
             category = entry["general"]["category"] if entry else "Others"
             items.append(f"{category} - {key}")
 
@@ -227,7 +237,6 @@ class LoraInspector:
             db = _scan_all()
             print(f"[DAZ TOOLS] LoraInspector: {len(db)} loras indexed.")
 
-        # Label format is "Category - rel/path"; extract the path part
         rel_path = lora.split(" - ", 1)[1] if " - " in lora else lora
         selected = db.get(rel_path)
 
@@ -238,4 +247,7 @@ class LoraInspector:
                 "path":  rel_path,
             }
 
-        return (json.dumps(selected, indent=2, ensure_ascii=False),)
+        return {
+            "ui":     {"text": [_scan_label(db)]},
+            "result": (json.dumps(selected, indent=2, ensure_ascii=False),),
+        }
