@@ -22,6 +22,7 @@ def _classify(metadata: dict) -> str:
             return "WAN2.2"
         if "2.1" in sig:
             return "WAN2.1"
+        return "Others"
     if "ltx" in sig:
         if "2.3" in sig:
             return "LTX2.3"
@@ -45,22 +46,25 @@ def _classify(metadata: dict) -> str:
 
 # ── File helpers ──────────────────────────────────────────────────────────────
 
-def _loras_root() -> str:
-    paths = folder_paths.get_folder_paths("loras")
-    return paths[0] if paths else ""
+def _loras_roots() -> list[str]:
+    return folder_paths.get_folder_paths("loras") or []
 
 
 def _db_path() -> str:
-    return os.path.join(_loras_root(), "dx_lora_db.json")
+    roots = _loras_roots()
+    return os.path.join(roots[0], "dx_lora_db.json") if roots else "dx_lora_db.json"
 
 
-def _all_lora_files(root: str) -> list[str]:
+def _all_lora_files() -> list[tuple[str, str]]:
+    """Return (filepath, root) pairs across all configured lora directories."""
     results = []
-    for dirpath, _, files in os.walk(root):
-        for f in files:
-            if f.lower().endswith((".safetensors", ".pt")):
-                results.append(os.path.join(dirpath, f))
-    return sorted(results)
+    for root in _loras_roots():
+        for dirpath, _, files in os.walk(root):
+            for f in files:
+                if f.lower().endswith((".safetensors", ".pt")):
+                    results.append((os.path.join(dirpath, f), root))
+    results.sort(key=lambda x: x[0])
+    return results
 
 
 def _read_metadata(filepath: str) -> dict:
@@ -127,12 +131,12 @@ def _save_db(db: dict) -> None:
 
 
 def _scan_all() -> dict:
-    root = _loras_root()
-    if not root:
+    roots = _loras_roots()
+    if not roots:
         print("[DAZ TOOLS] LoraInspector: loras folder not found.")
         return {}
     db = {}
-    for filepath in _all_lora_files(root):
+    for filepath, root in _all_lora_files():
         entry = _inspect(filepath, root)
         db[entry["path"]] = entry
     _save_db(db)
