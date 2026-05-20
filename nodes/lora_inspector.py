@@ -77,13 +77,23 @@ def _read_metadata(filepath: str) -> dict:
         return {}
 
 
-def _inspect(filepath: str, root: str) -> dict:
-    rel   = os.path.relpath(filepath, root).replace("\\", "/")
-    name  = os.path.basename(filepath)
-    stat  = os.stat(filepath)
-    meta  = _read_metadata(filepath)
+def _parse_network_args(meta: dict) -> dict:
+    raw = meta.get("ss_network_args")
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except Exception:
+        return {}
 
-    top_tags = []
+
+def _inspect(filepath: str, root: str) -> dict:
+    rel  = os.path.relpath(filepath, root).replace("\\", "/")
+    name = os.path.basename(filepath)
+    stat = os.stat(filepath)
+    meta = _read_metadata(filepath)
+
+    potential_triggerwords = []
     raw = meta.get("ss_tag_frequency")
     if raw:
         try:
@@ -92,20 +102,45 @@ def _inspect(filepath: str, root: str) -> dict:
             for subset in freq.values():
                 for tag, count in subset.items():
                     merged[tag] = merged.get(tag, 0) + count
-            top_tags = sorted(merged, key=lambda t: merged[t], reverse=True)[:20]
+            potential_triggerwords = sorted(merged, key=lambda t: merged[t], reverse=True)[:20]
         except Exception:
             pass
 
+    def get(key: str) -> str:
+        return meta.get(key) or ""
+
     return {
-        "filename":           name,
-        "path":               rel,
-        "category":           _classify(meta),
-        "base_model_version": meta.get("ss_base_model_version", ""),
-        "network_dim":        meta.get("ss_network_dim", ""),
-        "network_alpha":      meta.get("ss_network_alpha", ""),
-        "potential_triggerwords": top_tags,
-        "file_size_mb":       round(stat.st_size / (1024 * 1024), 2),
-        "last_modified":      stat.st_mtime,
+        "general": {
+            "filename":               name,
+            "path":                   rel,
+            "category":               _classify(meta),
+            "base_model_version":     get("ss_base_model_version"),
+            "network_dim":            get("ss_network_dim"),
+            "network_alpha":          get("ss_network_alpha"),
+            "potential_triggerwords": potential_triggerwords,
+            "file_size_mb":           round(stat.st_size / (1024 * 1024), 2),
+            "last_modified":          stat.st_mtime,
+        },
+        "extended": {
+            "network_module":   get("ss_network_module"),
+            "network_args":     _parse_network_args(meta),
+            "steps":            get("ss_steps"),
+            "num_epochs":       get("ss_num_epochs"),
+            "epoch":            get("ss_epoch"),
+            "resolution":       get("ss_resolution"),
+            "num_train_images": get("ss_num_train_images"),
+            "training_comment": get("ss_training_comment"),
+        },
+        "training": {
+            "optimizer":         get("ss_optimizer"),
+            "learning_rate":     get("ss_learning_rate"),
+            "unet_lr":           get("ss_unet_lr"),
+            "text_encoder_lr":   get("ss_text_encoder_lr"),
+            "lr_scheduler":      get("ss_lr_scheduler"),
+            "noise_offset":      get("ss_noise_offset"),
+            "min_snr_gamma":     get("ss_min_snr_gamma"),
+            "mixed_precision":   get("ss_mixed_precision"),
+        },
     }
 
 
@@ -156,7 +191,7 @@ class LoraInspector:
         for rel_path in sorted(lora_files):
             key = rel_path.replace("\\", "/")
             entry = db.get(key)
-            category = entry["category"] if entry else "Unknown"
+            category = entry["general"]["category"] if entry else "Unknown"
             items.append(f"{category} - {key}")
 
         if not items:
