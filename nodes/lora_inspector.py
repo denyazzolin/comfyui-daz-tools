@@ -173,7 +173,7 @@ def _scan_all() -> dict:
     db = {}
     for filepath, root in _all_lora_files():
         entry = _inspect(filepath, root)
-        db[entry["path"]] = entry
+        db[entry["general"]["path"]] = entry
     _save_db(db)
     return db
 
