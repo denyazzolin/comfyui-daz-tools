@@ -1,6 +1,6 @@
 # comfyui-daz-tools
 
-A collection of ComfyUI custom nodes by [denyazzolin](https://github.com/denyazzolin).
+A collection of ComfyUI custom nodes by [deny azzolin](https://github.com/denyazzolin).
 
 ## Installation
 
