@@ -5,6 +5,13 @@ from datetime import datetime
 import folder_paths
 
 try:
+    from server import PromptServer
+    from aiohttp import web
+    _SERVER_AVAILABLE = True
+except Exception:
+    _SERVER_AVAILABLE = False
+
+try:
     from safetensors import safe_open
     _SAFETENSORS_AVAILABLE = True
 except ImportError:
@@ -23,7 +30,7 @@ def _classify(metadata: dict) -> str:
             return "WAN2.2"
         if "2.1" in sig:
             return "WAN2.1"
-        return "Others"
+        return "WAN"
     if "ltx" in sig:
         if "2.3" in sig:
             return "LTX2.3"
@@ -192,6 +199,31 @@ def _scan_all() -> dict:
     return db
 
 
+# ── Category index ───────────────────────────────────────────────────────────
+
+def _items_by_category(db: dict) -> dict[str, list[str]]:
+    """Return {category: ["Category - rel/path", ...]} using the same lora_files source as INPUT_TYPES."""
+    lora_files = folder_paths.get_filename_list("loras")
+    result: dict[str, list[str]] = {}
+    for rel_path in sorted(lora_files):
+        key = rel_path.replace("\\", "/")
+        entry = db.get(key)
+        if not isinstance(entry, dict) or "general" not in entry:
+            entry = None
+        category = entry["general"]["category"] if entry else "Others"
+        result.setdefault(category, []).append(f"{category} - {key}")
+    return result
+
+
+if _SERVER_AVAILABLE:
+    @PromptServer.instance.routes.get("/daz/loras-by-category")
+    async def _daz_loras_by_category(request):
+        db = _load_db()
+        if not db:
+            db = _scan_all()
+        return web.json_response(_items_by_category(db))
+
+
 # ── Markdown renderer ────────────────────────────────────────────────────────
 
 def _fmt(value) -> str:
@@ -286,23 +318,19 @@ class LoraInspector:
             # Prevents "value not in list" errors caused by Unknown→Category transitions.
             db = _scan_all()
 
-        lora_files = folder_paths.get_filename_list("loras")
-        items = []
-        for rel_path in sorted(lora_files):
-            key = rel_path.replace("\\", "/")
-            entry = db.get(key)
-            if not isinstance(entry, dict) or "general" not in entry:
-                entry = None
-            category = entry["general"]["category"] if entry else "Others"
-            items.append(f"{category} - {key}")
+        by_cat = _items_by_category(db)
+        categories = sorted(by_cat.keys()) if by_cat else ["(no loras found)"]
 
+        # Full flat list — required so ComfyUI can validate the selected lora value.
+        items = [item for cat in categories for item in by_cat.get(cat, [])]
         if not items:
             items = ["(no loras found)"]
 
         return {
             "required": {
-                "lora":   (items,),
-                "rescan": ("BOOLEAN", {"default": False, "label_on": "Yes", "label_off": "No"}),
+                "category": (categories,),
+                "lora":     (items,),
+                "rescan":   ("BOOLEAN", {"default": False, "label_on": "Yes", "label_off": "No"}),
             }
         }
 
@@ -312,7 +340,7 @@ class LoraInspector:
     CATEGORY      = "utils"
     OUTPUT_NODE   = True
 
-    def inspect(self, lora: str, rescan: bool):
+    def inspect(self, category: str, lora: str, rescan: bool):
         db = _load_db()
 
         if rescan:
