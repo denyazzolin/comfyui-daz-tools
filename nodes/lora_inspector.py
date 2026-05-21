@@ -1,4 +1,5 @@
 import os
+import re
 import json
 from datetime import datetime
 
@@ -20,7 +21,32 @@ except ImportError:
 
 # ── Category detection ────────────────────────────────────────────────────────
 
-def _classify(metadata: dict) -> str:
+def _classify_by_filename(filename: str) -> str:
+    stem = os.path.splitext(filename)[0].lower()
+    if "wan2.2" in stem or re.search(r"wan22(?!\d)", stem):
+        return "WAN2.2"
+    if "wan2.1" in stem or re.search(r"wan21(?!\d)", stem):
+        return "WAN2.1"
+    if "ltx2.3" in stem or "ltx 2.3" in stem or re.search(r"ltx23(?!\d)", stem):
+        return "LTX2.3"
+    if "ltx" in stem:
+        return "LTX"
+    if "chroma" in stem:
+        return "Chroma"
+    if "klein" in stem:
+        return "Flux2 Klein"
+    if "flux2" in stem or "flux 2" in stem:
+        return "Flux2"
+    if "flux" in stem:
+        return "Flux1"
+    if "zit" in stem or "zimage" in stem or "z-image" in stem:
+        return "ZIT"
+    if "qwen" in stem:
+        return "Qwen"
+    return "Others"
+
+
+def _classify(metadata: dict, filename: str = "") -> str:
     version = (metadata.get("ss_base_model_version") or "").lower()
     model   = (metadata.get("ss_sd_model_name") or "").lower()
     sig     = version + " " + model
@@ -49,7 +75,7 @@ def _classify(metadata: dict) -> str:
         return "ZIT"
     if "qwen" in sig:
         return "Qwen"
-    return "Others"
+    return _classify_by_filename(filename)
 
 
 # ── File helpers ──────────────────────────────────────────────────────────────
@@ -124,7 +150,7 @@ def _inspect(filepath: str, root: str) -> dict:
         "general": {
             "filename":               name,
             "path":                   rel,
-            "category":               _classify(meta),
+            "category":               _classify(meta, name),
             "base_model_version":     get("ss_base_model_version"),
             "network_dim":            get("ss_network_dim"),
             "network_alpha":          get("ss_network_alpha"),
