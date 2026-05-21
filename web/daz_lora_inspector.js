@@ -70,10 +70,10 @@ app.registerExtension({
         }
       }
 
-      const wrap = document.createElement('div')
-      wrap.style.cssText = 'box-sizing:border-box;padding:10px 14px;overflow-y:auto;overflow-x:hidden;width:100%'
-      this._dazLoraWrap   = wrap
       this._dazLoraHeight = 350
+      const wrap = document.createElement('div')
+      wrap.style.cssText = `box-sizing:border-box;padding:10px 14px;overflow-y:auto;overflow-x:hidden;width:100%;height:${this._dazLoraHeight}px`
+      this._dazLoraWrap = wrap
 
       this.addDOMWidget('daz_lora_preview', 'html', wrap, {
         getValue:     () => '',
@@ -98,7 +98,8 @@ app.registerExtension({
     nodeType.prototype._dazSyncSize = function () {
       const titleH  = LiteGraph.NODE_TITLE_HEIGHT  ?? 30
       const widgetH = LiteGraph.NODE_WIDGET_HEIGHT ?? 20
-      const h = Math.max(150, this.size[1] - titleH - widgetH * 3 - 20)
+      // Use 32px margin so the panel never pushes the node taller than its set size.
+      const h = Math.max(150, this.size[1] - titleH - widgetH * 3 - 32)
       this._dazLoraHeight = h
       if (this._dazLoraWrap) this._dazLoraWrap.style.height = h + 'px'
     }
@@ -114,6 +115,7 @@ app.registerExtension({
       onConfigure?.apply(this, arguments)
       const self = this
       queueMicrotask(() => {
+        self._dazSyncSize()
         syncLoraWidget(self)
         const lw = self.widgets?.find(w => w.name === 'lora')
         if (lw) loadPreview(self, lw.value)
