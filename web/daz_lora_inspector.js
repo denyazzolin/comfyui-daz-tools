@@ -1,5 +1,9 @@
 import { app } from '../../scripts/app.js'
 
+const PANEL_H   = 400
+const NODE_W    = 460
+const NODE_H    = 520  // title + 3 widgets + panel + margins
+
 app.registerExtension({
   name: 'daz.loraInspector',
 
@@ -70,15 +74,14 @@ app.registerExtension({
         }
       }
 
-      this._dazLoraHeight = 350
       const wrap = document.createElement('div')
-      wrap.style.cssText = `box-sizing:border-box;padding:10px 14px;overflow-y:auto;overflow-x:hidden;width:100%;height:${this._dazLoraHeight}px`
+      wrap.style.cssText = `box-sizing:border-box;padding:10px 14px;overflow-y:auto;overflow-x:hidden;width:100%;height:${PANEL_H}px`
       this._dazLoraWrap = wrap
 
       this.addDOMWidget('daz_lora_preview', 'html', wrap, {
         getValue:     () => '',
         setValue:     () => {},
-        getMinHeight: () => this._dazLoraHeight,
+        getMinHeight: () => PANEL_H,
         hideOnZoom:   false,
       })
 
@@ -91,23 +94,8 @@ app.registerExtension({
         loadPreview(this, loraWidget.value)
       }
 
-      this.setSize([480, 560])
-      this._dazSyncSize()
-    }
-
-    nodeType.prototype._dazSyncSize = function () {
-      const titleH  = LiteGraph.NODE_TITLE_HEIGHT  ?? 30
-      const widgetH = LiteGraph.NODE_WIDGET_HEIGHT ?? 20
-      // Use 32px margin so the panel never pushes the node taller than its set size.
-      const h = Math.max(150, this.size[1] - titleH - widgetH * 3 - 32)
-      this._dazLoraHeight = h
-      if (this._dazLoraWrap) this._dazLoraWrap.style.height = h + 'px'
-    }
-
-    const onResize = nodeType.prototype.onResize
-    nodeType.prototype.onResize = function (size) {
-      onResize?.apply(this, arguments)
-      this._dazSyncSize()
+      this.size    = [NODE_W, NODE_H]
+      this.minSize = [NODE_W, NODE_H]
     }
 
     const onConfigure = nodeType.prototype.onConfigure
@@ -115,7 +103,6 @@ app.registerExtension({
       onConfigure?.apply(this, arguments)
       const self = this
       queueMicrotask(() => {
-        self._dazSyncSize()
         syncLoraWidget(self)
         const lw = self.widgets?.find(w => w.name === 'lora')
         if (lw) loadPreview(self, lw.value)
