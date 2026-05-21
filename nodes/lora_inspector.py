@@ -21,8 +21,7 @@ except ImportError:
 
 # ── Category detection ────────────────────────────────────────────────────────
 
-def _classify_by_filename(filename: str) -> str:
-    stem = os.path.splitext(filename)[0].lower()
+def _match_category(stem: str) -> str:
     if "wan2.2" in stem or re.search(r"wan22(?!\d)", stem):
         return "WAN2.2"
     if "wan2.1" in stem or re.search(r"wan21(?!\d)", stem):
@@ -44,6 +43,14 @@ def _classify_by_filename(filename: str) -> str:
     if "qwen" in stem:
         return "Qwen"
     return "Others"
+
+
+def _classify_by_filename(path: str) -> str:
+    # Filename stem takes priority; fall back to directory names only if filename gives no hint
+    result = _match_category(os.path.splitext(os.path.basename(path))[0].lower())
+    if result != "Others":
+        return result
+    return _match_category(os.path.splitext(path.replace("\\", "/"))[0].lower())
 
 
 def _classify(metadata: dict, filename: str = "") -> str:
@@ -150,7 +157,7 @@ def _inspect(filepath: str, root: str) -> dict:
         "general": {
             "filename":               name,
             "path":                   rel,
-            "category":               _classify(meta, name),
+            "category":               _classify(meta, rel),
             "base_model_version":     get("ss_base_model_version"),
             "network_dim":            get("ss_network_dim"),
             "network_alpha":          get("ss_network_alpha"),
@@ -238,7 +245,7 @@ def _items_by_category(db: dict) -> dict[str, list[str]]:
             entry = None
         category = entry["general"]["category"] if entry else "Others"
         if category == "Others":
-            category = _classify_by_filename(os.path.basename(rel_path))
+            category = _classify_by_filename(key)
         result.setdefault(category, []).append(f"{category} - {key}")
     return result
 
@@ -263,7 +270,7 @@ if _SERVER_AVAILABLE:
                 "path":  path,
             }
         elif entry.get("general", {}).get("category") == "Others":
-            cat = _classify_by_filename(os.path.basename(path))
+            cat = _classify_by_filename(path)
             if cat != "Others":
                 entry = {**entry, "general": {**entry["general"], "category": cat}}
         return web.json_response({"html": _to_html(entry)})
