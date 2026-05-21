@@ -237,6 +237,8 @@ def _items_by_category(db: dict) -> dict[str, list[str]]:
         if not isinstance(entry, dict) or "general" not in entry:
             entry = None
         category = entry["general"]["category"] if entry else "Others"
+        if category == "Others":
+            category = _classify_by_filename(os.path.basename(rel_path))
         result.setdefault(category, []).append(f"{category} - {key}")
     return result
 
@@ -260,6 +262,10 @@ if _SERVER_AVAILABLE:
                 "hint":  "Enable Rescan and run again to rebuild the database.",
                 "path":  path,
             }
+        elif entry.get("general", {}).get("category") == "Others":
+            cat = _classify_by_filename(os.path.basename(path))
+            if cat != "Others":
+                entry = {**entry, "general": {**entry["general"], "category": cat}}
         return web.json_response({"html": _to_html(entry)})
 
 
