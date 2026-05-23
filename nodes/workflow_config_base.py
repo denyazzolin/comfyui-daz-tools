@@ -135,7 +135,17 @@ try:
                 except (ValueError, TypeError):
                     pass
 
+        new_name = data.get("new_name", "").strip()
+        if new_name and new_name != name:
+            if new_name in configs:
+                return web.json_response(
+                    {"error": f"A config named '{new_name}' already exists."}, status=409
+                )
+            del configs[name]
+            name = new_name
+
         entry["created_at"] = datetime.now().isoformat()
+        configs[name] = entry
 
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:

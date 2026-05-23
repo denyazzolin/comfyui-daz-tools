@@ -175,23 +175,18 @@ app.registerExtension({
       const tdR        = 'style="padding:3px 8px"'
       const btnBase    = 'font-family:monospace;font-size:11px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
 
-      const header = isNew
-        ? `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
+      const header = `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
                        color:#aaa;border-bottom:1px solid #3a3a3a;margin-bottom:4px">
-             New Configuration
-           </div>`
-        : `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
-                       color:#aaa;border-bottom:1px solid #3a3a3a;margin-bottom:4px">
-             Editing: <span style="color:#ddd">${esc(data.name || '')}</span>
+             ${isNew ? 'New Configuration' : 'Edit Configuration'}
            </div>`
 
-      const nameRow = isNew
-        ? `<tr>
+      const nameRow = `<tr>
              <td ${tdL}>Name</td>
-             <td ${tdR}><input id="daz-config-name" type="text" placeholder="Config name…"
+             <td ${tdR}><input id="daz-config-name" type="text"
+               value="${esc(isNew ? '' : (data.name || ''))}"
+               placeholder="Config name…"
                style="${fieldStyle}"></td>
            </tr>`
-        : ''
 
       const footer = isNew
         ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
@@ -388,6 +383,14 @@ app.registerExtension({
 
       const saveBtn  = wrap.querySelector('#daz-save-btn')
       const errorDiv = wrap.querySelector('#daz-save-error')
+
+      const newName = wrap.querySelector('#daz-config-name')?.value.trim() ?? ''
+      if (!newName) {
+        errorDiv.textContent = 'Config name is required.'
+        wrap.querySelector('#daz-config-name')?.focus()
+        return
+      }
+
       saveBtn.textContent = 'Saving…'
       saveBtn.disabled    = true
       errorDiv.textContent = ''
@@ -395,6 +398,7 @@ app.registerExtension({
       const payload = {
         label,
         class:      CLASS,
+        new_name:   newName,
         unet_high:  wrap.querySelector('#daz-unet-high')?.value  ?? '',
         unet_low:   wrap.querySelector('#daz-unet-low')?.value   ?? '',
         vae:        wrap.querySelector('#daz-vae')?.value        ?? '',
