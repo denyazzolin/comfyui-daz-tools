@@ -2,7 +2,7 @@ import { app } from '../../scripts/app.js'
 
 const PANEL_H = 220
 const NODE_W  = 460
-const NODE_H  = 320  // title + dropdown + panel + margins
+const NODE_H  = 350  // title + dropdown + reload button + panel + margins
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -110,6 +110,18 @@ app.registerExtension({
         }
         loadDetail(this, w.value)
       }
+
+      this.addWidget('button', '↺  Reload Configs', null, () => {
+        fetch('/daz/workflow-configs-wan22')
+          .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+          .then(labels => {
+            configLabels = labels
+            syncWidget(this)
+            const cw = this.widgets?.find(w => w.name === 'config')
+            if (cw) loadDetail(this, cw.value)
+          })
+          .catch(e => console.warn('[DAZ TOOLS] WorkflowConfigWan22: reload failed', e))
+      })
 
       this.size    = [NODE_W, NODE_H]
       this.minSize = [NODE_W, NODE_H]
