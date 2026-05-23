@@ -102,7 +102,7 @@ app.registerExtension({
         </div>
         ${renderDetailHtml(data)}
       `
-      wrap.querySelector('#daz-edit-btn')?.addEventListener('click', () => enterEditMode(node))
+      wrap.querySelector('#daz-edit-btn')?.addEventListener('click', () => enterEditForm(node, false))
       node.setDirtyCanvas(true, true)
     }
 
@@ -131,9 +131,9 @@ app.registerExtension({
       node.setDirtyCanvas(true, true)
     }
 
-    // ── Edit mode ─────────────────────────────────────────────────────────────
+    // ── Edit / New-config form (unified) ──────────────────────────────────────
 
-    async function enterEditMode(node) {
+    async function enterEditForm(node, isNew = false) {
       node._dazWan22EditMode = true
       const wrap = node._dazWan22Wrap
       if (!wrap) return
@@ -152,18 +152,16 @@ app.registerExtension({
       ])
 
       const data = node._dazWan22Detail || {}
-
-      // Extract just the filename from an absolute path (for pre-selecting in the dropdown)
       const rawImagePath = data.image_path || ''
       const imageName = rawImagePath.split(/[\\/]/).pop() || ''
 
       function selectOpts(files, current) {
+        if (!files.length) return `<option value="">— no files found —</option>`
         return files.map(f =>
           `<option value="${esc(f)}"${f === current ? ' selected' : ''}>${esc(f)}</option>`
         ).join('')
       }
 
-      // Image dropdown: add a blank placeholder when the stored value isn't in the input folder
       function selectOptsImage(files, current) {
         const placeholder = (!current || !files.includes(current))
           ? `<option value="">— select image —</option>`
@@ -171,17 +169,48 @@ app.registerExtension({
         return placeholder + selectOpts(files, current)
       }
 
-      const fieldStyle = 'width:100%;background:#2b2b2b;color:#ddd;border:1px solid #555;font-size:11px;font-family:monospace;padding:2px 4px;box-sizing:border-box'
-      const numStyle   = 'width:80px;background:#2b2b2b;color:#ddd;border:1px solid #555;font-size:11px;font-family:monospace;padding:2px 4px'
+      const fieldStyle = 'width:100%;background:#2b2b2b;color:#ddd;border:1px solid #555;border-radius:4px;font-size:11px;font-family:monospace;padding:2px 4px;box-sizing:border-box'
+      const numStyle   = 'width:80px;background:#2b2b2b;color:#ddd;border:1px solid #555;border-radius:4px;font-size:11px;font-family:monospace;padding:2px 4px'
       const tdL        = 'style="color:#999;padding:3px 8px;white-space:nowrap;vertical-align:middle;font-size:11px;font-family:monospace"'
       const tdR        = 'style="padding:3px 8px"'
+      const btnBase    = 'font-family:monospace;font-size:11px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
+
+      const header = isNew
+        ? `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
+                       color:#aaa;border-bottom:1px solid #3a3a3a;margin-bottom:4px">
+             New Configuration
+           </div>`
+        : `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
+                       color:#aaa;border-bottom:1px solid #3a3a3a;margin-bottom:4px">
+             Editing: <span style="color:#ddd">${esc(data.name || '')}</span>
+           </div>`
+
+      const nameRow = isNew
+        ? `<tr>
+             <td ${tdL}>Name</td>
+             <td ${tdR}><input id="daz-config-name" type="text" placeholder="Config name…"
+               style="${fieldStyle}"></td>
+           </tr>`
+        : ''
+
+      const footer = isNew
+        ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
+                       justify-content:flex-end;border-top:1px solid #3a3a3a;margin-top:4px">
+             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
+             <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>
+           </div>`
+        : `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
+                       justify-content:flex-end;border-top:1px solid #3a3a3a;margin-top:4px">
+             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
+             <button id="daz-delete-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99;margin-right:auto">Delete</button>
+             <button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
+             <button id="daz-save-btn"   style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
+           </div>`
 
       wrap.innerHTML = `
-        <div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
-                    color:#aaa;border-bottom:1px solid #3a3a3a;margin-bottom:4px">
-          Editing: <span style="color:#ddd">${esc(data.name || '')}</span>
-        </div>
+        ${header}
         <table style="border-collapse:collapse;width:100%">
+          ${nameRow}
           <tr>
             <td ${tdL}>UNet High</td>
             <td ${tdR}><select id="daz-unet-high" style="${fieldStyle}">${selectOpts(unetFiles, data.unet_high)}</select></td>
@@ -203,6 +232,9 @@ app.registerExtension({
             <td ${tdR}>
               <div style="display:flex;gap:4px;align-items:center">
                 <select id="daz-image-path" style="${fieldStyle}">${selectOptsImage(inputFiles, imageName)}</select>
+                <button id="daz-preview-btn"
+                  style="font-family:monospace;font-size:11px;padding:2px 7px;background:#444;color:#ccc;
+                         border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
                 <button id="daz-upload-btn"
                   style="font-family:monospace;font-size:11px;padding:2px 7px;background:#444;color:#ccc;
                          border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
@@ -227,27 +259,20 @@ app.registerExtension({
             <td ${tdR}><input id="daz-split-step" type="number" value="${data.split_step || 0}" style="${numStyle}"></td>
           </tr>
         </table>
-        <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;justify-content:flex-end;border-top:1px solid #3a3a3a;margin-top:4px">
-          <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
-          <button id="daz-cancel-btn"
-            style="font-family:monospace;font-size:11px;padding:3px 12px;background:#444;color:#ccc;
-                   border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
-          <button id="daz-save-btn"
-            style="font-family:monospace;font-size:11px;padding:3px 12px;background:#1a5c35;color:#cde;
-                   border:1px solid #2a8050;border-radius:3px;cursor:pointer">Save</button>
-        </div>
+        ${footer}
       `
 
-      wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
-        renderUseMode(node, node._dazWan22Detail || {}, true)
+      // ── Shared handlers ───────────────────────────────────────────────────
+
+      wrap.querySelector('#daz-preview-btn')?.addEventListener('click', () => {
+        const filename = wrap.querySelector('#daz-image-path')?.value
+        if (filename) showImagePreview(filename)
       })
 
-      // Upload button triggers the hidden file input
       wrap.querySelector('#daz-upload-btn')?.addEventListener('click', () => {
         wrap.querySelector('#daz-upload-input')?.click()
       })
 
-      // File selected → upload to ComfyUI input folder, refresh dropdown
       wrap.querySelector('#daz-upload-input')?.addEventListener('change', async (e) => {
         const file = e.target.files?.[0]
         if (!file) return
@@ -263,7 +288,6 @@ app.registerExtension({
           const r = await fetch('/upload/image', { method: 'POST', body: fd })
           if (!r.ok) throw new Error(r.statusText)
           const result = await r.json()
-          // Invalidate cache and refresh the dropdown
           delete folderFiles['input']
           const fresh = await getFolderFiles('input')
           const sel = wrap.querySelector('#daz-image-path')
@@ -275,10 +299,87 @@ app.registerExtension({
         btn.disabled    = false
       })
 
-      wrap.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, wrap))
+      // ── Mode-specific handlers ────────────────────────────────────────────
+
+      if (isNew) {
+        wrap.querySelector('#daz-create-btn')?.addEventListener('click', () => createConfig(node, wrap))
+      } else {
+        wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
+          renderUseMode(node, node._dazWan22Detail || {}, true)
+        })
+        wrap.querySelector('#daz-delete-btn')?.addEventListener('click', () => {
+          showDeleteConfirm(node, wrap)
+        })
+        wrap.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, wrap))
+      }
 
       node.setDirtyCanvas(true, true)
     }
+
+    // ── Create new config ─────────────────────────────────────────────────────
+
+    async function createConfig(node, wrap) {
+      const nameInput = wrap.querySelector('#daz-config-name')
+      const name      = nameInput?.value.trim() ?? ''
+      const errDiv    = wrap.querySelector('#daz-save-error')
+
+      if (!name) {
+        if (errDiv) errDiv.textContent = 'Config name is required.'
+        nameInput?.focus()
+        return
+      }
+
+      const createBtn = wrap.querySelector('#daz-create-btn')
+      createBtn.textContent = 'Creating…'
+      createBtn.disabled    = true
+      errDiv.textContent    = ''
+
+      const payload = {
+        name,
+        class:      CLASS,
+        unet_high:  wrap.querySelector('#daz-unet-high')?.value  ?? '',
+        unet_low:   wrap.querySelector('#daz-unet-low')?.value   ?? '',
+        vae:        wrap.querySelector('#daz-vae')?.value        ?? '',
+        clip:       wrap.querySelector('#daz-clip')?.value       ?? '',
+        image_path: wrap.querySelector('#daz-image-path')?.value ?? '',
+        width:      parseInt(wrap.querySelector('#daz-width')?.value      ?? '0', 10),
+        height:     parseInt(wrap.querySelector('#daz-height')?.value     ?? '0', 10),
+        steps:      parseInt(wrap.querySelector('#daz-steps')?.value      ?? '0', 10),
+        split_step: parseInt(wrap.querySelector('#daz-split-step')?.value ?? '0', 10),
+      }
+
+      try {
+        const r = await fetch('/daz/workflow-config-create', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        })
+        const result = await r.json()
+        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+
+        const labelsResp = await fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
+        if (labelsResp.ok) configLabels = await labelsResp.json()
+
+        const configWidget = node.widgets?.find(w => w.name === 'config')
+        if (configWidget) {
+          configWidget.options.values = configLabels.length ? configLabels : ['(no configs)']
+          configWidget.value = result.label
+        }
+
+        const detailResp = await fetch(
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
+        )
+        if (detailResp.ok) node._dazWan22Detail = await detailResp.json()
+
+        renderUseMode(node, node._dazWan22Detail || {}, true)
+      } catch (e) {
+        createBtn.textContent = 'Create'
+        createBtn.disabled    = false
+        errDiv.textContent    = `Error: ${e.message}`
+      }
+    }
+
+    // ── Save existing config ──────────────────────────────────────────────────
 
     async function saveConfig(node, wrap) {
       const cw = node.widgets?.find(w => w.name === 'config')
@@ -314,7 +415,6 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-        // Refresh labels and update widget
         const labelsResp = await fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
         if (labelsResp.ok) configLabels = await labelsResp.json()
 
@@ -324,19 +424,138 @@ app.registerExtension({
           configWidget.value = result.label
         }
 
-        // Fetch updated detail and return to use mode
         const detailResp = await fetch(
           `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
         )
         if (detailResp.ok) node._dazWan22Detail = await detailResp.json()
 
         renderUseMode(node, node._dazWan22Detail || {}, true)
-
       } catch (e) {
         saveBtn.textContent = 'Save'
         saveBtn.disabled    = false
         errorDiv.textContent = `Error: ${e.message}`
       }
+    }
+
+    // ── Delete config ─────────────────────────────────────────────────────────
+
+    function showDeleteConfirm(node, wrap) {
+      const name  = node._dazWan22Detail?.name || '?'
+      const cw    = node.widgets?.find(w => w.name === 'config')
+      const label = cw?.value || ''
+
+      const overlay = document.createElement('div')
+      overlay.style.cssText = [
+        'position:fixed;top:0;left:0;right:0;bottom:0',
+        'background:rgba(0,0,0,0.75);z-index:10000',
+        'display:flex;align-items:center;justify-content:center',
+      ].join(';')
+
+      const box = document.createElement('div')
+      box.style.cssText = [
+        'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+        'padding:20px 24px;width:340px;font-family:monospace',
+      ].join(';')
+      box.innerHTML = `
+        <p style="font-size:13px;color:#ddd;margin:0 0 6px">
+          Delete &ldquo;${esc(name)}&rdquo;?
+        </p>
+        <p style="font-size:11px;color:#888;margin:0 0 18px">This cannot be undone.</p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button id="dc-keep"
+            style="font-family:monospace;font-size:11px;padding:4px 14px;
+                   background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Keep</button>
+          <button id="dc-confirm"
+            style="font-family:monospace;font-size:11px;padding:4px 14px;
+                   background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">Delete</button>
+        </div>
+      `
+
+      overlay.appendChild(box)
+      document.body.appendChild(overlay)
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+      box.querySelector('#dc-keep')?.addEventListener('click',    () => overlay.remove())
+      box.querySelector('#dc-confirm')?.addEventListener('click', () => {
+        overlay.remove()
+        deleteConfig(node, label)
+      })
+    }
+
+    async function deleteConfig(node, label) {
+      const wrap = node._dazWan22Wrap
+      if (wrap) {
+        wrap.innerHTML =
+          '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Deleting…</p>'
+      }
+
+      try {
+        const r = await fetch('/daz/workflow-config-delete', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ label, class: CLASS }),
+        })
+        const result = await r.json()
+        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+
+        const labelsResp = await fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
+        if (labelsResp.ok) configLabels = await labelsResp.json()
+
+        const configWidget = node.widgets?.find(w => w.name === 'config')
+
+        if (configLabels.length > 0) {
+          if (configWidget) {
+            configWidget.options.values = configLabels
+            configWidget.value = configLabels[0]
+          }
+          node._dazWan22EditMode = false
+          loadDetail(node, configLabels[0])
+        } else {
+          if (configWidget) {
+            configWidget.options.values = ['(no configs)']
+            configWidget.value = '(no configs)'
+          }
+          node._dazWan22Detail   = {}
+          node._dazWan22EditMode = false
+          enterEditForm(node, true)
+        }
+      } catch (e) {
+        if (wrap) {
+          wrap.innerHTML = `
+            <p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">
+              Delete failed: ${esc(e.message)}
+            </p>
+            <div style="padding:0 8px 8px;display:flex;justify-content:flex-end">
+              <button id="daz-back-edit"
+                style="font-family:monospace;font-size:11px;padding:3px 10px;background:#444;color:#ccc;
+                       border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
+            </div>`
+          wrap.querySelector('#daz-back-edit')?.addEventListener('click', () => {
+            node._dazWan22EditMode = false
+            enterEditForm(node, false)
+          })
+        }
+      }
+    }
+
+    // ── Image preview modal ───────────────────────────────────────────────────
+
+    function showImagePreview(filename) {
+      const overlay = document.createElement('div')
+      overlay.style.cssText = [
+        'position:fixed;top:0;left:0;right:0;bottom:0',
+        'background:rgba(0,0,0,0.88);z-index:10000',
+        'display:flex;align-items:center;justify-content:center;cursor:pointer',
+      ].join(';')
+
+      const img = document.createElement('img')
+      img.src = `/view?filename=${encodeURIComponent(filename)}&type=input`
+      img.style.cssText =
+        'max-width:90vw;max-height:90vh;border-radius:4px;box-shadow:0 4px 32px rgba(0,0,0,0.9);cursor:default'
+      img.addEventListener('click', e => e.stopPropagation())
+
+      overlay.appendChild(img)
+      document.body.appendChild(overlay)
+      overlay.addEventListener('click', () => overlay.remove())
     }
 
     // ── Lifecycle hooks ───────────────────────────────────────────────────────
@@ -352,6 +571,11 @@ app.registerExtension({
           .then(labels => {
             configLabels = labels
             syncWidget(this)
+            if (this._dazWan22EditMode) return
+            if (!labels.length) {
+              enterEditForm(this, true)
+              return
+            }
             const cw = this.widgets?.find(w => w.name === 'config')
             if (cw) loadDetail(this, cw.value)
           })
@@ -372,6 +596,10 @@ app.registerExtension({
         hideOnZoom:   false,
       })
 
+      // Default size — enterEditForm overrides this synchronously if needed
+      this.size    = [NODE_W, NODE_H]
+      this.minSize = [NODE_W, NODE_H]
+
       const w = this.widgets?.find(w => w.name === 'config')
       if (w) {
         const origCb = w.callback
@@ -379,11 +607,12 @@ app.registerExtension({
           origCb?.call(this, value)
           if (!this._dazWan22EditMode) loadDetail(this, value)
         }
-        loadDetail(this, w.value)
+        if (configLabels.length === 0) {
+          enterEditForm(this, true)
+        } else {
+          loadDetail(this, w.value)
+        }
       }
-
-      this.size    = [NODE_W, NODE_H]
-      this.minSize = [NODE_W, NODE_H]
     }
 
     const onConfigure = nodeType.prototype.onConfigure
@@ -391,6 +620,10 @@ app.registerExtension({
       onConfigure?.apply(this, arguments)
       const self = this
       queueMicrotask(() => {
+        if (!configLabels.length) {
+          if (!self._dazWan22EditMode) enterEditForm(self, true)
+          return
+        }
         const w = self.widgets?.find(w => w.name === 'config')
         if (w && !configLabels.includes(w.value)) syncWidget(self)
         if (!self._dazWan22EditMode) loadDetail(self, w?.value)

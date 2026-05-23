@@ -71,10 +71,15 @@ try:
     async def _daz_workflow_config_detail(request):
         label = request.rel_url.query.get("label", "")
         cls   = request.rel_url.query.get("class", "")
-        name  = label_to_name(label, cls)
+        configs = load_configs()
+        name = next(
+            (n for n, e in configs.items()
+             if e.get("class") == cls and make_label(n, e.get("created_at", "")) == label),
+            None,
+        )
         if name is None:
             return web.json_response({"error": f"Config '{label}' not found."})
-        entry = load_configs().get(name, {})
+        entry = configs[name]
         result = {k: v for k, v in entry.items() if k not in ("class", "created_at")}
         result["name"] = name
         return web.json_response(result)
@@ -140,6 +145,72 @@ try:
 
         new_label = make_label(name, entry["created_at"])
         return web.json_response({"ok": True, "label": new_label})
+
+    @PromptServer.instance.routes.post("/daz/workflow-config-create")
+    async def _daz_workflow_config_create(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        name = data.get("name", "").strip()
+        cls  = data.get("class", "")
+
+        if not name:
+            return web.json_response({"error": "Config name is required."}, status=400)
+
+        configs = load_configs()
+        if name in configs:
+            return web.json_response({"error": f"A config named '{name}' already exists."}, status=409)
+
+        entry = {"class": cls, "created_at": datetime.now().isoformat()}
+        for field in ("unet_high", "unet_low", "vae", "clip", "image_path"):
+            entry[field] = data.get(field, "")
+        for field in ("width", "height", "steps", "split_step"):
+            try:
+                entry[field] = int(data.get(field, 0))
+            except (ValueError, TypeError):
+                entry[field] = 0
+
+        configs[name] = entry
+
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(configs, f, indent=2)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
+
+        new_label = make_label(name, entry["created_at"])
+        return web.json_response({"ok": True, "label": new_label})
+
+    @PromptServer.instance.routes.post("/daz/workflow-config-delete")
+    async def _daz_workflow_config_delete(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        label = data.get("label", "")
+        cls   = data.get("class", "")
+
+        configs = load_configs()
+        name = next(
+            (n for n, e in configs.items()
+             if e.get("class") == cls and make_label(n, e.get("created_at", "")) == label),
+            None,
+        )
+        if name is None:
+            return web.json_response({"error": f"Config '{label}' not found."}, status=404)
+
+        del configs[name]
+
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(configs, f, indent=2)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
+
+        return web.json_response({"ok": True})
 
 except Exception:
     pass
