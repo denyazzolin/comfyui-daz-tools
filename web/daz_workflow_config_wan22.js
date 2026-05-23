@@ -94,7 +94,11 @@ app.registerExtension({
       }
 
       wrap.innerHTML = `
-        <div style="display:flex;justify-content:flex-end;padding:0 6px 4px">
+        <div style="display:flex;justify-content:space-between;padding:0 6px 4px">
+          <button id="daz-new-btn"
+            style="font-family:monospace;font-size:11px;padding:2px 10px;
+                   background:#1a5c35;color:#cde;border:1px solid #2a8050;
+                   border-radius:3px;cursor:pointer">New</button>
           <button id="daz-edit-btn"
             style="font-family:monospace;font-size:11px;padding:2px 10px;
                    background:#444;color:#ccc;border:1px solid #666;
@@ -102,6 +106,7 @@ app.registerExtension({
         </div>
         ${renderDetailHtml(data)}
       `
+      wrap.querySelector('#daz-new-btn')?.addEventListener('click', () => enterEditForm(node, true))
       wrap.querySelector('#daz-edit-btn')?.addEventListener('click', () => enterEditForm(node, false))
       node.setDirtyCanvas(true, true)
     }
@@ -151,7 +156,7 @@ app.registerExtension({
         getFolderFiles('input'),
       ])
 
-      const data = node._dazWan22Detail || {}
+      const data = isNew ? {} : (node._dazWan22Detail || {})
       const rawImagePath = data.image_path || ''
       const imageName = rawImagePath.split(/[\\/]/).pop() || ''
 
@@ -192,6 +197,7 @@ app.registerExtension({
         ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
                        justify-content:flex-end;border-top:1px solid #3a3a3a;margin-top:4px">
              <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
+             ${configLabels.length > 0 ? `<button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>` : ''}
              <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>
            </div>`
         : `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
@@ -298,6 +304,9 @@ app.registerExtension({
 
       if (isNew) {
         wrap.querySelector('#daz-create-btn')?.addEventListener('click', () => createConfig(node, wrap))
+        wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
+          renderUseMode(node, node._dazWan22Detail || {}, true)
+        })
       } else {
         wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
           renderUseMode(node, node._dazWan22Detail || {}, true)
