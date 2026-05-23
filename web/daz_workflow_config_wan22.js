@@ -144,18 +144,31 @@ app.registerExtension({
       node.minSize = [NODE_W, NODE_H_EDIT]
       node.setDirtyCanvas(true, true)
 
-      const [unetFiles, vaeFiles, clipFiles] = await Promise.all([
+      const [unetFiles, vaeFiles, clipFiles, inputFiles] = await Promise.all([
         getFolderFiles('diffusion_models'),
         getFolderFiles('vae'),
         getFolderFiles('text_encoders'),
+        getFolderFiles('input'),
       ])
 
       const data = node._dazWan22Detail || {}
+
+      // Extract just the filename from an absolute path (for pre-selecting in the dropdown)
+      const rawImagePath = data.image_path || ''
+      const imageName = rawImagePath.split(/[\\/]/).pop() || ''
 
       function selectOpts(files, current) {
         return files.map(f =>
           `<option value="${esc(f)}"${f === current ? ' selected' : ''}>${esc(f)}</option>`
         ).join('')
+      }
+
+      // Image dropdown: add a blank placeholder when the stored value isn't in the input folder
+      function selectOptsImage(files, current) {
+        const placeholder = (!current || !files.includes(current))
+          ? `<option value="">— select image —</option>`
+          : ''
+        return placeholder + selectOpts(files, current)
       }
 
       const fieldStyle = 'width:100%;background:#2b2b2b;color:#ddd;border:1px solid #555;font-size:11px;font-family:monospace;padding:2px 4px;box-sizing:border-box'
@@ -189,11 +202,11 @@ app.registerExtension({
             <td ${tdL}>Image</td>
             <td ${tdR}>
               <div style="display:flex;gap:4px;align-items:center">
-                <input id="daz-image-path" type="text" value="${esc(data.image_path || '')}"
-                  style="flex:1;background:#2b2b2b;color:#ddd;border:1px solid #555;font-size:11px;font-family:monospace;padding:2px 4px;min-width:0">
-                <button id="daz-browse-btn"
+                <select id="daz-image-path" style="${fieldStyle}">${selectOptsImage(inputFiles, imageName)}</select>
+                <button id="daz-upload-btn"
                   style="font-family:monospace;font-size:11px;padding:2px 7px;background:#444;color:#ccc;
-                         border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Browse…</button>
+                         border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
+                <input id="daz-upload-input" type="file" accept="image/*" style="display:none">
               </div>
             </td>
           </tr>
@@ -229,11 +242,37 @@ app.registerExtension({
         renderUseMode(node, node._dazWan22Detail || {}, true)
       })
 
-      wrap.querySelector('#daz-browse-btn')?.addEventListener('click', () => {
-        const imgInput = wrap.querySelector('#daz-image-path')
-        openFileBrowser(imgInput?.value ?? '', path => {
-          if (path && imgInput) imgInput.value = path
-        })
+      // Upload button triggers the hidden file input
+      wrap.querySelector('#daz-upload-btn')?.addEventListener('click', () => {
+        wrap.querySelector('#daz-upload-input')?.click()
+      })
+
+      // File selected → upload to ComfyUI input folder, refresh dropdown
+      wrap.querySelector('#daz-upload-input')?.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        const btn    = wrap.querySelector('#daz-upload-btn')
+        const errDiv = wrap.querySelector('#daz-save-error')
+        btn.textContent = 'Uploading…'
+        btn.disabled    = true
+        errDiv.textContent = ''
+        try {
+          const fd = new FormData()
+          fd.append('image', file)
+          fd.append('type', 'input')
+          const r = await fetch('/upload/image', { method: 'POST', body: fd })
+          if (!r.ok) throw new Error(r.statusText)
+          const result = await r.json()
+          // Invalidate cache and refresh the dropdown
+          delete folderFiles['input']
+          const fresh = await getFolderFiles('input')
+          const sel = wrap.querySelector('#daz-image-path')
+          if (sel) sel.innerHTML = selectOptsImage(fresh, result.name)
+        } catch (err) {
+          errDiv.textContent = `Upload failed: ${esc(err.message)}`
+        }
+        btn.textContent = 'Upload…'
+        btn.disabled    = false
       })
 
       wrap.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, wrap))
@@ -298,115 +337,6 @@ app.registerExtension({
         saveBtn.disabled    = false
         errorDiv.textContent = `Error: ${e.message}`
       }
-    }
-
-    // ── File browser modal ────────────────────────────────────────────────────
-
-    function openFileBrowser(initialPath, onSelect) {
-      const overlay = document.createElement('div')
-      overlay.style.cssText = [
-        'position:fixed;top:0;left:0;right:0;bottom:0',
-        'background:rgba(0,0,0,0.72);z-index:10000',
-        'display:flex;align-items:center;justify-content:center',
-      ].join(';')
-
-      const modal = document.createElement('div')
-      modal.style.cssText = [
-        'background:#252525;border:1px solid #555;border-radius:6px',
-        'width:560px;max-height:520px;display:flex;flex-direction:column',
-        'font-family:monospace;font-size:12px;color:#ddd;overflow:hidden',
-      ].join(';')
-
-      overlay.appendChild(modal)
-      document.body.appendChild(overlay)
-      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
-
-      async function browse(path) {
-        modal.innerHTML = `<div style="padding:14px;color:#777">Loading…</div>`
-        try {
-          const r = await fetch(`/daz/browse-path?path=${encodeURIComponent(path)}`)
-          if (!r.ok) throw new Error(r.statusText)
-          const data = await r.json()
-          if (data.error) throw new Error(data.error)
-          renderBrowser(data)
-        } catch (e) {
-          modal.innerHTML = `
-            <div style="padding:14px;color:#f88">Error: ${esc(e.message)}</div>
-            <div style="padding:0 14px 14px;display:flex;justify-content:flex-end">
-              <button id="fb-close"
-                style="padding:4px 12px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Close</button>
-            </div>`
-          modal.querySelector('#fb-close')?.addEventListener('click', () => overlay.remove())
-        }
-      }
-
-      function renderBrowser(data) {
-        const { path, parent, dirs, files } = data
-
-        const pathDisplay = path || '(drives)'
-
-        let items = ''
-        if (parent !== null && parent !== undefined) {
-          items += `<div class="fb-item fb-nav" data-path="${esc(parent)}"
-            style="padding:5px 12px;cursor:pointer;color:#9b9;border-bottom:1px solid #2e2e2e">↑ ..</div>`
-        }
-        dirs.forEach(fullPath => {
-          const name = fullPath.split(/[\\/]/).filter(Boolean).pop() || fullPath
-          items += `<div class="fb-item fb-nav" data-path="${esc(fullPath)}"
-            style="padding:5px 12px;cursor:pointer;color:#88b">${esc(name)}/</div>`
-        })
-        files.forEach(fullPath => {
-          const name = fullPath.split(/[\\/]/).filter(Boolean).pop() || fullPath
-          items += `<div class="fb-item fb-file" data-path="${esc(fullPath)}"
-            style="padding:5px 12px;cursor:pointer;color:#ddd">${esc(name)}</div>`
-        })
-        if (!items) {
-          items = '<div style="padding:10px 12px;color:#555">No image files here.</div>'
-        }
-
-        modal.innerHTML = `
-          <div style="padding:8px 12px;border-bottom:1px solid #3a3a3a;background:#1e1e1e;
-                      display:flex;align-items:center;gap:8px;flex-shrink:0">
-            <span style="color:#999;flex:1;word-break:break-all;font-size:11px">${esc(pathDisplay)}</span>
-            <button id="fb-close-x"
-              style="padding:2px 8px;background:#444;color:#ccc;border:1px solid #555;border-radius:3px;cursor:pointer">✕</button>
-          </div>
-          <div style="overflow-y:auto;flex:1">${items}</div>
-          <div style="padding:8px 12px;border-top:1px solid #3a3a3a;background:#1e1e1e;
-                      display:flex;justify-content:flex-end;flex-shrink:0">
-            <button id="fb-cancel"
-              style="padding:4px 12px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
-          </div>
-        `
-
-        modal.querySelector('#fb-close-x')?.addEventListener('click', () => overlay.remove())
-        modal.querySelector('#fb-cancel')?.addEventListener('click',  () => overlay.remove())
-
-        modal.querySelectorAll('.fb-item').forEach(el => {
-          el.addEventListener('mouseover', () => { el.style.background = '#333' })
-          el.addEventListener('mouseout',  () => { el.style.background = ''    })
-          el.addEventListener('click', () => {
-            if (el.classList.contains('fb-nav')) {
-              browse(el.dataset.path)
-            } else {
-              // Normalise to backslashes on Windows paths
-              const p = el.dataset.path.includes('\\')
-                ? el.dataset.path.replace(/\//g, '\\')
-                : el.dataset.path
-              onSelect(p)
-              overlay.remove()
-            }
-          })
-        })
-      }
-
-      // Start at the directory that contains the current image path (if any)
-      let startPath = ''
-      if (initialPath) {
-        const lastSep = Math.max(initialPath.lastIndexOf('/'), initialPath.lastIndexOf('\\'))
-        startPath = lastSep > 0 ? initialPath.slice(0, lastSep) : ''
-      }
-      browse(startPath)
     }
 
     // ── Lifecycle hooks ───────────────────────────────────────────────────────

@@ -47,9 +47,14 @@ def _load_clip(name: str):
 def _load_image(path: str):
     if not path:
         raise ValueError("[DAZ TOOLS] WorkflowConfigWan22: image_path is empty")
-    if not os.path.exists(path):
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: image not found at '{path}'")
-    img = Image.open(path).convert("RGB")
+    if os.path.isabs(path):
+        full = path
+    else:
+        # Relative filename → resolve against ComfyUI input folder
+        full = os.path.join(folder_paths.get_input_directory(), path)
+    if not os.path.exists(full):
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: image not found at '{full}'")
+    img = Image.open(full).convert("RGB")
     arr = np.array(img).astype(np.float32) / 255.0
     return torch.from_numpy(arr)[None,]  # [1, H, W, 3]
 
