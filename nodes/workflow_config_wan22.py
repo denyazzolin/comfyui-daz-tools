@@ -116,6 +116,25 @@ if _SERVER_AVAILABLE:
     async def _daz_workflow_configs_wan22(request):
         return web.json_response(_wan22_labels())
 
+    @PromptServer.instance.routes.get("/daz/workflow-config-wan22-detail")
+    async def _daz_workflow_config_wan22_detail(request):
+        label = request.rel_url.query.get("label", "")
+        name  = _label_to_name(label)
+        if name is None:
+            return web.json_response({"error": f"Config '{label}' not found."})
+        entry = _load_configs().get(name, {})
+        return web.json_response({
+            "unet_high":  entry.get("unet_high",  ""),
+            "unet_low":   entry.get("unet_low",   ""),
+            "vae":        entry.get("vae",        ""),
+            "clip":       entry.get("clip",       ""),
+            "image_path": entry.get("image_path", ""),
+            "width":      entry.get("width",      0),
+            "height":     entry.get("height",     0),
+            "steps":      entry.get("steps",      0),
+            "split_step": entry.get("split_step", 0),
+        })
+
 
 class WorkflowConfigWan22:
     @classmethod
