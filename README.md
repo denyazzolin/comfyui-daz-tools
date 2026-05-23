@@ -94,7 +94,7 @@ This makes it easy to maintain multiple presets (e.g. "720p fast", "1080p qualit
 | `cfg_low` | int | CFG scale used during the low-quality pass |
 | `total_frames` | int | Number of video frames to generate |
 | `fps` | float | Playback frame rate for the output video |
-| `master_prompt` | string | A base prompt shared across positive/negative (e.g. scene description) |
+| `master_prompt` | string | A base prompt to shared across positive/negative (e.g. scene description) or as master prompt for Prompt Relays|
 | `positive_prompt` | string | Positive conditioning text |
 | `negative_prompt` | string | Negative conditioning text |
 
