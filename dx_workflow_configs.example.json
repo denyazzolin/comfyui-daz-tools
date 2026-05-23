@@ -1,0 +1,15 @@
+{
+  "My WAN2.2 Config": {
+    "class": "Wan2.2",
+    "created_at": "2026-05-23T12:00:00",
+    "unet_high": "wan2.2_14B_vace_highpass.safetensors",
+    "unet_low": "wan2.2_14B_vace_lowpass.safetensors",
+    "vae": "wan2.2_vae.safetensors",
+    "clip": "umt5xxl_fp8_e4m3fn.safetensors",
+    "image_path": "C:/path/to/input_image.png",
+    "width": 1280,
+    "height": 720,
+    "steps": 30,
+    "split_step": 15
+  }
+}
