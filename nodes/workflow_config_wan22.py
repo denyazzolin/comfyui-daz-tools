@@ -1,16 +1,7 @@
 import os
-import json
-from datetime import datetime
-from typing import Optional
 
 import folder_paths
-
-try:
-    from server import PromptServer
-    from aiohttp import web
-    _SERVER_AVAILABLE = True
-except Exception:
-    _SERVER_AVAILABLE = False
+from .workflow_config_base import load_configs, labels_for_class, label_to_name, make_label, CONFIG_FILE
 
 try:
     import comfy.sd
@@ -24,56 +15,8 @@ try:
 except Exception:
     pass
 
-_NODES_DIR         = os.path.dirname(os.path.abspath(__file__))
-_PLUGIN_DIR        = os.path.dirname(_NODES_DIR)
-_CUSTOM_NODES_ROOT = os.path.dirname(_PLUGIN_DIR)
-_CONFIG_FILE       = os.path.join(_CUSTOM_NODES_ROOT, "dx_workflow_configs.json")
-
 _CLASS      = "Wan2.2"
 _NO_CONFIGS = "(no configs)"
-_missing_warned = False
-
-
-def _load_configs() -> dict:
-    global _missing_warned
-    if not os.path.exists(_CONFIG_FILE):
-        if not _missing_warned:
-            print(f"[DAZ TOOLS] WorkflowConfigWan22: config file not found at {_CONFIG_FILE}")
-            _missing_warned = True
-        return {}
-    try:
-        with open(_CONFIG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"[DAZ TOOLS] WorkflowConfigWan22: could not read config file — {e}")
-        return {}
-
-
-def _make_label(name: str, created_at: str) -> str:
-    try:
-        dt = datetime.fromisoformat(created_at)
-        return f"{name} ({dt.strftime('%m/%d/%y %H:%M')})"
-    except Exception:
-        return name
-
-
-def _wan22_labels() -> list[str]:
-    """Return dropdown labels for all Wan2.2 configs, format: 'Name (mm/dd/yy hh:mm)'."""
-    configs = _load_configs()
-    return [
-        _make_label(name, entry.get("created_at", ""))
-        for name, entry in configs.items()
-        if entry.get("class") == _CLASS
-    ]
-
-
-def _label_to_name(label: str) -> Optional[str]:
-    """Reverse a label back to its config key by matching against the live config file."""
-    configs = _load_configs()
-    for name, entry in configs.items():
-        if entry.get("class") == _CLASS and _make_label(name, entry.get("created_at", "")) == label:
-            return name
-    return None
 
 
 def _load_unet(name: str):
@@ -94,10 +37,9 @@ def _load_clip(name: str):
     path = folder_paths.get_full_path("text_encoders", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: text encoder '{name}' not found")
-    embedding_dirs = folder_paths.get_folder_paths("embeddings")
     return comfy.sd.load_clip(
         ckpt_paths=[path],
-        embedding_directory=embedding_dirs,
+        embedding_directory=folder_paths.get_folder_paths("embeddings"),
         clip_type=comfy.sd.CLIPType.WAN,
     )
 
@@ -112,35 +54,10 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]  # [1, H, W, 3]
 
 
-if _SERVER_AVAILABLE:
-    @PromptServer.instance.routes.get("/daz/workflow-configs-wan22")
-    async def _daz_workflow_configs_wan22(request):
-        return web.json_response(_wan22_labels())
-
-    @PromptServer.instance.routes.get("/daz/workflow-config-wan22-detail")
-    async def _daz_workflow_config_wan22_detail(request):
-        label = request.rel_url.query.get("label", "")
-        name  = _label_to_name(label)
-        if name is None:
-            return web.json_response({"error": f"Config '{label}' not found."})
-        entry = _load_configs().get(name, {})
-        return web.json_response({
-            "unet_high":  entry.get("unet_high",  ""),
-            "unet_low":   entry.get("unet_low",   ""),
-            "vae":        entry.get("vae",        ""),
-            "clip":       entry.get("clip",       ""),
-            "image_path": entry.get("image_path", ""),
-            "width":      entry.get("width",      0),
-            "height":     entry.get("height",     0),
-            "steps":      entry.get("steps",      0),
-            "split_step": entry.get("split_step", 0),
-        })
-
-
 class WorkflowConfigWan22:
     @classmethod
     def INPUT_TYPES(cls):
-        labels = _wan22_labels()
+        labels = labels_for_class(_CLASS)
         return {
             "required": {
                 "config": (labels if labels else [_NO_CONFIGS],),
@@ -166,15 +83,15 @@ class WorkflowConfigWan22:
     OUTPUT_NODE = False
 
     def load_config(self, config: str):
-        configs = _load_configs()
+        configs = load_configs()
         name = next(
             (n for n, e in configs.items()
-             if e.get("class") == _CLASS and _make_label(n, e.get("created_at", "")) == config),
+             if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
             None,
         )
         if name is None:
             raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found in {_CONFIG_FILE}"
+                f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found in {CONFIG_FILE}"
             )
         entry = configs[name]
 

@@ -10,9 +10,11 @@ app.registerExtension({
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== 'WorkflowConfigWan22') return
 
+    const CLASS = 'Wan2.2'
+
     let configLabels = []
     try {
-      const resp = await fetch('/daz/workflow-configs-wan22')
+      const resp = await fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
       if (resp.ok) configLabels = await resp.json()
     } catch (e) {
       console.warn('[DAZ TOOLS] WorkflowConfigWan22: could not load configs', e)
@@ -72,7 +74,7 @@ app.registerExtension({
       node._dazWan22Wrap.innerHTML =
         '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Loading…</p>'
       try {
-        const resp = await fetch(`/daz/workflow-config-wan22-detail?label=${encodeURIComponent(label)}`)
+        const resp = await fetch(`/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(label)}`)
         if (!resp.ok) throw new Error(resp.statusText)
         node._dazWan22Wrap.innerHTML = renderDetail(await resp.json())
       } catch (e) {
@@ -112,7 +114,7 @@ app.registerExtension({
       }
 
       this.addWidget('button', '↺  Reload Configs', null, () => {
-        fetch('/daz/workflow-configs-wan22')
+        fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
           .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
           .then(labels => {
             configLabels = labels

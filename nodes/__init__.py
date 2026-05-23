@@ -1,3 +1,4 @@
+from . import workflow_config_base  # registers shared /daz/workflow-config* routes
 from .check_null import CheckNullNode
 from .null_audio_checker import NullAudioChecker
 from .abs_int import AbsInt
