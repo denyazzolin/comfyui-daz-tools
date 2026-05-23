@@ -290,11 +290,11 @@ app.registerExtension({
           </tr>
           <tr>
             <td ${tdL}>CFG High</td>
-            <td ${tdR}><input id="daz-cfg-high" type="number" value="${data.cfg_high || 0}" style="${numStyle}"></td>
+            <td ${tdR}><input id="daz-cfg-high" type="number" step="0.1" value="${data.cfg_high || 0}" style="${numStyle}"></td>
           </tr>
           <tr>
             <td ${tdL}>CFG Low</td>
-            <td ${tdR}><input id="daz-cfg-low" type="number" value="${data.cfg_low || 0}" style="${numStyle}"></td>
+            <td ${tdR}><input id="daz-cfg-low" type="number" step="0.1" value="${data.cfg_low || 0}" style="${numStyle}"></td>
           </tr>
           <tr>
             <td ${tdL}>Total Frames</td>
@@ -321,6 +321,18 @@ app.registerExtension({
       `
 
       // ── Shared handlers ───────────────────────────────────────────────────
+
+      wrap.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return
+        if (e.target.tagName !== 'INPUT') return
+        if (e.target.type === 'file' || e.target.type === 'hidden') return
+        e.preventDefault()
+        const focusable = Array.from(
+          wrap.querySelectorAll('input:not([type=file]):not([type=hidden]), select, textarea')
+        )
+        const idx = focusable.indexOf(e.target)
+        if (idx >= 0 && idx < focusable.length - 1) focusable[idx + 1].focus()
+      })
 
       wrap.querySelector('#daz-preview-btn')?.addEventListener('click', () => {
         const filename = wrap.querySelector('#daz-image-path')?.value
@@ -410,8 +422,8 @@ app.registerExtension({
         height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
         steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
         split_step:   parseInt(wrap.querySelector('#daz-split-step')?.value   ?? '0', 10),
-        cfg_high:     parseInt(wrap.querySelector('#daz-cfg-high')?.value     ?? '0', 10),
-        cfg_low:      parseInt(wrap.querySelector('#daz-cfg-low')?.value      ?? '0', 10),
+        cfg_high:    parseFloat(wrap.querySelector('#daz-cfg-high')?.value     ?? '0'),
+        cfg_low:     parseFloat(wrap.querySelector('#daz-cfg-low')?.value      ?? '0'),
         total_frames: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10),
         fps:         parseFloat(wrap.querySelector('#daz-fps')?.value          ?? '0'),
       }
@@ -484,8 +496,8 @@ app.registerExtension({
         height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
         steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
         split_step:   parseInt(wrap.querySelector('#daz-split-step')?.value   ?? '0', 10),
-        cfg_high:     parseInt(wrap.querySelector('#daz-cfg-high')?.value     ?? '0', 10),
-        cfg_low:      parseInt(wrap.querySelector('#daz-cfg-low')?.value      ?? '0', 10),
+        cfg_high:    parseFloat(wrap.querySelector('#daz-cfg-high')?.value     ?? '0'),
+        cfg_low:     parseFloat(wrap.querySelector('#daz-cfg-low')?.value      ?? '0'),
         total_frames: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10),
         fps:         parseFloat(wrap.querySelector('#daz-fps')?.value          ?? '0'),
       }

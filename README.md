@@ -90,8 +90,8 @@ This makes it easy to maintain multiple presets (e.g. "720p fast", "1080p qualit
 | `height` | int | Output frame height in pixels |
 | `steps` | int | Total denoising steps |
 | `split_step` | int | Step at which the sampler switches from `unet_high` to `unet_low` |
-| `cfg_high` | int | CFG scale used during the high-quality pass |
-| `cfg_low` | int | CFG scale used during the low-quality pass |
+| `cfg_high` | float | CFG scale used during the high-quality pass |
+| `cfg_low` | float | CFG scale used during the low-quality pass |
 | `total_frames` | int | Number of video frames to generate |
 | `fps` | float | Playback frame rate for the output video |
 | `master_prompt` | string | A base prompt to shared across positive/negative (e.g. scene description) or as master prompt for Prompt Relays|
