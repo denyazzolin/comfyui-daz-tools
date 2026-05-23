@@ -5,6 +5,7 @@ from .workflow_config_base import load_configs, labels_for_class, make_label, CO
 
 try:
     import comfy.sd
+    import comfy.utils
 except Exception:
     pass
 
@@ -30,7 +31,8 @@ def _load_vae(name: str):
     path = folder_paths.get_full_path("vae", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: VAE '{name}' not found")
-    return comfy.sd.VAE(ckpt_path=path)
+    sd = comfy.utils.load_torch_file(path)
+    return comfy.sd.VAE(sd=sd)
 
 
 def _load_clip(name: str):
