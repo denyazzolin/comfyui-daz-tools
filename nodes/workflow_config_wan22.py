@@ -1,6 +1,13 @@
 import os
 import json
 
+try:
+    from server import PromptServer
+    from aiohttp import web
+    _SERVER_AVAILABLE = True
+except Exception:
+    _SERVER_AVAILABLE = False
+
 _NODES_DIR         = os.path.dirname(os.path.abspath(__file__))
 _PLUGIN_DIR        = os.path.dirname(_NODES_DIR)
 _CUSTOM_NODES_ROOT = os.path.dirname(_PLUGIN_DIR)
@@ -26,14 +33,21 @@ def _load_configs() -> dict:
         return {}
 
 
+def _wan22_names() -> list[str]:
+    configs = _load_configs()
+    return [name for name, entry in configs.items() if entry.get("class") == _CLASS]
+
+
+if _SERVER_AVAILABLE:
+    @PromptServer.instance.routes.get("/daz/workflow-configs-wan22")
+    async def _daz_workflow_configs_wan22(request):
+        return web.json_response(_wan22_names())
+
+
 class WorkflowConfigWan22:
     @classmethod
     def INPUT_TYPES(cls):
-        configs = _load_configs()
-        names = [
-            name for name, entry in configs.items()
-            if entry.get("class") == _CLASS
-        ]
+        names = _wan22_names()
         return {
             "required": {
                 "config": (names if names else [_NO_CONFIGS],),
