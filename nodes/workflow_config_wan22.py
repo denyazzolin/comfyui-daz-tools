@@ -1,7 +1,7 @@
 import os
 
 import folder_paths
-from .workflow_config_base import load_configs, labels_for_class, label_to_name, make_label, CONFIG_FILE
+from .workflow_config_base import load_configs, labels_for_class, make_label, CONFIG_FILE
 
 try:
     import comfy.sd

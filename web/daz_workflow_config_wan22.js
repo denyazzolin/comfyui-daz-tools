@@ -91,6 +91,19 @@ app.registerExtension({
       onNodeCreated?.apply(this, arguments)
       syncWidget(this)
 
+      // Reload button sits between the dropdown and the detail panel.
+      this.addWidget('button', '↺  Reload Configs', null, () => {
+        fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
+          .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+          .then(labels => {
+            configLabels = labels
+            syncWidget(this)
+            const cw = this.widgets?.find(w => w.name === 'config')
+            if (cw) loadDetail(this, cw.value)
+          })
+          .catch(e => console.warn('[DAZ TOOLS] WorkflowConfigWan22: reload failed', e))
+      })
+
       const wrap = document.createElement('div')
       wrap.style.cssText =
         `box-sizing:border-box;padding:6px 0;overflow-y:auto;overflow-x:hidden;width:100%;height:${PANEL_H}px`
@@ -112,18 +125,6 @@ app.registerExtension({
         }
         loadDetail(this, w.value)
       }
-
-      this.addWidget('button', '↺  Reload Configs', null, () => {
-        fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
-          .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
-          .then(labels => {
-            configLabels = labels
-            syncWidget(this)
-            const cw = this.widgets?.find(w => w.name === 'config')
-            if (cw) loadDetail(this, cw.value)
-          })
-          .catch(e => console.warn('[DAZ TOOLS] WorkflowConfigWan22: reload failed', e))
-      })
 
       this.size    = [NODE_W, NODE_H]
       this.minSize = [NODE_W, NODE_H]
