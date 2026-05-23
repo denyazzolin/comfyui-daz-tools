@@ -1,6 +1,7 @@
 import os
 import json
 from datetime import datetime
+from typing import Optional
 
 import folder_paths
 
@@ -66,7 +67,7 @@ def _wan22_labels() -> list[str]:
     ]
 
 
-def _label_to_name(label: str) -> str | None:
+def _label_to_name(label: str) -> Optional[str]:
     """Reverse a label back to its config key by matching against the live config file."""
     configs = _load_configs()
     for name, entry in configs.items():
@@ -165,14 +166,17 @@ class WorkflowConfigWan22:
     OUTPUT_NODE = False
 
     def load_config(self, config: str):
-        name = _label_to_name(config)
+        configs = _load_configs()
+        name = next(
+            (n for n, e in configs.items()
+             if e.get("class") == _CLASS and _make_label(n, e.get("created_at", "")) == config),
+            None,
+        )
         if name is None:
             raise ValueError(
                 f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found in {_CONFIG_FILE}"
             )
-
-        configs = _load_configs()
-        entry   = configs[name]
+        entry = configs[name]
 
         return (
             _load_unet(entry.get("unet_high",  "")),
