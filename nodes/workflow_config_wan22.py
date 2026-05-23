@@ -12,17 +12,15 @@ except Exception:
 
 try:
     import comfy.sd
-    _COMFY_AVAILABLE = True
 except Exception:
-    _COMFY_AVAILABLE = False
+    pass
 
 try:
     from PIL import Image
     import numpy as np
     import torch
-    _IMAGE_AVAILABLE = True
 except Exception:
-    _IMAGE_AVAILABLE = False
+    pass
 
 _NODES_DIR         = os.path.dirname(os.path.abspath(__file__))
 _PLUGIN_DIR        = os.path.dirname(_NODES_DIR)
@@ -137,12 +135,12 @@ class WorkflowConfigWan22:
         return (
             config,
             _CLASS,
-            str(entry.get("created_at", "")),
-            _load_unet(entry["unet_high"]),
-            _load_unet(entry["unet_low"]),
-            _load_vae(entry["vae"]),
-            _load_clip(entry["clip"]),
-            _load_image(entry["image_path"]),
+            str(entry.get("created_at",  "")),
+            _load_unet(entry.get("unet_high",  "")),
+            _load_unet(entry.get("unet_low",   "")),
+            _load_vae( entry.get("vae",        "")),
+            _load_clip(entry.get("clip",       "")),
+            _load_image(entry.get("image_path", "")),
             int(entry.get("width",      0)),
             int(entry.get("height",     0)),
             int(entry.get("steps",      0)),
