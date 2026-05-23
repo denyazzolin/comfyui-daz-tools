@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import datetime
 
 import folder_paths
 
@@ -47,9 +48,31 @@ def _load_configs() -> dict:
         return {}
 
 
-def _wan22_names() -> list[str]:
+def _make_label(name: str, created_at: str) -> str:
+    try:
+        dt = datetime.fromisoformat(created_at)
+        return f"{name} ({dt.strftime('%m/%d/%y %H:%M')})"
+    except Exception:
+        return name
+
+
+def _wan22_labels() -> list[str]:
+    """Return dropdown labels for all Wan2.2 configs, format: 'Name (mm/dd/yy hh:mm)'."""
     configs = _load_configs()
-    return [name for name, entry in configs.items() if entry.get("class") == _CLASS]
+    return [
+        _make_label(name, entry.get("created_at", ""))
+        for name, entry in configs.items()
+        if entry.get("class") == _CLASS
+    ]
+
+
+def _label_to_name(label: str) -> str | None:
+    """Reverse a label back to its config key by matching against the live config file."""
+    configs = _load_configs()
+    for name, entry in configs.items():
+        if entry.get("class") == _CLASS and _make_label(name, entry.get("created_at", "")) == label:
+            return name
+    return None
 
 
 def _load_unet(name: str):
@@ -91,29 +114,27 @@ def _load_image(path: str):
 if _SERVER_AVAILABLE:
     @PromptServer.instance.routes.get("/daz/workflow-configs-wan22")
     async def _daz_workflow_configs_wan22(request):
-        return web.json_response(_wan22_names())
+        return web.json_response(_wan22_labels())
 
 
 class WorkflowConfigWan22:
     @classmethod
     def INPUT_TYPES(cls):
-        names = _wan22_names()
+        labels = _wan22_labels()
         return {
             "required": {
-                "config": (names if names else [_NO_CONFIGS],),
+                "config": (labels if labels else [_NO_CONFIGS],),
             }
         }
 
     RETURN_TYPES = (
-        "STRING", "STRING", "STRING",
-        "MODEL",  "MODEL",
+        "MODEL", "MODEL",
         "VAE",
         "CLIP",
         "IMAGE",
         "INT", "INT", "INT", "INT",
     )
     RETURN_NAMES = (
-        "config_name", "config_class", "created_at",
         "unet_high", "unet_low",
         "vae",
         "clip",
@@ -125,17 +146,16 @@ class WorkflowConfigWan22:
     OUTPUT_NODE = False
 
     def load_config(self, config: str):
-        configs = _load_configs()
-        entry   = configs.get(config)
-        if not entry:
+        name = _label_to_name(config)
+        if name is None:
             raise ValueError(
                 f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found in {_CONFIG_FILE}"
             )
 
+        configs = _load_configs()
+        entry   = configs[name]
+
         return (
-            config,
-            _CLASS,
-            str(entry.get("created_at",  "")),
             _load_unet(entry.get("unet_high",  "")),
             _load_unet(entry.get("unet_low",   "")),
             _load_vae( entry.get("vae",        "")),
