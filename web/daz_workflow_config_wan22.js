@@ -68,12 +68,23 @@ app.registerExtension({
       if (data.error) {
         return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
       }
+      const imageCell = data.image_path
+        ? `<div style="display:flex;align-items:flex-start;gap:6px">
+             <span style="color:#ddd;word-break:break-all;flex:1">${esc(data.image_path)}</span>
+             <button id="daz-use-preview-btn"
+               style="font-family:monospace;font-size:10px;padding:1px 6px;background:#444;color:#ccc;
+                      border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
+           </div>`
+        : `<span style="color:#555">—</span>`
       return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
         ${row('UNet High',  data.unet_high)}
         ${row('UNet Low',   data.unet_low)}
         ${row('VAE',        data.vae)}
         ${row('CLIP',       data.clip)}
-        ${row('Image',      data.image_path)}
+        <tr>
+          <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
+          <td style="color:#ddd;padding:3px 10px">${imageCell}</td>
+        </tr>
         ${row('Resolution', data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${row('Steps',      data.steps)}
         ${row('Split Step', data.split_step)}
@@ -108,6 +119,10 @@ app.registerExtension({
       `
       wrap.querySelector('#daz-new-btn')?.addEventListener('click', () => enterEditForm(node, true))
       wrap.querySelector('#daz-edit-btn')?.addEventListener('click', () => enterEditForm(node, false))
+      wrap.querySelector('#daz-use-preview-btn')?.addEventListener('click', () => {
+        const filename = data.image_path?.split(/[\\/]/).pop()
+        if (filename) showImagePreview(filename)
+      })
       node.setDirtyCanvas(true, true)
     }
 
@@ -174,8 +189,8 @@ app.registerExtension({
         return placeholder + selectOpts(files, current)
       }
 
-      const fieldStyle = 'width:100%;background:#2b2b2b;color:#ddd;border:1px solid #555;border-radius:4px;font-size:11px;font-family:monospace;padding:2px 4px;box-sizing:border-box'
-      const numStyle   = 'width:80px;background:#2b2b2b;color:#ddd;border:1px solid #555;border-radius:4px;font-size:11px;font-family:monospace;padding:2px 4px'
+      const fieldStyle = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px;box-sizing:border-box'
+      const numStyle   = 'width:80px;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px'
       const tdL        = 'style="color:#999;padding:3px 8px;white-space:nowrap;vertical-align:middle;font-size:11px;font-family:monospace"'
       const tdR        = 'style="padding:3px 8px"'
       const btnBase    = 'font-family:monospace;font-size:11px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
