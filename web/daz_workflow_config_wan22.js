@@ -1,10 +1,10 @@
 import { app } from '../../scripts/app.js'
 
-const PANEL_H      = 220
-const EDIT_PANEL_H = 370
+const PANEL_H      = 380
+const EDIT_PANEL_H = 690
 const NODE_W       = 460
-const NODE_H       = 350
-const NODE_H_EDIT  = 500
+const NODE_H       = 510
+const NODE_H_EDIT  = 820
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -64,6 +64,11 @@ app.registerExtension({
       </tr>`
     }
 
+    function trunc(s, n = 60) {
+      if (!s) return ''
+      return s.length > n ? s.substring(0, n) + '…' : s
+    }
+
     function renderDetailHtml(data) {
       if (data.error) {
         return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -85,9 +90,16 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${row('Resolution', data.width && data.height ? `${data.width} × ${data.height}` : '')}
-        ${row('Steps',      data.steps)}
-        ${row('Split Step', data.split_step)}
+        ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
+        ${row('Steps',       data.steps)}
+        ${row('Split Step',  data.split_step)}
+        ${row('CFG High',    data.cfg_high)}
+        ${row('CFG Low',     data.cfg_low)}
+        ${row('Frames',      data.total_frames)}
+        ${row('FPS',         data.fps)}
+        ${row('Master',      trunc(data.master_prompt))}
+        ${row('Positive',    trunc(data.positive_prompt))}
+        ${row('Negative',    trunc(data.negative_prompt))}
       </table>`
     }
 
@@ -191,7 +203,9 @@ app.registerExtension({
 
       const fieldStyle = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px;box-sizing:border-box'
       const numStyle   = 'width:80px;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px'
+      const taStyle    = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:4px 6px;box-sizing:border-box;resize:vertical;min-height:58px'
       const tdL        = 'style="color:#999;padding:3px 8px;white-space:nowrap;vertical-align:middle;font-size:11px;font-family:monospace"'
+      const tdLTop     = 'style="color:#999;padding:6px 8px 0;white-space:nowrap;vertical-align:top;font-size:11px;font-family:monospace"'
       const tdR        = 'style="padding:3px 8px"'
       const btnBase    = 'font-family:monospace;font-size:11px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
 
@@ -274,6 +288,34 @@ app.registerExtension({
             <td ${tdL}>Split Step</td>
             <td ${tdR}><input id="daz-split-step" type="number" value="${data.split_step || 0}" style="${numStyle}"></td>
           </tr>
+          <tr>
+            <td ${tdL}>CFG High</td>
+            <td ${tdR}><input id="daz-cfg-high" type="number" value="${data.cfg_high || 0}" style="${numStyle}"></td>
+          </tr>
+          <tr>
+            <td ${tdL}>CFG Low</td>
+            <td ${tdR}><input id="daz-cfg-low" type="number" value="${data.cfg_low || 0}" style="${numStyle}"></td>
+          </tr>
+          <tr>
+            <td ${tdL}>Total Frames</td>
+            <td ${tdR}><input id="daz-total-frames" type="number" value="${data.total_frames || 0}" style="${numStyle}"></td>
+          </tr>
+          <tr>
+            <td ${tdL}>FPS</td>
+            <td ${tdR}><input id="daz-fps" type="number" step="0.01" value="${data.fps || 0}" style="${numStyle}"></td>
+          </tr>
+          <tr>
+            <td ${tdLTop}>Master Prompt</td>
+            <td ${tdR}><textarea id="daz-master-prompt" style="${taStyle}">${esc(data.master_prompt || '')}</textarea></td>
+          </tr>
+          <tr>
+            <td ${tdLTop}>Positive Prompt</td>
+            <td ${tdR}><textarea id="daz-positive-prompt" style="${taStyle}">${esc(data.positive_prompt || '')}</textarea></td>
+          </tr>
+          <tr>
+            <td ${tdLTop}>Negative Prompt</td>
+            <td ${tdR}><textarea id="daz-negative-prompt" style="${taStyle}">${esc(data.negative_prompt || '')}</textarea></td>
+          </tr>
         </table>
         ${footer}
       `
@@ -355,16 +397,23 @@ app.registerExtension({
 
       const payload = {
         name,
-        class:      CLASS,
-        unet_high:  wrap.querySelector('#daz-unet-high')?.value  ?? '',
-        unet_low:   wrap.querySelector('#daz-unet-low')?.value   ?? '',
-        vae:        wrap.querySelector('#daz-vae')?.value        ?? '',
-        clip:       wrap.querySelector('#daz-clip')?.value       ?? '',
-        image_path: wrap.querySelector('#daz-image-path')?.value ?? '',
-        width:      parseInt(wrap.querySelector('#daz-width')?.value      ?? '0', 10),
-        height:     parseInt(wrap.querySelector('#daz-height')?.value     ?? '0', 10),
-        steps:      parseInt(wrap.querySelector('#daz-steps')?.value      ?? '0', 10),
-        split_step: parseInt(wrap.querySelector('#daz-split-step')?.value ?? '0', 10),
+        class:           CLASS,
+        unet_high:       wrap.querySelector('#daz-unet-high')?.value       ?? '',
+        unet_low:        wrap.querySelector('#daz-unet-low')?.value        ?? '',
+        vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
+        clip:            wrap.querySelector('#daz-clip')?.value            ?? '',
+        image_path:      wrap.querySelector('#daz-image-path')?.value      ?? '',
+        master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
+        positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
+        negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
+        width:        parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10),
+        height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
+        steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
+        split_step:   parseInt(wrap.querySelector('#daz-split-step')?.value   ?? '0', 10),
+        cfg_high:     parseInt(wrap.querySelector('#daz-cfg-high')?.value     ?? '0', 10),
+        cfg_low:      parseInt(wrap.querySelector('#daz-cfg-low')?.value      ?? '0', 10),
+        total_frames: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10),
+        fps:         parseFloat(wrap.querySelector('#daz-fps')?.value          ?? '0'),
       }
 
       try {
@@ -421,17 +470,24 @@ app.registerExtension({
 
       const payload = {
         label,
-        class:      CLASS,
-        new_name:   newName,
-        unet_high:  wrap.querySelector('#daz-unet-high')?.value  ?? '',
-        unet_low:   wrap.querySelector('#daz-unet-low')?.value   ?? '',
-        vae:        wrap.querySelector('#daz-vae')?.value        ?? '',
-        clip:       wrap.querySelector('#daz-clip')?.value       ?? '',
-        image_path: wrap.querySelector('#daz-image-path')?.value ?? '',
-        width:      parseInt(wrap.querySelector('#daz-width')?.value      ?? '0', 10),
-        height:     parseInt(wrap.querySelector('#daz-height')?.value     ?? '0', 10),
-        steps:      parseInt(wrap.querySelector('#daz-steps')?.value      ?? '0', 10),
-        split_step: parseInt(wrap.querySelector('#daz-split-step')?.value ?? '0', 10),
+        class:           CLASS,
+        new_name:        newName,
+        unet_high:       wrap.querySelector('#daz-unet-high')?.value       ?? '',
+        unet_low:        wrap.querySelector('#daz-unet-low')?.value        ?? '',
+        vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
+        clip:            wrap.querySelector('#daz-clip')?.value            ?? '',
+        image_path:      wrap.querySelector('#daz-image-path')?.value      ?? '',
+        master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
+        positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
+        negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
+        width:        parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10),
+        height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
+        steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
+        split_step:   parseInt(wrap.querySelector('#daz-split-step')?.value   ?? '0', 10),
+        cfg_high:     parseInt(wrap.querySelector('#daz-cfg-high')?.value     ?? '0', 10),
+        cfg_low:      parseInt(wrap.querySelector('#daz-cfg-low')?.value      ?? '0', 10),
+        total_frames: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10),
+        fps:         parseFloat(wrap.querySelector('#daz-fps')?.value          ?? '0'),
       }
 
       try {

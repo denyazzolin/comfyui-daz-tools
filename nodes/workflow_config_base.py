@@ -125,15 +125,22 @@ try:
             return web.json_response({"error": f"Config '{label}' not found."}, status=404)
 
         entry = configs[name]
-        for field in ("unet_high", "unet_low", "vae", "clip", "image_path"):
+        for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
+                      "master_prompt", "positive_prompt", "negative_prompt"):
             if field in data:
                 entry[field] = data[field]
-        for field in ("width", "height", "steps", "split_step"):
+        for field in ("width", "height", "steps", "split_step",
+                      "cfg_high", "cfg_low", "total_frames"):
             if field in data:
                 try:
                     entry[field] = int(data[field])
                 except (ValueError, TypeError):
                     pass
+        if "fps" in data:
+            try:
+                entry["fps"] = float(data["fps"])
+            except (ValueError, TypeError):
+                pass
 
         new_name = data.get("new_name", "").strip()
         if new_name and new_name != name:
@@ -174,13 +181,19 @@ try:
             return web.json_response({"error": f"A config named '{name}' already exists."}, status=409)
 
         entry = {"class": cls, "created_at": datetime.now().isoformat()}
-        for field in ("unet_high", "unet_low", "vae", "clip", "image_path"):
+        for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
+                      "master_prompt", "positive_prompt", "negative_prompt"):
             entry[field] = data.get(field, "")
-        for field in ("width", "height", "steps", "split_step"):
+        for field in ("width", "height", "steps", "split_step",
+                      "cfg_high", "cfg_low", "total_frames"):
             try:
                 entry[field] = int(data.get(field, 0))
             except (ValueError, TypeError):
                 entry[field] = 0
+        try:
+            entry["fps"] = float(data.get("fps", 0.0))
+        except (ValueError, TypeError):
+            entry["fps"] = 0.0
 
         configs[name] = entry
 

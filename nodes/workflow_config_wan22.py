@@ -77,6 +77,9 @@ class WorkflowConfigWan22:
         "CLIP",
         "IMAGE",
         "INT", "INT", "INT", "INT",
+        "STRING", "STRING", "STRING",
+        "INT", "INT", "INT",
+        "FLOAT",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -84,6 +87,9 @@ class WorkflowConfigWan22:
         "clip",
         "image",
         "width", "height", "steps", "split_step",
+        "master_prompt", "positive_prompt", "negative_prompt",
+        "cfg_high", "cfg_low", "total_frames",
+        "fps",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -112,4 +118,11 @@ class WorkflowConfigWan22:
             int(entry.get("height",     0)),
             int(entry.get("steps",      0)),
             int(entry.get("split_step", 0)),
+            str(entry.get("master_prompt",   "")),
+            str(entry.get("positive_prompt", "")),
+            str(entry.get("negative_prompt", "")),
+            int(entry.get("cfg_high",     0)),
+            int(entry.get("cfg_low",      0)),
+            int(entry.get("total_frames", 0)),
+            float(entry.get("fps", 0.0)),
         )
