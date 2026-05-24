@@ -114,4 +114,4 @@ The node panel has two modes:
 
 When no configurations exist yet (first launch or empty file), the node opens directly in edit mode with a **Create** button so you can add your first preset without leaving the canvas.
 
-Configurations are stored in `ComfyUI/custom_nodes/dx_workflow_configs.json` and are shared across all nodes and workflows that reference them.
+Configurations are stored in `ComfyUI/user/default/workflows/dx_workflow_configs.json` and are shared across all nodes and workflows that reference them.

@@ -8,10 +8,15 @@ import json
 from datetime import datetime
 from typing import Optional
 
-_NODES_DIR         = os.path.dirname(os.path.abspath(__file__))
-_PLUGIN_DIR        = os.path.dirname(_NODES_DIR)
-_CUSTOM_NODES_ROOT = os.path.dirname(_PLUGIN_DIR)
-CONFIG_FILE        = os.path.join(_CUSTOM_NODES_ROOT, "dx_workflow_configs.json")
+try:
+    import folder_paths as _fp
+    _WORKFLOWS_DIR = os.path.join(_fp.base_path, "user", "default", "workflows")
+except Exception:
+    _NODES_DIR     = os.path.dirname(os.path.abspath(__file__))
+    _WORKFLOWS_DIR = os.path.dirname(os.path.dirname(_NODES_DIR))
+
+os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
+CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
 _missing_warned = False
 
