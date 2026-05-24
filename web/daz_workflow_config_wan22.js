@@ -1,10 +1,10 @@
 import { app } from '../../scripts/app.js'
 
-const PANEL_H      = 484
-const EDIT_PANEL_H = 900
+const PANEL_H      = 506
+const EDIT_PANEL_H = 960
 const NODE_W       = 460
-const NODE_H       = 664
-const NODE_H_EDIT  = 1090
+const NODE_H       = 686
+const NODE_H_EDIT  = 1150
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -130,6 +130,7 @@ app.registerExtension({
         ${rowPair('LoRA 1 High', data.lora_1, 'LoRA 1 Low', data.lora_2)}
         ${rowPair('LoRA 2 High', data.lora_3, 'LoRA 2 Low', data.lora_4)}
         ${rowPair('LoRA 3 High', data.lora_5, 'LoRA 3 Low', data.lora_6)}
+        ${rowPair('LoRA 4 High', data.lora_7, 'LoRA 4 Low', data.lora_8)}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',    data.steps,      'Split Step', data.split_step)}
         ${row('Seed', data.seed)}
@@ -140,6 +141,32 @@ app.registerExtension({
         ${row('Negative',    trunc(data.negative_prompt))}
         ${row('Filename',    data.filename)}
       </table>`
+    }
+
+    // ── Output labels ─────────────────────────────────────────────────────────
+
+    function updateOutputLabels(node, data) {
+      if (!node.outputs) return
+      if (!node._dazOrigOutputNames) {
+        node._dazOrigOutputNames = node.outputs.map(o => o.name.replace(/^\([^)]*\) /, ''))
+      }
+      const values = [
+        data.unet_high, data.unet_low, data.vae, data.clip, data.image_path,
+        data.width, data.height, data.steps, data.split_step, data.seed,
+        data.master_prompt, data.positive_prompt, data.negative_prompt,
+        data.cfg_high, data.cfg_low, data.total_frames, data.fps,
+        data.lora_1, data.lora_2, data.lora_3, data.lora_4,
+        data.lora_5, data.lora_6, data.lora_7, data.lora_8,
+        data.filename,
+      ]
+      values.forEach((val, i) => {
+        if (!node.outputs[i]) return
+        const orig = node._dazOrigOutputNames[i]
+        const s = (val !== undefined && val !== null && val !== '' && val !== 0)
+          ? String(val) : 'none'
+        const display = s.length > 20 ? s.substring(0, 18) + '…' : s
+        node.outputs[i].name = `(${display}) ${orig}`
+      })
     }
 
     // ── Use mode ──────────────────────────────────────────────────────────────
@@ -174,6 +201,7 @@ app.registerExtension({
         const filename = data.image_path?.split(/[\\/]/).pop()
         if (filename) showImagePreview(filename)
       })
+      updateOutputLabels(node, data)
       node.setDirtyCanvas(true, true)
     }
 
@@ -359,6 +387,14 @@ app.registerExtension({
             <td ${tdL}>LoRA 3 Low</td>
             <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_6)}</select></td>
           </tr>
+          <tr>
+            <td ${tdL}>LoRA 4 High</td>
+            <td ${tdR}><select id="daz-lora-7" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_7)}</select></td>
+          </tr>
+          <tr>
+            <td ${tdL}>LoRA 4 Low</td>
+            <td ${tdR}><select id="daz-lora-8" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_8)}</select></td>
+          </tr>
           ${divider}
           <tr>
             <td ${tdL}>Width</td>
@@ -517,6 +553,8 @@ app.registerExtension({
         lora_4:          wrap.querySelector('#daz-lora-4')?.value          ?? '',
         lora_5:          wrap.querySelector('#daz-lora-5')?.value          ?? '',
         lora_6:          wrap.querySelector('#daz-lora-6')?.value          ?? '',
+        lora_7:          wrap.querySelector('#daz-lora-7')?.value          ?? '',
+        lora_8:          wrap.querySelector('#daz-lora-8')?.value          ?? '',
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
@@ -603,6 +641,8 @@ app.registerExtension({
         lora_4:          wrap.querySelector('#daz-lora-4')?.value          ?? '',
         lora_5:          wrap.querySelector('#daz-lora-5')?.value          ?? '',
         lora_6:          wrap.querySelector('#daz-lora-6')?.value          ?? '',
+        lora_7:          wrap.querySelector('#daz-lora-7')?.value          ?? '',
+        lora_8:          wrap.querySelector('#daz-lora-8')?.value          ?? '',
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',

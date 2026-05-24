@@ -142,6 +142,38 @@ app.registerExtension({
       </table>`
     }
 
+    // ── Output labels ─────────────────────────────────────────────────────────
+
+    function updateOutputLabels(node, data) {
+      if (!node.outputs) return
+      if (!node._dazOrigOutputNames) {
+        node._dazOrigOutputNames = node.outputs.map(o => o.name.replace(/^\([^)]*\) /, ''))
+      }
+      const ckpt = data.checkpoint
+      const values = [
+        ckpt, ckpt, ckpt,
+        data.unet_high,
+        data.vae, data.audio_vae,
+        data.clip_2, data.clip,
+        data.image_path,
+        data.width, data.height, data.steps, data.seed,
+        data.master_prompt, data.positive_prompt, data.negative_prompt,
+        data.cfg_high,
+        data.total_frames, data.fps,
+        data.lora_1, data.lora_2, data.lora_3,
+        data.lora_4, data.lora_5, data.lora_6,
+        data.filename,
+      ]
+      values.forEach((val, i) => {
+        if (!node.outputs[i]) return
+        const orig = node._dazOrigOutputNames[i]
+        const s = (val !== undefined && val !== null && val !== '' && val !== 0)
+          ? String(val) : 'none'
+        const display = s.length > 20 ? s.substring(0, 18) + '…' : s
+        node.outputs[i].name = `(${display}) ${orig}`
+      })
+    }
+
     // ── Use mode ──────────────────────────────────────────────────────────────
 
     function renderUseMode(node, data, wasEditing = false) {
@@ -174,6 +206,7 @@ app.registerExtension({
         const filename = data.image_path?.split(/[\\/]/).pop()
         if (filename) showImagePreview(filename)
       })
+      updateOutputLabels(node, data)
       node.setDirtyCanvas(true, true)
     }
 

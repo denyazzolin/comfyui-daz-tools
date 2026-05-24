@@ -23,7 +23,7 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 10
+CURRENT_SCHEMA = 11
 _META_KEY      = "_meta"
 
 # Fields added per schema version (additive only — used for automatic migration).
@@ -37,6 +37,7 @@ _SCHEMA_DEFAULTS: dict[int, dict] = {
     8: {"checkpoint": ""},
     9: {"clip_2": ""},
     10: {"seed": 0},
+    11: {"lora_7": "", "lora_8": ""},
 }
 
 _missing_warned   = False
@@ -229,6 +230,7 @@ try:
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
                       "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
+                      "lora_7", "lora_8",
                       "audio_vae", "type", "group", "filename", "checkpoint", "clip_2"):
             if field in data:
                 entry[field] = data[field]
@@ -292,6 +294,7 @@ try:
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
                       "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
+                      "lora_7", "lora_8",
                       "audio_vae", "type", "group", "filename", "checkpoint", "clip_2"):
             entry[field] = data.get(field, "")
         for field in ("width", "height", "steps", "split_step", "seed", "total_frames"):
