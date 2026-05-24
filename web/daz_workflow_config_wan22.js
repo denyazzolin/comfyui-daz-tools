@@ -1,10 +1,10 @@
 import { app } from '../../scripts/app.js'
 
-const PANEL_H      = 462
-const EDIT_PANEL_H = 870
+const PANEL_H      = 484
+const EDIT_PANEL_H = 900
 const NODE_W       = 460
-const NODE_H       = 642
-const NODE_H_EDIT  = 1060
+const NODE_H       = 664
+const NODE_H_EDIT  = 1090
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -132,6 +132,7 @@ app.registerExtension({
         ${rowPair('LoRA 3 High', data.lora_5, 'LoRA 3 Low', data.lora_6)}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',    data.steps,      'Split Step', data.split_step)}
+        ${row('Seed', data.seed)}
         ${rowPair('CFG High', data.cfg_high,   'CFG Low',   data.cfg_low)}
         ${rowPair('Frames',   data.total_frames, 'FPS',     data.fps)}
         ${row('Master',      trunc(data.master_prompt))}
@@ -374,6 +375,11 @@ app.registerExtension({
             <td ${tdRNum}><input id="daz-split-step" type="number" value="${data.split_step || 0}" style="${numStyle}"></td>
           </tr>
           <tr>
+            <td ${tdL}>Seed</td>
+            <td ${tdRNum}><input id="daz-seed" type="number" value="${data.seed ?? 0}" style="${numStyle}"></td>
+            <td colspan="2"></td>
+          </tr>
+          <tr>
             <td ${tdL}>CFG High</td>
             <td ${tdRNum}><input id="daz-cfg-high" type="number" step="0.1" value="${data.cfg_high || 0}" style="${numStyle}"></td>
             <td ${tdL}>CFG Low</td>
@@ -521,6 +527,7 @@ app.registerExtension({
         height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
         steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
         split_step:   parseInt(wrap.querySelector('#daz-split-step')?.value   ?? '0', 10),
+        seed:         parseInt(wrap.querySelector('#daz-seed')?.value         ?? '0', 10),
         cfg_high:    parseFloat(wrap.querySelector('#daz-cfg-high')?.value     ?? '0'),
         cfg_low:     parseFloat(wrap.querySelector('#daz-cfg-low')?.value      ?? '0'),
         total_frames: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10),
@@ -606,6 +613,7 @@ app.registerExtension({
         height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
         steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
         split_step:   parseInt(wrap.querySelector('#daz-split-step')?.value   ?? '0', 10),
+        seed:         parseInt(wrap.querySelector('#daz-seed')?.value         ?? '0', 10),
         cfg_high:    parseFloat(wrap.querySelector('#daz-cfg-high')?.value     ?? '0'),
         cfg_low:     parseFloat(wrap.querySelector('#daz-cfg-low')?.value      ?? '0'),
         total_frames: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10),

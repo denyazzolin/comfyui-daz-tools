@@ -23,7 +23,7 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 9
+CURRENT_SCHEMA = 10
 _META_KEY      = "_meta"
 
 # Fields added per schema version (additive only — used for automatic migration).
@@ -36,6 +36,7 @@ _SCHEMA_DEFAULTS: dict[int, dict] = {
     7: {"filename": ""},
     8: {"checkpoint": ""},
     9: {"clip_2": ""},
+    10: {"seed": 0},
 }
 
 _missing_warned   = False
@@ -231,7 +232,7 @@ try:
                       "audio_vae", "type", "group", "filename", "checkpoint", "clip_2"):
             if field in data:
                 entry[field] = data[field]
-        for field in ("width", "height", "steps", "split_step", "total_frames"):
+        for field in ("width", "height", "steps", "split_step", "seed", "total_frames"):
             if field in data:
                 try:
                     entry[field] = int(data[field])
@@ -293,7 +294,7 @@ try:
                       "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
                       "audio_vae", "type", "group", "filename", "checkpoint", "clip_2"):
             entry[field] = data.get(field, "")
-        for field in ("width", "height", "steps", "split_step", "total_frames"):
+        for field in ("width", "height", "steps", "split_step", "seed", "total_frames"):
             try:
                 entry[field] = int(data.get(field, 0))
             except (ValueError, TypeError):

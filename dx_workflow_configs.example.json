@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 9
+    "schema_version": 10
   },
   "My WAN2.2 Config": {
     "class": "Wan2.2",
@@ -32,6 +32,7 @@
     "group": "",
     "filename": "",
     "checkpoint": "",
-    "clip_2": ""
+    "clip_2": "",
+    "seed": 0
   }
 }
