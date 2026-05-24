@@ -1,10 +1,10 @@
 import { app } from '../../scripts/app.js'
 
-const PANEL_H      = 390
-const EDIT_PANEL_H = 860
+const PANEL_H      = 415
+const EDIT_PANEL_H = 890
 const NODE_W       = 460
-const NODE_H       = 520
-const NODE_H_EDIT  = 990
+const NODE_H       = 570
+const NODE_H_EDIT  = 1050
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -14,10 +14,10 @@ app.registerExtension({
 
     const CLASS = 'Wan2.2'
 
-    let configLabels = []
+    let allConfigs = []  // [{label, type}]
     try {
-      const resp = await fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
-      if (resp.ok) configLabels = await resp.json()
+      const resp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+      if (resp.ok) allConfigs = await resp.json()
     } catch (e) {
       console.warn('[DAZ TOOLS] WorkflowConfigWan22: could not load configs', e)
     }
@@ -37,12 +37,18 @@ app.registerExtension({
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    function filteredLabels(filterValue) {
+      if (filterValue === 'All') return allConfigs.map(c => c.label)
+      return allConfigs.filter(c => c.type === filterValue).map(c => c.label)
+    }
+
     function syncWidget(node) {
+      const labels = filteredLabels(node._dazTypeFilter || 'All')
       const w = node.widgets?.find(w => w.name === 'config')
       if (!w) return
-      w.options.values = configLabels.length ? configLabels : ['(no configs)']
-      if (!configLabels.includes(w.value)) {
-        w.value = configLabels[0] ?? '(no configs)'
+      w.options.values = labels.length ? labels : ['(no configs)']
+      if (!labels.includes(w.value)) {
+        w.value = labels[0] ?? '(no configs)'
       }
     }
 
@@ -95,7 +101,9 @@ app.registerExtension({
                       border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
            </div>`
         : `<span style="color:#555">—</span>`
+      const typeLabel = data.type === 'I2V' ? 'I2V' : data.type === 'T2V' ? 'T2V' : 'No type'
       return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
+        ${row('Type',       typeLabel)}
         ${row('UNet High',  data.unet_high)}
         ${row('UNet Low',   data.unet_low)}
         ${row('VAE',        data.vae)}
@@ -241,13 +249,21 @@ app.registerExtension({
                value="${esc(isNew ? '' : (data.name || ''))}"
                placeholder="Config name…"
                style="${fieldStyle}"></td>
+           </tr>
+           <tr>
+             <td ${tdL}>Type</td>
+             <td ${tdR}><select id="daz-type" style="${fieldStyle}">
+               <option value=""${!data.type ? ' selected' : ''}>— no type —</option>
+               <option value="I2V"${data.type === 'I2V' ? ' selected' : ''}>I2V</option>
+               <option value="T2V"${data.type === 'T2V' ? ' selected' : ''}>T2V</option>
+             </select></td>
            </tr>`
 
       const footer = isNew
         ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
                        justify-content:flex-end;border-top:1px solid #3a3a3a;margin-top:4px">
              <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
-             ${configLabels.length > 0 ? `<button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>` : ''}
+             ${allConfigs.length > 0 ? `<button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>` : ''}
              <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>
            </div>`
         : `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
@@ -455,6 +471,7 @@ app.registerExtension({
       const payload = {
         name,
         class:           CLASS,
+        type:            wrap.querySelector('#daz-type')?.value             ?? '',
         unet_high:       wrap.querySelector('#daz-unet-high')?.value       ?? '',
         unet_low:        wrap.querySelector('#daz-unet-low')?.value        ?? '',
         vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
@@ -488,14 +505,13 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-        const labelsResp = await fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
-        if (labelsResp.ok) configLabels = await labelsResp.json()
-
+        const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+        if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+        node._dazTypeFilter = 'All'
+        syncWidget(node)
         const configWidget = node.widgets?.find(w => w.name === 'config')
-        if (configWidget) {
-          configWidget.options.values = configLabels.length ? configLabels : ['(no configs)']
-          configWidget.value = result.label
-        }
+        if (configWidget) configWidget.value = result.label
 
         const detailResp = await fetch(
           `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
@@ -535,6 +551,7 @@ app.registerExtension({
         label,
         class:           CLASS,
         new_name:        newName,
+        type:            wrap.querySelector('#daz-type')?.value             ?? '',
         unet_high:       wrap.querySelector('#daz-unet-high')?.value       ?? '',
         unet_low:        wrap.querySelector('#daz-unet-low')?.value        ?? '',
         vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
@@ -568,14 +585,13 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-        const labelsResp = await fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
-        if (labelsResp.ok) configLabels = await labelsResp.json()
-
+        const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+        if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+        node._dazTypeFilter = 'All'
+        syncWidget(node)
         const configWidget = node.widgets?.find(w => w.name === 'config')
-        if (configWidget) {
-          configWidget.options.values = configLabels.length ? configLabels : ['(no configs)']
-          configWidget.value = result.label
-        }
+        if (configWidget) configWidget.value = result.label
 
         const detailResp = await fetch(
           `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
@@ -650,18 +666,18 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-        const labelsResp = await fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
-        if (labelsResp.ok) configLabels = await labelsResp.json()
-
+        const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+        if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+        node._dazTypeFilter = 'All'
+        syncWidget(node)
         const configWidget = node.widgets?.find(w => w.name === 'config')
+        const remainingLabels = filteredLabels('All')
 
-        if (configLabels.length > 0) {
-          if (configWidget) {
-            configWidget.options.values = configLabels
-            configWidget.value = configLabels[0]
-          }
+        if (remainingLabels.length > 0) {
+          if (configWidget) configWidget.value = remainingLabels[0]
           node._dazWan22EditMode = false
-          loadDetail(node, configLabels[0])
+          loadDetail(node, remainingLabels[0])
         } else {
           if (configWidget) {
             configWidget.options.values = ['(no configs)']
@@ -716,15 +732,37 @@ app.registerExtension({
     const onNodeCreated = nodeType.prototype.onNodeCreated
     nodeType.prototype.onNodeCreated = function () {
       onNodeCreated?.apply(this, arguments)
+      this._dazTypeFilter = 'All'
+
+      // Type filter combo — placed before the config dropdown
+      const typeFilterWidget = this.addWidget('combo', 'Type', 'All', (value) => {
+        this._dazTypeFilter = value
+        syncWidget(this)
+        if (!this._dazWan22EditMode) {
+          const cw = this.widgets?.find(w => w.name === 'config')
+          if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value)
+        }
+      }, { values: ['All', 'I2V', 'T2V'] })
+      this._dazTypeFilterWidget = typeFilterWidget
+
+      // Reorder: ensure filter appears before config widget
+      const fi = this.widgets.indexOf(typeFilterWidget)
+      const ci = this.widgets.findIndex(w => w.name === 'config')
+      if (ci >= 0 && fi > ci) {
+        this.widgets.splice(fi, 1)
+        this.widgets.splice(ci, 0, typeFilterWidget)
+      }
+
       syncWidget(this)
 
       this.addWidget('button', '↺  Reload Configs', null, () => {
-        fetch(`/daz/workflow-configs?class=${encodeURIComponent(CLASS)}`)
+        fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
           .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
-          .then(labels => {
-            configLabels = labels
+          .then(data => {
+            allConfigs = data
             syncWidget(this)
             if (this._dazWan22EditMode) return
+            const labels = filteredLabels(this._dazTypeFilter || 'All')
             if (!labels.length) {
               enterEditForm(this, true)
               return
@@ -760,7 +798,7 @@ app.registerExtension({
           origCb?.call(this, value)
           if (!this._dazWan22EditMode) loadDetail(this, value)
         }
-        if (configLabels.length === 0) {
+        if (allConfigs.length === 0) {
           enterEditForm(this, true)
         } else {
           loadDetail(this, w.value)
@@ -773,12 +811,14 @@ app.registerExtension({
       onConfigure?.apply(this, arguments)
       const self = this
       queueMicrotask(() => {
-        if (!configLabels.length) {
+        if (self._dazTypeFilterWidget) self._dazTypeFilter = self._dazTypeFilterWidget.value || 'All'
+        if (!allConfigs.length) {
           if (!self._dazWan22EditMode) enterEditForm(self, true)
           return
         }
         const w = self.widgets?.find(w => w.name === 'config')
-        if (w && !configLabels.includes(w.value)) syncWidget(self)
+        const labels = filteredLabels(self._dazTypeFilter)
+        if (w && !labels.includes(w.value)) syncWidget(self)
         if (!self._dazWan22EditMode) loadDetail(self, w?.value)
       })
     }

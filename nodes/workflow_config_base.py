@@ -18,7 +18,7 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 4
+CURRENT_SCHEMA = 5
 _META_KEY      = "_meta"
 
 # Fields added per schema version (additive only — used for automatic migration).
@@ -26,6 +26,7 @@ _SCHEMA_DEFAULTS: dict[int, dict] = {
     2: {"lora_1": "", "lora_2": "", "lora_3": "", "lora_4": ""},
     3: {"lora_5": "", "lora_6": ""},
     4: {"audio_vae": ""},
+    5: {"type": ""},
 }
 
 _missing_warned = False
@@ -97,6 +98,15 @@ def labels_for_class(cls: str) -> list[str]:
     ]
 
 
+def configs_with_type_for_class(cls: str) -> list[dict]:
+    configs = load_configs()
+    return [
+        {"label": make_label(name, entry.get("created_at", "")), "type": entry.get("type", "")}
+        for name, entry in configs.items()
+        if entry.get("class") == cls
+    ]
+
+
 def label_to_name(label: str, cls: str) -> Optional[str]:
     configs = load_configs()
     for name, entry in configs.items():
@@ -115,6 +125,11 @@ try:
     async def _daz_workflow_configs(request):
         cls = request.rel_url.query.get("class", "")
         return web.json_response(labels_for_class(cls))
+
+    @PromptServer.instance.routes.get("/daz/workflow-configs-with-type")
+    async def _daz_workflow_configs_with_type(request):
+        cls = request.rel_url.query.get("class", "")
+        return web.json_response(configs_with_type_for_class(cls))
 
     @PromptServer.instance.routes.get("/daz/workflow-config-detail")
     async def _daz_workflow_config_detail(request):
@@ -177,7 +192,7 @@ try:
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
                       "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
-                      "audio_vae"):
+                      "audio_vae", "type"):
             if field in data:
                 entry[field] = data[field]
         for field in ("width", "height", "steps", "split_step", "total_frames"):
@@ -240,7 +255,7 @@ try:
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
                       "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
-                      "audio_vae"):
+                      "audio_vae", "type"):
             entry[field] = data.get(field, "")
         for field in ("width", "height", "steps", "split_step", "total_frames"):
             try:
