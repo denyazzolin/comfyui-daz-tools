@@ -18,13 +18,14 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 3
+CURRENT_SCHEMA = 4
 _META_KEY      = "_meta"
 
 # Fields added per schema version (additive only — used for automatic migration).
 _SCHEMA_DEFAULTS: dict[int, dict] = {
     2: {"lora_1": "", "lora_2": "", "lora_3": "", "lora_4": ""},
     3: {"lora_5": "", "lora_6": ""},
+    4: {"audio_vae": ""},
 }
 
 _missing_warned = False
@@ -175,7 +176,8 @@ try:
         entry = configs[name]
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
-                      "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6"):
+                      "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
+                      "audio_vae"):
             if field in data:
                 entry[field] = data[field]
         for field in ("width", "height", "steps", "split_step", "total_frames"):
@@ -237,7 +239,8 @@ try:
         entry = {"class": cls, "created_at": datetime.now().isoformat()}
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
-                      "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6"):
+                      "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
+                      "audio_vae"):
             entry[field] = data.get(field, "")
         for field in ("width", "height", "steps", "split_step", "total_frames"):
             try:

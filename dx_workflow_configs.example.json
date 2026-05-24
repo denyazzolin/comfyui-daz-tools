@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 3
+    "schema_version": 4
   },
   "My WAN2.2 Config": {
     "class": "Wan2.2",
@@ -26,6 +26,7 @@
     "lora_3": "",
     "lora_4": "",
     "lora_5": "",
-    "lora_6": ""
+    "lora_6": "",
+    "audio_vae": ""
   }
 }
