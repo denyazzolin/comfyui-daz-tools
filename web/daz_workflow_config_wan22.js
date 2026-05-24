@@ -227,18 +227,16 @@ app.registerExtension({
       const rawImagePath = data.image_path || ''
       const imageName = rawImagePath.split(/[\\/]/).pop() || ''
 
-      function selectOpts(files, current) {
-        if (!files.length) return `<option value="">— no files found —</option>`
-        return files.map(f =>
+      function selectOptsOpt(files, current) {
+        return `<option value="">— none —</option>` + files.map(f =>
           `<option value="${esc(f)}"${f === current ? ' selected' : ''}>${esc(f)}</option>`
         ).join('')
       }
 
       function selectOptsImage(files, current) {
-        const placeholder = (!current || !files.includes(current))
-          ? `<option value="">— select image —</option>`
-          : ''
-        return placeholder + selectOpts(files, current)
+        return `<option value="">— no image —</option>` + files.map(f =>
+          `<option value="${esc(f)}"${f === current ? ' selected' : ''}>${esc(f)}</option>`
+        ).join('')
       }
 
       function selectOptsLora(files, current) {
@@ -307,19 +305,19 @@ app.registerExtension({
           ${divider}
           <tr>
             <td ${tdL}>UNet High</td>
-            <td ${tdR}><select id="daz-unet-high" style="${fieldStyle}">${selectOpts(unetFiles, data.unet_high)}</select></td>
+            <td ${tdR}><select id="daz-unet-high" style="${fieldStyle}">${selectOptsOpt(unetFiles, data.unet_high)}</select></td>
           </tr>
           <tr>
             <td ${tdL}>UNet Low</td>
-            <td ${tdR}><select id="daz-unet-low" style="${fieldStyle}">${selectOpts(unetFiles, data.unet_low)}</select></td>
+            <td ${tdR}><select id="daz-unet-low" style="${fieldStyle}">${selectOptsOpt(unetFiles, data.unet_low)}</select></td>
           </tr>
           <tr>
             <td ${tdL}>VAE</td>
-            <td ${tdR}><select id="daz-vae" style="${fieldStyle}">${selectOpts(vaeFiles, data.vae)}</select></td>
+            <td ${tdR}><select id="daz-vae" style="${fieldStyle}">${selectOptsOpt(vaeFiles, data.vae)}</select></td>
           </tr>
           <tr>
             <td ${tdL}>CLIP</td>
-            <td ${tdR}><select id="daz-clip" style="${fieldStyle}">${selectOpts(clipFiles, data.clip)}</select></td>
+            <td ${tdR}><select id="daz-clip" style="${fieldStyle}">${selectOptsOpt(clipFiles, data.clip)}</select></td>
           </tr>
           <tr>
             <td ${tdL}>Image</td>

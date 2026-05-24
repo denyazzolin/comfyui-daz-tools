@@ -235,10 +235,7 @@ app.registerExtension({
       }
 
       function selectOptsImage(files, current) {
-        const placeholder = (!current || !files.includes(current))
-          ? `<option value="">— select image —</option>`
-          : ''
-        return placeholder + files.map(f =>
+        return `<option value="">— no image —</option>` + files.map(f =>
           `<option value="${esc(f)}"${f === current ? ' selected' : ''}>${esc(f)}</option>`
         ).join('')
       }

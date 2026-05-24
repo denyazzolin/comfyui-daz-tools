@@ -21,6 +21,8 @@ _NO_CONFIGS = "(no configs)"
 
 
 def _load_unet(name: str):
+    if not name:
+        return None
     path = folder_paths.get_full_path("diffusion_models", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: diffusion model '{name}' not found")
@@ -28,6 +30,8 @@ def _load_unet(name: str):
 
 
 def _load_vae(name: str):
+    if not name:
+        return None
     path = folder_paths.get_full_path("vae", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: VAE '{name}' not found")
@@ -36,6 +40,8 @@ def _load_vae(name: str):
 
 
 def _load_clip(name: str):
+    if not name:
+        return None
     path = folder_paths.get_full_path("text_encoders", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: text encoder '{name}' not found")
@@ -48,7 +54,7 @@ def _load_clip(name: str):
 
 def _load_image(path: str):
     if not path:
-        raise ValueError("[DAZ TOOLS] WorkflowConfigWan22: image_path is empty")
+        return None
     if os.path.isabs(path):
         full = path
     else:
