@@ -46,7 +46,9 @@ app.registerExtension({
 
     function updateGroupFilterWidget(node) {
       if (!node._dazGroupFilterWidget) return
-      const groups = ['All', ...Array.from(new Set(allConfigs.map(c => c.group).filter(Boolean))).sort()]
+      const typeFilter = node._dazTypeFilter || 'All'
+      const base = typeFilter === 'All' ? allConfigs : allConfigs.filter(c => c.type === typeFilter)
+      const groups = ['All', ...Array.from(new Set(base.map(c => c.group).filter(Boolean))).sort()]
       node._dazGroupFilterWidget.options.values = groups
       if (!groups.includes(node._dazGroupFilter)) {
         node._dazGroupFilter = 'All'
@@ -528,11 +530,11 @@ app.registerExtension({
 
         const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
         if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+        node._dazTypeFilter = 'All'
         updateGroupFilterWidget(node)
         if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
         node._dazGroupFilter = 'All'
-        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
-        node._dazTypeFilter = 'All'
         syncWidget(node)
         const configWidget = node.widgets?.find(w => w.name === 'config')
         if (configWidget) configWidget.value = result.label
@@ -612,11 +614,11 @@ app.registerExtension({
 
         const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
         if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+        node._dazTypeFilter = 'All'
         updateGroupFilterWidget(node)
         if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
         node._dazGroupFilter = 'All'
-        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
-        node._dazTypeFilter = 'All'
         syncWidget(node)
         const configWidget = node.widgets?.find(w => w.name === 'config')
         if (configWidget) configWidget.value = result.label
@@ -696,11 +698,11 @@ app.registerExtension({
 
         const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
         if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+        node._dazTypeFilter = 'All'
         updateGroupFilterWidget(node)
         if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
         node._dazGroupFilter = 'All'
-        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
-        node._dazTypeFilter = 'All'
         syncWidget(node)
         const configWidget = node.widgets?.find(w => w.name === 'config')
         const remainingLabels = filteredLabels('All', 'All')
@@ -769,6 +771,7 @@ app.registerExtension({
       // Type filter combo
       const typeFilterWidget = this.addWidget('combo', 'Type', 'All', (value) => {
         this._dazTypeFilter = value
+        updateGroupFilterWidget(this)
         syncWidget(this)
         if (!this._dazWan22EditMode) {
           const cw = this.widgets?.find(w => w.name === 'config')
@@ -863,6 +866,7 @@ app.registerExtension({
       queueMicrotask(() => {
         if (self._dazTypeFilterWidget)  self._dazTypeFilter  = self._dazTypeFilterWidget.value  || 'All'
         if (self._dazGroupFilterWidget) self._dazGroupFilter = self._dazGroupFilterWidget.value || 'All'
+        updateGroupFilterWidget(self)
         if (!allConfigs.length) {
           if (!self._dazWan22EditMode) enterEditForm(self, true)
           return
