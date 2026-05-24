@@ -147,12 +147,6 @@ app.registerExtension({
 
     function updateOutputLabels(node, data) {
       if (!node.outputs) return
-      if (!node._dazOrigOutputNames) {
-        node._dazOrigOutputNames = node.outputs.map(o => {
-          const src = o.label != null ? String(o.label) : o.name
-          return src.replace(/^\([^)]*\) /, '')
-        })
-      }
       const values = [
         data.unet_high, data.unet_low, data.vae, data.clip, data.image_path,
         data.width, data.height, data.steps, data.split_step, data.seed,
@@ -164,13 +158,11 @@ app.registerExtension({
       ]
       values.forEach((val, i) => {
         if (!node.outputs[i]) return
-        const orig = node._dazOrigOutputNames[i]
+        const orig = node.outputs[i].name
         const s = (val !== undefined && val !== null && val !== '' && val !== 0)
           ? String(val) : 'none'
         const display = s.length > 20 ? s.substring(0, 18) + '…' : s
-        const label = `(${display}) ${orig}`
-        node.outputs[i].name  = label
-        node.outputs[i].label = label
+        node.outputs[i].label = `(${display}) ${orig}`
       })
     }
 
