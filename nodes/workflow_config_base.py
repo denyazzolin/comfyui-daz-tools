@@ -38,7 +38,10 @@ _SCHEMA_DEFAULTS: dict[int, dict] = {
     9: {"clip_2": ""},
 }
 
-_missing_warned = False
+_missing_warned   = False
+# Tracks the highest schema version seen on disk. _save_configs uses this so an
+# older node installation never downgrades the file version written by a newer one.
+_effective_schema = CURRENT_SCHEMA
 
 
 def load_checkpoint(name: str):
@@ -68,15 +71,17 @@ def _migrate(configs: dict, from_version: int) -> dict:
 
 
 def _save_configs(configs: dict) -> None:
-    """Write configs to disk prefixed with the current schema meta block."""
-    data: dict = {_META_KEY: {"schema_version": CURRENT_SCHEMA}}
+    """Write configs to disk prefixed with the schema meta block.
+    Always uses _effective_schema (the max of this node's CURRENT_SCHEMA and whatever
+    was already on disk) so an older node never downgrades the file version."""
+    data: dict = {_META_KEY: {"schema_version": _effective_schema}}
     data.update(configs)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
 def load_configs() -> dict:
-    global _missing_warned
+    global _missing_warned, _effective_schema
     if not os.path.exists(CONFIG_FILE):
         if not _missing_warned:
             print(f"[DAZ TOOLS] WorkflowConfig: config file not found at {CONFIG_FILE}")
@@ -94,6 +99,7 @@ def load_configs() -> dict:
         return {}
 
     file_version = raw.get(_META_KEY, {}).get("schema_version", 1)
+    _effective_schema = max(file_version, CURRENT_SCHEMA)
     configs = {k: v for k, v in raw.items() if k != _META_KEY}
 
     if file_version < CURRENT_SCHEMA:
