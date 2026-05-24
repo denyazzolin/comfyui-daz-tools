@@ -90,6 +90,7 @@ class WorkflowConfigWan22:
         "FLOAT", "FLOAT", "INT",
         "FLOAT",
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
+        "STRING",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -103,6 +104,7 @@ class WorkflowConfigWan22:
         "lora_1_high", "lora_1_low",
         "lora_2_high", "lora_2_low",
         "lora_3_high", "lora_3_low",
+        "filename",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -144,4 +146,5 @@ class WorkflowConfigWan22:
             _load_lora(entry.get("lora_4", "")),
             _load_lora(entry.get("lora_5", "")),
             _load_lora(entry.get("lora_6", "")),
+            str(entry.get("filename", "")),
         )

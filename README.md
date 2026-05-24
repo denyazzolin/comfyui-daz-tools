@@ -98,12 +98,13 @@ This makes it easy to maintain multiple presets (e.g. "720p fast", "1080p qualit
 | `positive_prompt` | string | Positive conditioning text |
 | `negative_prompt` | string | Negative conditioning text |
 | `lora_1` – `lora_6` | string | Filenames of up to six LoRA models, organised as three High/Low pairs (leave blank to skip loading) |
+| `filename` | string | Relative path and filename for Save Video nodes (e.g. `subfolder/my_clip`), resolved against ComfyUI's output directory |
 
 #### Node outputs
 
 The node returns all attributes as individual typed outputs so they can be wired directly into the rest of your workflow:
 
-`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `cfg_high` · `cfg_low` · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` (LORA — `None` if slot is empty)
+`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `cfg_high` · `cfg_low` · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` (LORA — `None` if slot is empty)
 
 #### Managing configurations
 

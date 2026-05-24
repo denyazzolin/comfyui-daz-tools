@@ -1,10 +1,10 @@
 import { app } from '../../scripts/app.js'
 
-const PANEL_H      = 440
-const EDIT_PANEL_H = 840
+const PANEL_H      = 462
+const EDIT_PANEL_H = 870
 const NODE_W       = 460
-const NODE_H       = 620
-const NODE_H_EDIT  = 1030
+const NODE_H       = 642
+const NODE_H_EDIT  = 1060
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -137,6 +137,7 @@ app.registerExtension({
         ${row('Master',      trunc(data.master_prompt))}
         ${row('Positive',    trunc(data.positive_prompt))}
         ${row('Negative',    trunc(data.negative_prompt))}
+        ${row('Filename',    data.filename)}
       </table>`
     }
 
@@ -397,6 +398,13 @@ app.registerExtension({
             <td ${tdLTop}>Negative Prompt</td>
             <td ${tdR}><textarea id="daz-negative-prompt" style="${taStyle}">${esc(data.negative_prompt || '')}</textarea></td>
           </tr>
+          <tr>
+            <td ${tdL}>Filename</td>
+            <td ${tdR}><input id="daz-filename" type="text"
+              value="${esc(data.filename || '')}"
+              placeholder="subdir/output_name"
+              style="${fieldStyle}"></td>
+          </tr>
         </table>
         ${footer}
       `
@@ -507,6 +515,7 @@ app.registerExtension({
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
+        filename:        wrap.querySelector('#daz-filename')?.value         ?? '',
         width:        parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10),
         height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
         steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
@@ -591,6 +600,7 @@ app.registerExtension({
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
+        filename:        wrap.querySelector('#daz-filename')?.value         ?? '',
         width:        parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10),
         height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
         steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
