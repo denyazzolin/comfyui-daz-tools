@@ -1,10 +1,10 @@
 import { app } from '../../scripts/app.js'
 
 const PANEL_H      = 440
-const EDIT_PANEL_H = 920
+const EDIT_PANEL_H = 840
 const NODE_W       = 460
 const NODE_H       = 620
-const NODE_H_EDIT  = 1110
+const NODE_H_EDIT  = 1030
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -250,7 +250,9 @@ app.registerExtension({
       const taStyle    = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:4px 6px;box-sizing:border-box;resize:vertical;min-height:58px'
       const tdL        = 'style="color:#999;padding:3px 8px;white-space:nowrap;vertical-align:middle;font-size:11px;font-family:monospace"'
       const tdLTop     = 'style="color:#999;padding:6px 8px 0;white-space:nowrap;vertical-align:top;font-size:11px;font-family:monospace"'
-      const tdR        = 'style="padding:3px 8px"'
+      const tdR        = 'colspan="3" style="padding:3px 8px"'
+      const tdRNum     = 'style="padding:3px 8px"'
+      const divider    = `<tr><td colspan="4" style="padding:2px 0"><div style="border-top:1px solid #3a3a3a;margin:0 8px"></div></td></tr>`
       const btnBase    = 'font-family:monospace;font-size:11px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
 
       const header = `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
@@ -300,6 +302,7 @@ app.registerExtension({
         ${header}
         <table style="border-collapse:collapse;width:100%">
           ${nameRow}
+          ${divider}
           <tr>
             <td ${tdL}>UNet High</td>
             <td ${tdR}><select id="daz-unet-high" style="${fieldStyle}">${selectOpts(unetFiles, data.unet_high)}</select></td>
@@ -331,6 +334,7 @@ app.registerExtension({
               </div>
             </td>
           </tr>
+          ${divider}
           <tr>
             <td ${tdL}>LoRA 1 High</td>
             <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_1)}</select></td>
@@ -355,38 +359,32 @@ app.registerExtension({
             <td ${tdL}>LoRA 3 Low</td>
             <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_6)}</select></td>
           </tr>
+          ${divider}
           <tr>
             <td ${tdL}>Width</td>
-            <td ${tdR}><input id="daz-width" type="number" value="${data.width || 0}" style="${numStyle}"></td>
-          </tr>
-          <tr>
+            <td ${tdRNum}><input id="daz-width" type="number" value="${data.width || 0}" style="${numStyle}"></td>
             <td ${tdL}>Height</td>
-            <td ${tdR}><input id="daz-height" type="number" value="${data.height || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-height" type="number" value="${data.height || 0}" style="${numStyle}"></td>
           </tr>
           <tr>
             <td ${tdL}>Steps</td>
-            <td ${tdR}><input id="daz-steps" type="number" value="${data.steps || 0}" style="${numStyle}"></td>
-          </tr>
-          <tr>
+            <td ${tdRNum}><input id="daz-steps" type="number" value="${data.steps || 0}" style="${numStyle}"></td>
             <td ${tdL}>Split Step</td>
-            <td ${tdR}><input id="daz-split-step" type="number" value="${data.split_step || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-split-step" type="number" value="${data.split_step || 0}" style="${numStyle}"></td>
           </tr>
           <tr>
             <td ${tdL}>CFG High</td>
-            <td ${tdR}><input id="daz-cfg-high" type="number" step="0.1" value="${data.cfg_high || 0}" style="${numStyle}"></td>
-          </tr>
-          <tr>
+            <td ${tdRNum}><input id="daz-cfg-high" type="number" step="0.1" value="${data.cfg_high || 0}" style="${numStyle}"></td>
             <td ${tdL}>CFG Low</td>
-            <td ${tdR}><input id="daz-cfg-low" type="number" step="0.1" value="${data.cfg_low || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-cfg-low" type="number" step="0.1" value="${data.cfg_low || 0}" style="${numStyle}"></td>
           </tr>
           <tr>
-            <td ${tdL}>Total Frames</td>
-            <td ${tdR}><input id="daz-total-frames" type="number" value="${data.total_frames || 0}" style="${numStyle}"></td>
-          </tr>
-          <tr>
+            <td ${tdL}>Frames</td>
+            <td ${tdRNum}><input id="daz-total-frames" type="number" value="${data.total_frames || 0}" style="${numStyle}"></td>
             <td ${tdL}>FPS</td>
-            <td ${tdR}><input id="daz-fps" type="number" step="0.01" value="${data.fps || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-fps" type="number" step="0.01" value="${data.fps || 0}" style="${numStyle}"></td>
           </tr>
+          ${divider}
           <tr>
             <td ${tdLTop}>Master Prompt</td>
             <td ${tdR}><textarea id="daz-master-prompt" style="${taStyle}">${esc(data.master_prompt || '')}</textarea></td>
