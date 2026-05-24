@@ -103,6 +103,12 @@ app.registerExtension({
       </tr>`
     }
 
+    function disp(s, maxLen) {
+      if (s === undefined || s === null || s === '') return s
+      const d = String(s).replace(/\.(safetensors|ckpt|pt|pth|bin)$/i, '')
+      return maxLen && d.length > maxLen ? d.substring(0, maxLen - 1) + '…' : d
+    }
+
     function renderDetailHtml(data) {
       if (data.error) {
         return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -119,18 +125,18 @@ app.registerExtension({
       return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
         ${row('Group',      data.group)}
         ${row('Type',       typeLabel)}
-        ${row('UNet High',  data.unet_high)}
-        ${row('UNet Low',   data.unet_low)}
-        ${row('VAE',        data.vae)}
-        ${row('CLIP',       data.clip)}
+        ${row('UNet High',  disp(data.unet_high))}
+        ${row('UNet Low',   disp(data.unet_low))}
+        ${row('VAE',        disp(data.vae))}
+        ${row('CLIP',       disp(data.clip))}
         <tr>
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${rowPair('LoRA 1 High', data.lora_1, 'LoRA 1 Low', data.lora_2)}
-        ${rowPair('LoRA 2 High', data.lora_3, 'LoRA 2 Low', data.lora_4)}
-        ${rowPair('LoRA 3 High', data.lora_5, 'LoRA 3 Low', data.lora_6)}
-        ${rowPair('LoRA 4 High', data.lora_7, 'LoRA 4 Low', data.lora_8)}
+        ${rowPair('LoRA 1 High', disp(data.lora_1, 18), 'LoRA 1 Low', disp(data.lora_2, 18))}
+        ${rowPair('LoRA 2 High', disp(data.lora_3, 18), 'LoRA 2 Low', disp(data.lora_4, 18))}
+        ${rowPair('LoRA 3 High', disp(data.lora_5, 18), 'LoRA 3 Low', disp(data.lora_6, 18))}
+        ${rowPair('LoRA 4 High', disp(data.lora_7, 18), 'LoRA 4 Low', disp(data.lora_8, 18))}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',    data.steps,      'Split Step', data.split_step)}
         ${row('Seed', data.seed)}
@@ -159,10 +165,9 @@ app.registerExtension({
       values.forEach((val, i) => {
         if (!node.outputs[i]) return
         const orig = node.outputs[i].name
-        const s = (val !== undefined && val !== null && val !== '' && val !== 0)
-          ? String(val) : 'none'
-        const display = s.length > 20 ? s.substring(0, 18) + '…' : s
-        node.outputs[i].label = `(${display}) ${orig}`
+        const d = (val !== undefined && val !== null && val !== '' && val !== 0)
+          ? disp(String(val), 20) : 'none'
+        node.outputs[i].label = `(${d}) ${orig}`
       })
     }
 
