@@ -147,7 +147,10 @@ app.registerExtension({
     function updateOutputLabels(node, data) {
       if (!node.outputs) return
       if (!node._dazOrigOutputNames) {
-        node._dazOrigOutputNames = node.outputs.map(o => o.name.replace(/^\([^)]*\) /, ''))
+        node._dazOrigOutputNames = node.outputs.map(o => {
+          const src = o.label != null ? String(o.label) : o.name
+          return src.replace(/^\([^)]*\) /, '')
+        })
       }
       const ckpt = data.checkpoint
       const values = [
@@ -170,7 +173,9 @@ app.registerExtension({
         const s = (val !== undefined && val !== null && val !== '' && val !== 0)
           ? String(val) : 'none'
         const display = s.length > 20 ? s.substring(0, 18) + '…' : s
-        node.outputs[i].name = `(${display}) ${orig}`
+        const label = `(${display}) ${orig}`
+        node.outputs[i].name  = label
+        node.outputs[i].label = label
       })
     }
 
