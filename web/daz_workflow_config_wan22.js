@@ -1,9 +1,9 @@
 import { app } from '../../scripts/app.js'
 
-const PANEL_H      = 490
+const PANEL_H      = 415
 const EDIT_PANEL_H = 800
 const NODE_W       = 460
-const NODE_H       = 620
+const NODE_H       = 545
 const NODE_H_EDIT  = 930
 
 app.registerExtension({
@@ -60,13 +60,27 @@ app.registerExtension({
         : `<span style="color:#555">—</span>`
       return `<tr>
         <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">${label}</td>
-        <td style="color:#ddd;padding:3px 10px;word-break:break-all">${v}</td>
+        <td colspan="3" style="color:#ddd;padding:3px 10px;word-break:break-all">${v}</td>
       </tr>`
     }
 
     function trunc(s, n = 60) {
       if (!s) return ''
       return s.length > n ? s.substring(0, n) + '…' : s
+    }
+
+    function rowPair(l1, v1, l2, v2) {
+      function val(v) {
+        return v !== undefined && v !== '' && v !== 0
+          ? `<span style="color:#ddd">${esc(v)}</span>`
+          : `<span style="color:#555">—</span>`
+      }
+      const tdL = 'style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top"'
+      const tdV = 'style="color:#ddd;padding:3px 10px;width:30%"'
+      return `<tr>
+        <td ${tdL}>${l1}</td><td ${tdV}>${val(v1)}</td>
+        <td ${tdL}>${l2}</td><td ${tdV}>${val(v2)}</td>
+      </tr>`
     }
 
     function renderDetailHtml(data) {
@@ -88,19 +102,16 @@ app.registerExtension({
         ${row('CLIP',       data.clip)}
         <tr>
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
-          <td style="color:#ddd;padding:3px 10px">${imageCell}</td>
+          <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
         ${row('LoRA 1',      data.lora_1)}
         ${row('LoRA 2',      data.lora_2)}
         ${row('LoRA 3',      data.lora_3)}
         ${row('LoRA 4',      data.lora_4)}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
-        ${row('Steps',       data.steps)}
-        ${row('Split Step',  data.split_step)}
-        ${row('CFG High',    data.cfg_high)}
-        ${row('CFG Low',     data.cfg_low)}
-        ${row('Frames',      data.total_frames)}
-        ${row('FPS',         data.fps)}
+        ${rowPair('Steps',    data.steps,      'Split Step', data.split_step)}
+        ${rowPair('CFG High', data.cfg_high,   'CFG Low',   data.cfg_low)}
+        ${rowPair('Frames',   data.total_frames, 'FPS',     data.fps)}
         ${row('Master',      trunc(data.master_prompt))}
         ${row('Positive',    trunc(data.positive_prompt))}
         ${row('Negative',    trunc(data.negative_prompt))}
