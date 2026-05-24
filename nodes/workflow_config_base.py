@@ -15,10 +15,15 @@ except Exception:
     _NODES_DIR     = os.path.dirname(os.path.abspath(__file__))
     _WORKFLOWS_DIR = os.path.dirname(os.path.dirname(_NODES_DIR))
 
+try:
+    import comfy.sd as _comfy_sd
+except Exception:
+    _comfy_sd = None
+
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 7
+CURRENT_SCHEMA = 8
 _META_KEY      = "_meta"
 
 # Fields added per schema version (additive only — used for automatic migration).
@@ -29,9 +34,27 @@ _SCHEMA_DEFAULTS: dict[int, dict] = {
     5: {"type": ""},
     6: {"group": ""},
     7: {"filename": ""},
+    8: {"checkpoint": ""},
 }
 
 _missing_warned = False
+
+
+def load_checkpoint(name: str):
+    """Load a checkpoint that embeds model+clip+vae (like ComfyUI's Load Checkpoint node).
+    Returns (model, clip, vae) or (None, None, None) if name is empty."""
+    if not name:
+        return None, None, None
+    path = _fp.get_full_path("checkpoints", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfig: checkpoint '{name}' not found")
+    out = _comfy_sd.load_checkpoint_guess_config(
+        path,
+        output_vae=True,
+        output_clip=True,
+        embedding_directory=_fp.get_folder_paths("embeddings"),
+    )
+    return out[0], out[1], out[2]  # model, clip, vae
 
 
 def _migrate(configs: dict, from_version: int) -> dict:
@@ -198,7 +221,7 @@ try:
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
                       "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
-                      "audio_vae", "type", "group", "filename"):
+                      "audio_vae", "type", "group", "filename", "checkpoint"):
             if field in data:
                 entry[field] = data[field]
         for field in ("width", "height", "steps", "split_step", "total_frames"):
@@ -261,7 +284,7 @@ try:
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
                       "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
-                      "audio_vae", "type", "group", "filename"):
+                      "audio_vae", "type", "group", "filename", "checkpoint"):
             entry[field] = data.get(field, "")
         for field in ("width", "height", "steps", "split_step", "total_frames"):
             try:

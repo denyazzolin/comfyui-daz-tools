@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 7
+    "schema_version": 8
   },
   "My WAN2.2 Config": {
     "class": "Wan2.2",
@@ -30,6 +30,7 @@
     "audio_vae": "",
     "type": "",
     "group": "",
-    "filename": ""
+    "filename": "",
+    "checkpoint": ""
   }
 }
