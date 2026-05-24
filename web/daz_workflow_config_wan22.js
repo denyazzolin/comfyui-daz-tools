@@ -398,6 +398,7 @@ app.registerExtension({
             <td ${tdLTop}>Negative Prompt</td>
             <td ${tdR}><textarea id="daz-negative-prompt" style="${taStyle}">${esc(data.negative_prompt || '')}</textarea></td>
           </tr>
+          ${divider}
           <tr>
             <td ${tdL}>Filename</td>
             <td ${tdR}><input id="daz-filename" type="text"
