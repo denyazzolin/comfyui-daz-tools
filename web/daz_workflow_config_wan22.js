@@ -1,10 +1,10 @@
 import { app } from '../../scripts/app.js'
 
-const PANEL_H      = 380
-const EDIT_PANEL_H = 690
+const PANEL_H      = 490
+const EDIT_PANEL_H = 800
 const NODE_W       = 460
-const NODE_H       = 510
-const NODE_H_EDIT  = 820
+const NODE_H       = 620
+const NODE_H_EDIT  = 930
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -90,6 +90,10 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
+        ${row('LoRA 1',      data.lora_1)}
+        ${row('LoRA 2',      data.lora_2)}
+        ${row('LoRA 3',      data.lora_3)}
+        ${row('LoRA 4',      data.lora_4)}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${row('Steps',       data.steps)}
         ${row('Split Step',  data.split_step)}
@@ -176,11 +180,12 @@ app.registerExtension({
       node.minSize = [NODE_W, NODE_H_EDIT]
       node.setDirtyCanvas(true, true)
 
-      const [unetFiles, vaeFiles, clipFiles, inputFiles] = await Promise.all([
+      const [unetFiles, vaeFiles, clipFiles, inputFiles, loraFiles] = await Promise.all([
         getFolderFiles('diffusion_models'),
         getFolderFiles('vae'),
         getFolderFiles('text_encoders'),
         getFolderFiles('input'),
+        getFolderFiles('loras'),
       ])
 
       const data = isNew ? {} : (node._dazWan22Detail || {})
@@ -199,6 +204,12 @@ app.registerExtension({
           ? `<option value="">— select image —</option>`
           : ''
         return placeholder + selectOpts(files, current)
+      }
+
+      function selectOptsLora(files, current) {
+        return `<option value="">— none —</option>` + files.map(f =>
+          `<option value="${esc(f)}"${f === current ? ' selected' : ''}>${esc(f)}</option>`
+        ).join('')
       }
 
       const fieldStyle = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px;box-sizing:border-box'
@@ -271,6 +282,22 @@ app.registerExtension({
                 <input id="daz-upload-input" type="file" accept="image/*" style="display:none">
               </div>
             </td>
+          </tr>
+          <tr>
+            <td ${tdL}>LoRA 1</td>
+            <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_1)}</select></td>
+          </tr>
+          <tr>
+            <td ${tdL}>LoRA 2</td>
+            <td ${tdR}><select id="daz-lora-2" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_2)}</select></td>
+          </tr>
+          <tr>
+            <td ${tdL}>LoRA 3</td>
+            <td ${tdR}><select id="daz-lora-3" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_3)}</select></td>
+          </tr>
+          <tr>
+            <td ${tdL}>LoRA 4</td>
+            <td ${tdR}><select id="daz-lora-4" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_4)}</select></td>
           </tr>
           <tr>
             <td ${tdL}>Width</td>
@@ -415,6 +442,10 @@ app.registerExtension({
         vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
         clip:            wrap.querySelector('#daz-clip')?.value            ?? '',
         image_path:      wrap.querySelector('#daz-image-path')?.value      ?? '',
+        lora_1:          wrap.querySelector('#daz-lora-1')?.value          ?? '',
+        lora_2:          wrap.querySelector('#daz-lora-2')?.value          ?? '',
+        lora_3:          wrap.querySelector('#daz-lora-3')?.value          ?? '',
+        lora_4:          wrap.querySelector('#daz-lora-4')?.value          ?? '',
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
@@ -489,6 +520,10 @@ app.registerExtension({
         vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
         clip:            wrap.querySelector('#daz-clip')?.value            ?? '',
         image_path:      wrap.querySelector('#daz-image-path')?.value      ?? '',
+        lora_1:          wrap.querySelector('#daz-lora-1')?.value          ?? '',
+        lora_2:          wrap.querySelector('#daz-lora-2')?.value          ?? '',
+        lora_3:          wrap.querySelector('#daz-lora-3')?.value          ?? '',
+        lora_4:          wrap.querySelector('#daz-lora-4')?.value          ?? '',
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',

@@ -61,6 +61,15 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]  # [1, H, W, 3]
 
 
+def _load_lora(name: str):
+    if not name:
+        return None
+    path = folder_paths.get_full_path("loras", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: lora '{name}' not found")
+    return comfy.utils.load_torch_file(path, safe_load=True)
+
+
 class WorkflowConfigWan22:
     @classmethod
     def INPUT_TYPES(cls):
@@ -80,6 +89,7 @@ class WorkflowConfigWan22:
         "STRING", "STRING", "STRING",
         "FLOAT", "FLOAT", "INT",
         "FLOAT",
+        "LORA", "LORA", "LORA", "LORA",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -90,6 +100,7 @@ class WorkflowConfigWan22:
         "master_prompt", "positive_prompt", "negative_prompt",
         "cfg_high", "cfg_low", "total_frames",
         "fps",
+        "lora_1", "lora_2", "lora_3", "lora_4",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -125,4 +136,8 @@ class WorkflowConfigWan22:
             float(entry.get("cfg_low",   0.0)),
             int(entry.get("total_frames", 0)),
             float(entry.get("fps", 0.0)),
+            _load_lora(entry.get("lora_1", "")),
+            _load_lora(entry.get("lora_2", "")),
+            _load_lora(entry.get("lora_3", "")),
+            _load_lora(entry.get("lora_4", "")),
         )

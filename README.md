@@ -97,12 +97,13 @@ This makes it easy to maintain multiple presets (e.g. "720p fast", "1080p qualit
 | `master_prompt` | string | A base prompt to shared across positive/negative (e.g. scene description) or as master prompt for Prompt Relays|
 | `positive_prompt` | string | Positive conditioning text |
 | `negative_prompt` | string | Negative conditioning text |
+| `lora_1` – `lora_4` | string | Filenames of up to four LoRA models (leave blank to skip loading) |
 
 #### Node outputs
 
 The node returns all attributes as individual typed outputs so they can be wired directly into the rest of your workflow:
 
-`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `cfg_high` · `cfg_low` · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` (STRING)
+`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `cfg_high` · `cfg_low` · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` (STRING) · `lora_1` · `lora_2` · `lora_3` · `lora_4` (LORA — `None` if slot is empty)
 
 #### Managing configurations
 
@@ -110,7 +111,7 @@ The node panel has two modes:
 
 **Use mode** — shows a summary of the selected configuration's values. A **New** button creates a fresh config; an **Edit** button switches to the form.
 
-**Edit mode** — an inline form with dropdowns for all model files (populated live from your ComfyUI model folders), an image picker with Upload and Preview buttons, number inputs for every numeric parameter, and text areas for the three prompts. **Save** writes back to the JSON file and returns to use mode. **Cancel** discards changes. **Delete** removes the configuration after a confirmation prompt.
+**Edit mode** — an inline form with dropdowns for all model files and LoRAs (populated live from your ComfyUI model folders), an image picker with Upload and Preview buttons, number inputs for every numeric parameter, and text areas for the three prompts. **Save** writes back to the JSON file and returns to use mode. **Cancel** discards changes. **Delete** removes the configuration after a confirmation prompt.
 
 When no configurations exist yet (first launch or empty file), the node opens directly in edit mode with a **Create** button so you can add your first preset without leaving the canvas.
 

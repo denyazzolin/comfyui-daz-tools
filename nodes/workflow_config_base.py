@@ -18,7 +18,32 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
+CURRENT_SCHEMA = 2
+_META_KEY      = "_meta"
+
+# Fields added per schema version (additive only — used for automatic migration).
+_SCHEMA_DEFAULTS: dict[int, dict] = {
+    2: {"lora_1": "", "lora_2": "", "lora_3": "", "lora_4": ""},
+}
+
 _missing_warned = False
+
+
+def _migrate(configs: dict, from_version: int) -> dict:
+    """Apply default values for every schema version between from_version+1 and CURRENT_SCHEMA."""
+    for version in range(from_version + 1, CURRENT_SCHEMA + 1):
+        for entry in configs.values():
+            for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
+                entry.setdefault(field, default)
+    return configs
+
+
+def _save_configs(configs: dict) -> None:
+    """Write configs to disk prefixed with the current schema meta block."""
+    data: dict = {_META_KEY: {"schema_version": CURRENT_SCHEMA}}
+    data.update(configs)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
 
 
 def load_configs() -> dict:
@@ -30,10 +55,27 @@ def load_configs() -> dict:
         return {}
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            raw = json.load(f)
     except Exception as e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not read config file — {e}")
         return {}
+
+    if not isinstance(raw, dict):
+        print("[DAZ TOOLS] WorkflowConfig: config file has unexpected format")
+        return {}
+
+    file_version = raw.get(_META_KEY, {}).get("schema_version", 1)
+    configs = {k: v for k, v in raw.items() if k != _META_KEY}
+
+    if file_version < CURRENT_SCHEMA:
+        print(f"[DAZ TOOLS] WorkflowConfig: migrating schema v{file_version} → v{CURRENT_SCHEMA}")
+        configs = _migrate(configs, file_version)
+        try:
+            _save_configs(configs)
+        except Exception as e:
+            print(f"[DAZ TOOLS] WorkflowConfig: could not write migrated config — {e}")
+
+    return configs
 
 
 def make_label(name: str, created_at: str) -> str:
@@ -131,7 +173,8 @@ try:
 
         entry = configs[name]
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
-                      "master_prompt", "positive_prompt", "negative_prompt"):
+                      "master_prompt", "positive_prompt", "negative_prompt",
+                      "lora_1", "lora_2", "lora_3", "lora_4"):
             if field in data:
                 entry[field] = data[field]
         for field in ("width", "height", "steps", "split_step", "total_frames"):
@@ -149,6 +192,10 @@ try:
 
         new_name = data.get("new_name", "").strip()
         if new_name and new_name != name:
+            if new_name == _META_KEY:
+                return web.json_response(
+                    {"error": f"'{_META_KEY}' is a reserved name."}, status=400
+                )
             if new_name in configs:
                 return web.json_response(
                     {"error": f"A config named '{new_name}' already exists."}, status=409
@@ -160,8 +207,7 @@ try:
         configs[name] = entry
 
         try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(configs, f, indent=2)
+            _save_configs(configs)
         except Exception as e:
             return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
 
@@ -180,6 +226,8 @@ try:
 
         if not name:
             return web.json_response({"error": "Config name is required."}, status=400)
+        if name == _META_KEY:
+            return web.json_response({"error": f"'{_META_KEY}' is a reserved name."}, status=400)
 
         configs = load_configs()
         if name in configs:
@@ -187,7 +235,8 @@ try:
 
         entry = {"class": cls, "created_at": datetime.now().isoformat()}
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
-                      "master_prompt", "positive_prompt", "negative_prompt"):
+                      "master_prompt", "positive_prompt", "negative_prompt",
+                      "lora_1", "lora_2", "lora_3", "lora_4"):
             entry[field] = data.get(field, "")
         for field in ("width", "height", "steps", "split_step", "total_frames"):
             try:
@@ -203,8 +252,7 @@ try:
         configs[name] = entry
 
         try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(configs, f, indent=2)
+            _save_configs(configs)
         except Exception as e:
             return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
 
@@ -233,8 +281,7 @@ try:
         del configs[name]
 
         try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(configs, f, indent=2)
+            _save_configs(configs)
         except Exception as e:
             return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
 
