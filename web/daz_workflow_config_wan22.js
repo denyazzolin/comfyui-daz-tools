@@ -252,7 +252,7 @@ app.registerExtension({
       const tdLTop     = 'style="color:#999;padding:6px 8px 0;white-space:nowrap;vertical-align:top;font-size:11px;font-family:monospace"'
       const tdR        = 'colspan="3" style="padding:3px 8px"'
       const tdRNum     = 'style="padding:3px 8px"'
-      const divider    = `<tr><td colspan="4" style="padding:2px 0"><div style="border-top:1px solid #3a3a3a;margin:0 8px"></div></td></tr>`
+      const divider    = `<tr><td colspan="4" style="padding:2px 0"><div style="border-top:1px solid #ffffff;margin:0 8px"></div></td></tr>`
       const btnBase    = 'font-family:monospace;font-size:11px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
 
       const header = `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
