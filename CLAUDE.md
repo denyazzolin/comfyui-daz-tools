@@ -21,3 +21,7 @@ Each class gets its own self-contained node file (e.g. `nodes/workflow_config_wa
 ## what do do after you finish a writing code task
 
 Ask me if I want you to check for errors and issues
+
+## what to do when commiting andf pushing to repositories
+
+Do not add Claude as a contributor
