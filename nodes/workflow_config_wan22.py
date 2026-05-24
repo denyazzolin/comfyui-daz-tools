@@ -89,7 +89,7 @@ class WorkflowConfigWan22:
         "STRING", "STRING", "STRING",
         "FLOAT", "FLOAT", "INT",
         "FLOAT",
-        "LORA", "LORA", "LORA", "LORA",
+        "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -100,7 +100,9 @@ class WorkflowConfigWan22:
         "master_prompt", "positive_prompt", "negative_prompt",
         "cfg_high", "cfg_low", "total_frames",
         "fps",
-        "lora_1", "lora_2", "lora_3", "lora_4",
+        "lora_1_high", "lora_1_low",
+        "lora_2_high", "lora_2_low",
+        "lora_3_high", "lora_3_low",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -140,4 +142,6 @@ class WorkflowConfigWan22:
             _load_lora(entry.get("lora_2", "")),
             _load_lora(entry.get("lora_3", "")),
             _load_lora(entry.get("lora_4", "")),
+            _load_lora(entry.get("lora_5", "")),
+            _load_lora(entry.get("lora_6", "")),
         )

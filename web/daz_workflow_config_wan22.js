@@ -1,10 +1,10 @@
 import { app } from '../../scripts/app.js'
 
-const PANEL_H      = 415
-const EDIT_PANEL_H = 800
+const PANEL_H      = 390
+const EDIT_PANEL_H = 860
 const NODE_W       = 460
-const NODE_H       = 545
-const NODE_H_EDIT  = 930
+const NODE_H       = 520
+const NODE_H_EDIT  = 990
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -104,10 +104,9 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${row('LoRA 1',      data.lora_1)}
-        ${row('LoRA 2',      data.lora_2)}
-        ${row('LoRA 3',      data.lora_3)}
-        ${row('LoRA 4',      data.lora_4)}
+        ${rowPair('LoRA 1 High', data.lora_1, 'LoRA 1 Low', data.lora_2)}
+        ${rowPair('LoRA 2 High', data.lora_3, 'LoRA 2 Low', data.lora_4)}
+        ${rowPair('LoRA 3 High', data.lora_5, 'LoRA 3 Low', data.lora_6)}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',    data.steps,      'Split Step', data.split_step)}
         ${rowPair('CFG High', data.cfg_high,   'CFG Low',   data.cfg_low)}
@@ -295,20 +294,28 @@ app.registerExtension({
             </td>
           </tr>
           <tr>
-            <td ${tdL}>LoRA 1</td>
+            <td ${tdL}>LoRA 1 High</td>
             <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_1)}</select></td>
           </tr>
           <tr>
-            <td ${tdL}>LoRA 2</td>
+            <td ${tdL}>LoRA 1 Low</td>
             <td ${tdR}><select id="daz-lora-2" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_2)}</select></td>
           </tr>
           <tr>
-            <td ${tdL}>LoRA 3</td>
+            <td ${tdL}>LoRA 2 High</td>
             <td ${tdR}><select id="daz-lora-3" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_3)}</select></td>
           </tr>
           <tr>
-            <td ${tdL}>LoRA 4</td>
+            <td ${tdL}>LoRA 2 Low</td>
             <td ${tdR}><select id="daz-lora-4" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_4)}</select></td>
+          </tr>
+          <tr>
+            <td ${tdL}>LoRA 3 High</td>
+            <td ${tdR}><select id="daz-lora-5" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_5)}</select></td>
+          </tr>
+          <tr>
+            <td ${tdL}>LoRA 3 Low</td>
+            <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_6)}</select></td>
           </tr>
           <tr>
             <td ${tdL}>Width</td>
@@ -457,6 +464,8 @@ app.registerExtension({
         lora_2:          wrap.querySelector('#daz-lora-2')?.value          ?? '',
         lora_3:          wrap.querySelector('#daz-lora-3')?.value          ?? '',
         lora_4:          wrap.querySelector('#daz-lora-4')?.value          ?? '',
+        lora_5:          wrap.querySelector('#daz-lora-5')?.value          ?? '',
+        lora_6:          wrap.querySelector('#daz-lora-6')?.value          ?? '',
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
@@ -535,6 +544,8 @@ app.registerExtension({
         lora_2:          wrap.querySelector('#daz-lora-2')?.value          ?? '',
         lora_3:          wrap.querySelector('#daz-lora-3')?.value          ?? '',
         lora_4:          wrap.querySelector('#daz-lora-4')?.value          ?? '',
+        lora_5:          wrap.querySelector('#daz-lora-5')?.value          ?? '',
+        lora_6:          wrap.querySelector('#daz-lora-6')?.value          ?? '',
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
