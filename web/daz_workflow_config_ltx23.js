@@ -321,9 +321,10 @@ app.registerExtension({
              <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>
            </div>`
         : `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
-                       justify-content:flex-end;border-top:1px solid #3a3a3a;margin-top:4px">
-             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
-             <button id="daz-delete-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99;margin-right:auto">Delete</button>
+                       border-top:1px solid #3a3a3a;margin-top:4px">
+             <button id="daz-duplicate-btn" style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
+             <button id="daz-delete-btn"    style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete</button>
+             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px"></span>
              <button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
              <button id="daz-save-btn"   style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
            </div>`
@@ -503,6 +504,7 @@ app.registerExtension({
           renderUseMode(node, node._dazLtx23Detail || {}, true)
         })
       } else {
+        wrap.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => duplicateConfig(node, wrap))
         wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
           renderUseMode(node, node._dazLtx23Detail || {}, true)
         })
@@ -665,6 +667,78 @@ app.registerExtension({
         saveBtn.textContent = 'Save'
         saveBtn.disabled    = false
         errorDiv.textContent = `Error: ${e.message}`
+      }
+    }
+
+    // ── Duplicate config ──────────────────────────────────────────────────────
+
+    async function duplicateConfig(node, wrap) {
+      const data = node._dazLtx23Detail || {}
+      const originalName = data.name || ''
+      if (!originalName) return
+
+      const newName = `Copy-${originalName}`
+      const errDiv = wrap.querySelector('#daz-save-error')
+      const dupBtn = wrap.querySelector('#daz-duplicate-btn')
+      if (dupBtn) { dupBtn.textContent = 'Duplicating…'; dupBtn.disabled = true }
+      if (errDiv) errDiv.textContent = ''
+
+      const payload = {
+        name:            newName,
+        class:           CLASS,
+        group:           data.group           ?? '',
+        type:            data.type            ?? '',
+        checkpoint:      data.checkpoint      ?? '',
+        unet_high:       data.unet_high       ?? '',
+        vae:             data.vae             ?? '',
+        audio_vae:       data.audio_vae       ?? '',
+        clip_2:          data.clip_2          ?? '',
+        clip:            data.clip            ?? '',
+        image_path:      data.image_path      ?? '',
+        lora_1:          data.lora_1          ?? '',
+        lora_2:          data.lora_2          ?? '',
+        lora_3:          data.lora_3          ?? '',
+        lora_4:          data.lora_4          ?? '',
+        lora_5:          data.lora_5          ?? '',
+        lora_6:          data.lora_6          ?? '',
+        master_prompt:   data.master_prompt   ?? '',
+        positive_prompt: data.positive_prompt ?? '',
+        negative_prompt: data.negative_prompt ?? '',
+        filename:        data.filename        ?? '',
+        width:           data.width           ?? 0,
+        height:          data.height          ?? 0,
+        steps:           data.steps           ?? 0,
+        seed:            data.seed            ?? 0,
+        cfg_high:        data.cfg_high        ?? 0,
+        total_frames:    data.total_frames    ?? 0,
+        fps:             data.fps             ?? 0,
+      }
+
+      try {
+        const r = await fetch('/daz/workflow-config-create', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        })
+        const result = await r.json()
+        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+
+        const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+        if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        syncWidget(node)
+
+        const configWidget = node.widgets?.find(w => w.name === 'config')
+        if (configWidget) configWidget.value = result.label
+
+        const detailResp = await fetch(
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
+        )
+        if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
+
+        renderUseMode(node, node._dazLtx23Detail || {}, true)
+      } catch (e) {
+        if (dupBtn) { dupBtn.textContent = 'Duplicate'; dupBtn.disabled = false }
+        if (errDiv) errDiv.textContent = `Duplicate failed: ${e.message}`
       }
     }
 
