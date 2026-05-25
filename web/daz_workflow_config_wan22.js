@@ -117,7 +117,7 @@ app.registerExtension({
         ? `<div style="display:flex;align-items:flex-start;gap:6px">
              <span style="color:#ddd;word-break:break-all;flex:1">${esc(data.image_path)}</span>
              <button id="daz-use-preview-btn"
-               style="font-family:monospace;font-size:10px;padding:1px 6px;background:#444;color:#ccc;
+               style="font-family:monospace;font-size:12px;padding:1px 6px;background:#000000;color:#ffffff;
                       border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
            </div>`
         : `<span style="color:#555">—</span>`
