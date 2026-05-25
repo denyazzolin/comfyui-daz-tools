@@ -71,40 +71,79 @@ Scans all LoRAs in your `models/loras` folder, reads their safetensors metadata,
 
 ---
 
-### Workflow Config WAN2.2 (`utils`)
+### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`)
 
-A configuration management node for WAN 2.2 video workflows. Instead of hard-wiring model paths, dimensions, prompts, and sampling parameters directly in every workflow, you store named configurations in a shared JSON file (`custom_nodes/dx_workflow_configs.json`) and select them from a dropdown. The node loads all required models at execution time and passes every setting downstream as individual outputs — ready to wire into your samplers, encoders, and video nodes.
+Configuration management nodes for WAN 2.2 and LTX 2.3 video workflows. Instead of hard-wiring model paths, dimensions, prompts, and sampling parameters directly in every workflow, you store named configurations in a shared JSON file and select them from a dropdown. Each node loads all required models at execution time and passes every setting downstream as individual outputs — ready to wire into your samplers, encoders, and video nodes.
+
+Both nodes read from and write to the same file — `ComfyUI/user/default/workflows/dx_workflow_configs.json` — and each filters the list to only show configurations that belong to its own class. This means you can manage presets for both architectures from a single file without any overlap or conflict.
 
 This makes it easy to maintain multiple presets (e.g. "720p fast", "1080p quality", "portrait short") and switch between them in one click without touching a single node connection.
 
-#### Configuration attributes
+#### Filtering and organisation
+
+Each node has two filter dropdowns above the config selector:
+
+- **Type** — filter by `I2V` (image-to-video) or `T2V` (text-to-video). Set when creating or editing a config.
+- **Group** — filter by a custom group name of your choice (e.g. "characters", "landscapes", "tests"). Groups are free-form text; any value you enter becomes available as a filter option.
+
+Both filters can be combined, and both default to `All` to show every config of that class.
+
+#### Shared configuration attributes
+
+These attributes are common to both nodes:
+
+| Attribute | Type | Description |
+|---|---|---|
+| `image_path` | string | Input image filename (from ComfyUI's input folder) or absolute path |
+| `width` | int | Output frame width in pixels |
+| `height` | int | Output frame height in pixels |
+| `steps` | int | Total denoising steps |
+| `seed` | int | Sampler seed |
+| `total_frames` | int | Number of video frames to generate |
+| `fps` | float | Playback frame rate for the output video |
+| `master_prompt` | string | A base prompt shared across positive/negative (e.g. scene description) or as master prompt for Prompt Relays |
+| `positive_prompt` | string | Positive conditioning text |
+| `negative_prompt` | string | Negative conditioning text |
+| `lora_1` – `lora_8` | string | Filenames of up to eight LoRA models (leave blank to skip loading) |
+| `filename` | string | Relative path and filename for Save Video nodes (e.g. `subfolder/my_clip`), resolved against ComfyUI's output directory |
+| `type` | string | Workflow type: `I2V`, `T2V`, or blank |
+| `group` | string | Custom group label for filtering |
+
+#### WAN2.2-specific attributes
 
 | Attribute | Type | Description |
 |---|---|---|
 | `unet_high` | string | Filename of the high-quality UNet diffusion model |
 | `unet_low` | string | Filename of the low-quality / draft UNet diffusion model |
 | `vae` | string | Filename of the VAE model |
-| `clip` | string | Filename of the text encoder (CLIP/T5) |
-| `image_path` | string | Input image filename (from ComfyUI's input folder) or absolute path |
-| `width` | int | Output frame width in pixels |
-| `height` | int | Output frame height in pixels |
-| `steps` | int | Total denoising steps |
+| `clip` | string | Filename of the text encoder |
 | `split_step` | int | Step at which the sampler switches from `unet_high` to `unet_low` |
 | `cfg_high` | float | CFG scale used during the high-quality pass |
 | `cfg_low` | float | CFG scale used during the low-quality pass |
-| `total_frames` | int | Number of video frames to generate |
-| `fps` | float | Playback frame rate for the output video |
-| `master_prompt` | string | A base prompt to shared across positive/negative (e.g. scene description) or as master prompt for Prompt Relays|
-| `positive_prompt` | string | Positive conditioning text |
-| `negative_prompt` | string | Negative conditioning text |
-| `lora_1` – `lora_6` | string | Filenames of up to six LoRA models, organised as three High/Low pairs (leave blank to skip loading) |
-| `filename` | string | Relative path and filename for Save Video nodes (e.g. `subfolder/my_clip`), resolved against ComfyUI's output directory |
 
-#### Node outputs
+#### WAN2.2 outputs
 
-The node returns all attributes as individual typed outputs so they can be wired directly into the rest of your workflow:
+`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `seed` (INT) · `cfg_high` · `cfg_low` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` · `lora_4_high` · `lora_4_low` (LORA — `None` if slot is empty)
 
-`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `cfg_high` · `cfg_low` · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` (LORA — `None` if slot is empty)
+LoRAs 1–4 use `lora_1`/`lora_2`, 3/`lora_4`, `lora_5`/`lora_6`, `lora_7`/`lora_8` from the config respectively, output as four High/Low pairs.
+
+#### LTX2.3-specific attributes
+
+| Attribute | Type | Description |
+|---|---|---|
+| `checkpoint` | string | Filename of a combined checkpoint (loads model, CLIP, and VAE in one) |
+| `unet_high` | string | Filename of the transformer/diffusion model (used standalone, without checkpoint) |
+| `vae` | string | Filename of the video VAE model |
+| `audio_vae` | string | Filename of the audio VAE model |
+| `clip` | string | Filename of the primary text encoder |
+| `clip_2` | string | Filename of the secondary text encoder |
+| `cfg` | float | CFG scale |
+
+#### LTX2.3 outputs
+
+`checkpoint_model` · `checkpoint_vae` · `checkpoint_clip` (from checkpoint) · `transformer_only` (MODEL) · `video_vae` · `audio_vae` (VAE) · `clip_2` · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `seed` (INT) · `cfg` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `distillation_lora` · `lora_2` – `lora_6` (LORA — `None` if slot is empty)
+
+Checkpoint outputs (`checkpoint_model`, `checkpoint_vae`, `checkpoint_clip`) are all `None` when no checkpoint is set; individual model outputs are `None` when their respective fields are empty.
 
 #### Managing configurations
 
@@ -115,5 +154,3 @@ The node panel has two modes:
 **Edit mode** — an inline form with dropdowns for all model files and LoRAs (populated live from your ComfyUI model folders), an image picker with Upload and Preview buttons, number inputs for every numeric parameter, and text areas for the three prompts. **Save** writes back to the JSON file and returns to use mode. **Cancel** discards changes. **Delete** removes the configuration after a confirmation prompt.
 
 When no configurations exist yet (first launch or empty file), the node opens directly in edit mode with a **Create** button so you can add your first preset without leaving the canvas.
-
-Configurations are stored in `ComfyUI/user/default/workflows/dx_workflow_configs.json` and are shared across all nodes and workflows that reference them.
