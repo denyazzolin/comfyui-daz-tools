@@ -66,7 +66,13 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]
 
 
-def _load_lora(name: str):
+def _load_lora(val):
+    if isinstance(val, dict):
+        if not val.get("enabled", True):
+            return None
+        name = val.get("name", "")
+    else:
+        name = val or ""
     if not name:
         return None
     path = folder_paths.get_full_path("loras", name)

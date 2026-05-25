@@ -108,6 +108,11 @@ app.registerExtension({
       return maxLen && d.length > maxLen ? d.substring(0, maxLen - 1) + '…' : d
     }
 
+    function loraName(val) {
+      if (val && typeof val === 'object') return val.name ?? ''
+      return val ?? ''
+    }
+
     function renderDetailHtml(data) {
       if (data.error) {
         return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -134,9 +139,9 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${rowPair('Distill LoRA', disp(data.lora_1, 18), 'LoRA 2', disp(data.lora_2, 18))}
-        ${rowPair('LoRA 3',       disp(data.lora_3, 18), 'LoRA 4', disp(data.lora_4, 18))}
-        ${rowPair('LoRA 5',       disp(data.lora_5, 18), 'LoRA 6', disp(data.lora_6, 18))}
+        ${rowPair('Distill LoRA', disp(loraName(data.lora_1), 18), 'LoRA 2', disp(loraName(data.lora_2), 18))}
+        ${rowPair('LoRA 3',       disp(loraName(data.lora_3), 18), 'LoRA 4', disp(loraName(data.lora_4), 18))}
+        ${rowPair('LoRA 5',       disp(loraName(data.lora_5), 18), 'LoRA 6', disp(loraName(data.lora_6), 18))}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',   data.steps, 'Seed', data.seed)}
         ${row('CFG',         data.cfg_high)}
@@ -163,8 +168,8 @@ app.registerExtension({
         trunc(data.master_prompt, 20), trunc(data.positive_prompt, 20), trunc(data.negative_prompt, 20),
         data.cfg_high,
         data.total_frames, data.fps,
-        data.lora_1, data.lora_2, data.lora_3,
-        data.lora_4, data.lora_5, data.lora_6,
+        loraName(data.lora_1), loraName(data.lora_2), loraName(data.lora_3),
+        loraName(data.lora_4), loraName(data.lora_5), loraName(data.lora_6),
         data.filename,
       ]
       values.forEach((val, i) => {
@@ -376,27 +381,27 @@ app.registerExtension({
           ${divider}
           <tr>
             <td ${tdL}>Distill LoRA</td>
-            <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsOpt(loraFiles, data.lora_1)}</select></td>
+            <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_1))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 2</td>
-            <td ${tdR}><select id="daz-lora-2" style="${fieldStyle}">${selectOptsOpt(loraFiles, data.lora_2)}</select></td>
+            <td ${tdR}><select id="daz-lora-2" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_2))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 3</td>
-            <td ${tdR}><select id="daz-lora-3" style="${fieldStyle}">${selectOptsOpt(loraFiles, data.lora_3)}</select></td>
+            <td ${tdR}><select id="daz-lora-3" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_3))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 4</td>
-            <td ${tdR}><select id="daz-lora-4" style="${fieldStyle}">${selectOptsOpt(loraFiles, data.lora_4)}</select></td>
+            <td ${tdR}><select id="daz-lora-4" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_4))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 5</td>
-            <td ${tdR}><select id="daz-lora-5" style="${fieldStyle}">${selectOptsOpt(loraFiles, data.lora_5)}</select></td>
+            <td ${tdR}><select id="daz-lora-5" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_5))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 6</td>
-            <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsOpt(loraFiles, data.lora_6)}</select></td>
+            <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_6))}</select></td>
           </tr>
           ${divider}
           <tr>

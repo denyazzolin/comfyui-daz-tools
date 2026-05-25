@@ -109,6 +109,11 @@ app.registerExtension({
       return maxLen && d.length > maxLen ? d.substring(0, maxLen - 1) + '…' : d
     }
 
+    function loraName(val) {
+      if (val && typeof val === 'object') return val.name ?? ''
+      return val ?? ''
+    }
+
     function renderDetailHtml(data) {
       if (data.error) {
         return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -133,10 +138,10 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${rowPair('LoRA 1 High', disp(data.lora_1, 18), 'LoRA 1 Low', disp(data.lora_2, 18))}
-        ${rowPair('LoRA 2 High', disp(data.lora_3, 18), 'LoRA 2 Low', disp(data.lora_4, 18))}
-        ${rowPair('LoRA 3 High', disp(data.lora_5, 18), 'LoRA 3 Low', disp(data.lora_6, 18))}
-        ${rowPair('LoRA 4 High', disp(data.lora_7, 18), 'LoRA 4 Low', disp(data.lora_8, 18))}
+        ${rowPair('LoRA 1 High', disp(loraName(data.lora_1), 18), 'LoRA 1 Low', disp(loraName(data.lora_2), 18))}
+        ${rowPair('LoRA 2 High', disp(loraName(data.lora_3), 18), 'LoRA 2 Low', disp(loraName(data.lora_4), 18))}
+        ${rowPair('LoRA 3 High', disp(loraName(data.lora_5), 18), 'LoRA 3 Low', disp(loraName(data.lora_6), 18))}
+        ${rowPair('LoRA 4 High', disp(loraName(data.lora_7), 18), 'LoRA 4 Low', disp(loraName(data.lora_8), 18))}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',    data.steps,      'Split Step', data.split_step)}
         ${row('Seed', data.seed)}
@@ -158,8 +163,8 @@ app.registerExtension({
         data.width, data.height, data.steps, data.split_step, data.seed,
         trunc(data.master_prompt, 20), trunc(data.positive_prompt, 20), trunc(data.negative_prompt, 20),
         data.cfg_high, data.cfg_low, data.total_frames, data.fps,
-        data.lora_1, data.lora_2, data.lora_3, data.lora_4,
-        data.lora_5, data.lora_6, data.lora_7, data.lora_8,
+        loraName(data.lora_1), loraName(data.lora_2), loraName(data.lora_3), loraName(data.lora_4),
+        loraName(data.lora_5), loraName(data.lora_6), loraName(data.lora_7), loraName(data.lora_8),
         data.filename,
       ]
       values.forEach((val, i) => {
@@ -368,35 +373,35 @@ app.registerExtension({
           ${divider}
           <tr>
             <td ${tdL}>LoRA 1 High</td>
-            <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_1)}</select></td>
+            <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_1))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 1 Low</td>
-            <td ${tdR}><select id="daz-lora-2" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_2)}</select></td>
+            <td ${tdR}><select id="daz-lora-2" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_2))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 2 High</td>
-            <td ${tdR}><select id="daz-lora-3" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_3)}</select></td>
+            <td ${tdR}><select id="daz-lora-3" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_3))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 2 Low</td>
-            <td ${tdR}><select id="daz-lora-4" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_4)}</select></td>
+            <td ${tdR}><select id="daz-lora-4" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_4))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 3 High</td>
-            <td ${tdR}><select id="daz-lora-5" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_5)}</select></td>
+            <td ${tdR}><select id="daz-lora-5" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_5))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 3 Low</td>
-            <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_6)}</select></td>
+            <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_6))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 4 High</td>
-            <td ${tdR}><select id="daz-lora-7" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_7)}</select></td>
+            <td ${tdR}><select id="daz-lora-7" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_7))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 4 Low</td>
-            <td ${tdR}><select id="daz-lora-8" style="${fieldStyle}">${selectOptsLora(loraFiles, data.lora_8)}</select></td>
+            <td ${tdR}><select id="daz-lora-8" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_8))}</select></td>
           </tr>
           ${divider}
           <tr>

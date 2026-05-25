@@ -22,6 +22,6 @@ Each class gets its own self-contained node file (e.g. `nodes/workflow_config_wa
 
 Ask me if I want you to check for errors and issues
 
-## what to do when commiting andf pushing to repositories
+## what to do when commiting and pushing to repositories
 
 Do not add Claude as a contributor

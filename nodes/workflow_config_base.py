@@ -23,10 +23,13 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 11
+CURRENT_SCHEMA = 12
 _META_KEY      = "_meta"
 
+_LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
+
 # Fields added per schema version (additive only — used for automatic migration).
+# Version 12 converts lora string values to objects — handled directly in _migrate.
 _SCHEMA_DEFAULTS: dict[int, dict] = {
     2: {"lora_1": "", "lora_2": "", "lora_3": "", "lora_4": ""},
     3: {"lora_5": "", "lora_6": ""},
@@ -44,6 +47,22 @@ _missing_warned   = False
 # Tracks the highest schema version seen on disk. _save_configs uses this so an
 # older node installation never downgrades the file version written by a newer one.
 _effective_schema = CURRENT_SCHEMA
+
+
+def _lora_obj(name="", strength=1.0, enabled=True) -> dict:
+    return {"name": name, "strength": strength, "enabled": enabled}
+
+
+def _coerce_lora(value, existing=None) -> dict:
+    """Ensure a lora value is stored as an object. Accepts legacy strings or dicts."""
+    if isinstance(value, dict):
+        return value
+    existing_obj = existing if isinstance(existing, dict) else {}
+    return _lora_obj(
+        name=value or "",
+        strength=existing_obj.get("strength", 1.0),
+        enabled=existing_obj.get("enabled", True),
+    )
 
 
 def load_checkpoint(name: str):
@@ -66,9 +85,15 @@ def load_checkpoint(name: str):
 def _migrate(configs: dict, from_version: int) -> dict:
     """Apply default values for every schema version between from_version+1 and CURRENT_SCHEMA."""
     for version in range(from_version + 1, CURRENT_SCHEMA + 1):
-        for entry in configs.values():
-            for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
-                entry.setdefault(field, default)
+        if version == 12:
+            for entry in configs.values():
+                for field in _LORA_FIELDS:
+                    if field in entry:
+                        entry[field] = _coerce_lora(entry[field])
+        else:
+            for entry in configs.values():
+                for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
+                    entry.setdefault(field, default)
     return configs
 
 
@@ -229,11 +254,12 @@ try:
         entry = configs[name]
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
-                      "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
-                      "lora_7", "lora_8",
                       "audio_vae", "type", "group", "filename", "checkpoint", "clip_2"):
             if field in data:
                 entry[field] = data[field]
+        for field in _LORA_FIELDS:
+            if field in data:
+                entry[field] = _coerce_lora(data[field], entry.get(field))
         for field in ("width", "height", "steps", "split_step", "seed", "total_frames"):
             if field in data:
                 try:
@@ -293,10 +319,10 @@ try:
         entry = {"class": cls, "created_at": datetime.now().isoformat()}
         for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
                       "master_prompt", "positive_prompt", "negative_prompt",
-                      "lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
-                      "lora_7", "lora_8",
                       "audio_vae", "type", "group", "filename", "checkpoint", "clip_2"):
             entry[field] = data.get(field, "")
+        for field in _LORA_FIELDS:
+            entry[field] = _coerce_lora(data.get(field, ""))
         for field in ("width", "height", "steps", "split_step", "seed", "total_frames"):
             try:
                 entry[field] = int(data.get(field, 0))
