@@ -160,7 +160,7 @@ app.registerExtension({
         data.clip_2, data.clip,
         data.image_path,
         data.width, data.height, data.steps, data.seed,
-        data.master_prompt, data.positive_prompt, data.negative_prompt,
+        trunc(data.master_prompt, 20), trunc(data.positive_prompt, 20), trunc(data.negative_prompt, 20),
         data.cfg_high,
         data.total_frames, data.fps,
         data.lora_1, data.lora_2, data.lora_3,

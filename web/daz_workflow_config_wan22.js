@@ -156,7 +156,7 @@ app.registerExtension({
       const values = [
         data.unet_high, data.unet_low, data.vae, data.clip, data.image_path,
         data.width, data.height, data.steps, data.split_step, data.seed,
-        data.master_prompt, data.positive_prompt, data.negative_prompt,
+        trunc(data.master_prompt, 20), trunc(data.positive_prompt, 20), trunc(data.negative_prompt, 20),
         data.cfg_high, data.cfg_low, data.total_frames, data.fps,
         data.lora_1, data.lora_2, data.lora_3, data.lora_4,
         data.lora_5, data.lora_6, data.lora_7, data.lora_8,
