@@ -104,7 +104,7 @@ class WorkflowConfigWan22:
         "clip",
         "image",
         "width", "height", "steps", "split_step", "seed",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prmt", "pos_prompt", "neg_prompt",
         "cfg_high", "cfg_low", "total_frames",
         "fps",
         "lora_1_high", "lora_1_low",

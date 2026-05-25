@@ -106,7 +106,7 @@ class WorkflowConfigLtx23:
         "clip_2", "clip",
         "image",
         "width", "height", "steps", "seed",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prmt", "pos_prompt", "neg_prompt",
         "cfg",
         "total_frames",
         "fps",
