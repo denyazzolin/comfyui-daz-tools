@@ -76,6 +76,17 @@ def _load_lora(name: str):
     return comfy.utils.load_torch_file(path, safe_load=True)
 
 
+def _apply_loras(model, lora_sds, strength=1.0):
+    if model is None:
+        return None
+    result = model
+    for sd in lora_sds:
+        if sd is None:
+            continue
+        result, _ = comfy.sd.load_lora_for_models(result, None, sd, strength, strength)
+    return result
+
+
 class WorkflowConfigWan22:
     @classmethod
     def INPUT_TYPES(cls):
@@ -97,6 +108,7 @@ class WorkflowConfigWan22:
         "FLOAT",
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
+        "MODEL", "MODEL",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -112,6 +124,7 @@ class WorkflowConfigWan22:
         "lora_3_high", "lora_3_low",
         "lora_4_high", "lora_4_low",
         "filename",
+        "unet_stack_high", "unet_stack_low",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -130,9 +143,21 @@ class WorkflowConfigWan22:
             )
         entry = configs[name]
 
+        unet_high = _load_unet(entry.get("unet_high", ""))
+        unet_low  = _load_unet(entry.get("unet_low",  ""))
+
+        lora_1 = _load_lora(entry.get("lora_1", ""))
+        lora_2 = _load_lora(entry.get("lora_2", ""))
+        lora_3 = _load_lora(entry.get("lora_3", ""))
+        lora_4 = _load_lora(entry.get("lora_4", ""))
+        lora_5 = _load_lora(entry.get("lora_5", ""))
+        lora_6 = _load_lora(entry.get("lora_6", ""))
+        lora_7 = _load_lora(entry.get("lora_7", ""))
+        lora_8 = _load_lora(entry.get("lora_8", ""))
+
         return (
-            _load_unet(entry.get("unet_high",  "")),
-            _load_unet(entry.get("unet_low",   "")),
+            unet_high,
+            unet_low,
             _load_vae( entry.get("vae",        "")),
             _load_clip(entry.get("clip",       "")),
             _load_image(entry.get("image_path", "")),
@@ -148,13 +173,11 @@ class WorkflowConfigWan22:
             float(entry.get("cfg_low",   0.0)),
             int(entry.get("total_frames", 0)),
             float(entry.get("fps", 0.0)),
-            _load_lora(entry.get("lora_1", "")),
-            _load_lora(entry.get("lora_2", "")),
-            _load_lora(entry.get("lora_3", "")),
-            _load_lora(entry.get("lora_4", "")),
-            _load_lora(entry.get("lora_5", "")),
-            _load_lora(entry.get("lora_6", "")),
-            _load_lora(entry.get("lora_7", "")),
-            _load_lora(entry.get("lora_8", "")),
+            lora_1, lora_2,
+            lora_3, lora_4,
+            lora_5, lora_6,
+            lora_7, lora_8,
             str(entry.get("filename", "")),
+            _apply_loras(unet_high, [lora_1, lora_3, lora_5, lora_7]),
+            _apply_loras(unet_low,  [lora_2, lora_4, lora_6, lora_8]),
         )
