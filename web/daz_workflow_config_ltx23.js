@@ -363,10 +363,10 @@ app.registerExtension({
               <div style="display:flex;gap:4px;align-items:center">
                 <select id="daz-image-path" style="${fieldStyle}">${selectOptsImage(inputFiles, imageName)}</select>
                 <button id="daz-preview-btn"
-                  style="font-family:monospace;font-size:11px;padding:2px 7px;background:#444;color:#ccc;
+                  style="font-family:monospace;font-size:12px;padding:2px 7px;background:#000000;color:#ffffff;
                          border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
                 <button id="daz-upload-btn"
-                  style="font-family:monospace;font-size:11px;padding:2px 7px;background:#444;color:#ccc;
+                  style="font-family:monospace;font-size:12px;padding:2px 7px;background:#000000;color:#ffffff;
                          border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
                 <input id="daz-upload-input" type="file" accept="image/*" style="display:none">
               </div>
