@@ -116,7 +116,7 @@ app.registerExtension({
         ? `<div style="display:flex;align-items:flex-start;gap:6px">
              <span style="color:#ddd;word-break:break-all;flex:1">${esc(data.image_path)}</span>
              <button id="daz-use-preview-btn"
-               style="font-family:monospace;font-size:10px;padding:1px 6px;background:#444;color:#ccc;
+               style="font-family:monospace;font-size:12px;padding:2px 6px;background:#000000;color:#ffffff;
                       border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
            </div>`
         : `<span style="color:#555">—</span>`
@@ -192,12 +192,12 @@ app.registerExtension({
       wrap.innerHTML = `
         <div style="display:flex;justify-content:space-between;padding:0 6px 4px">
           <button id="daz-new-btn"
-            style="font-family:monospace;font-size:11px;padding:2px 10px;
-                   background:#1a5c35;color:#cde;border:1px solid #2a8050;
+            style="font-family:monospace;font-size:12px;padding:2px 10px;
+                   background:#000000;color:#ffffff;border:1px solid #54af7b;
                    border-radius:3px;cursor:pointer">New</button>
           <button id="daz-edit-btn"
-            style="font-family:monospace;font-size:11px;padding:2px 10px;
-                   background:#444;color:#ccc;border:1px solid #666;
+            style="font-family:monospace;font-size:12px;padding:2px 10px;
+                   background:#000000;color:#ffffff;border:1px solid #666;
                    border-radius:3px;cursor:pointer">Edit</button>
         </div>
         ${renderDetailHtml(data)}
@@ -283,7 +283,7 @@ app.registerExtension({
       const tdR        = 'colspan="3" style="padding:3px 8px"'
       const tdRNum     = 'style="padding:3px 8px"'
       const divider    = `<tr><td colspan="4" style="padding:2px 0"><div style="border-top:1px solid #ffffff;margin:0 8px"></div></td></tr>`
-      const btnBase    = 'font-family:monospace;font-size:11px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
+      const btnBase    = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
 
       const header = `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
                        color:#aaa;border-bottom:1px solid #3a3a3a;margin-bottom:4px">
