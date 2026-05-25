@@ -114,6 +114,31 @@ app.registerExtension({
       return val ?? ''
     }
 
+    function loraEnabled(val) {
+      if (val && typeof val === 'object') return val.enabled !== false
+      return true
+    }
+
+    function rowPairLora(l1, lora1, l2, lora2) {
+      function cell(lora) {
+        const enabled = loraEnabled(lora)
+        const name    = loraName(lora)
+        const d       = name ? disp(name, 16) : ''
+        const chk     = `<input type="checkbox"${enabled ? ' checked' : ''} disabled
+                          style="margin:0 4px 0 0;vertical-align:middle;cursor:default;flex-shrink:0">`
+        const txt     = d
+          ? `<span style="color:${enabled ? '#ddd' : '#666'}">${esc(d)}</span>`
+          : `<span style="color:#555">—</span>`
+        return `<div style="display:flex;align-items:center">${chk}${txt}</div>`
+      }
+      const tdL = 'style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:middle"'
+      const tdV = 'style="padding:3px 10px;width:30%"'
+      return `<tr>
+        <td ${tdL}>${l1}</td><td ${tdV}>${cell(lora1)}</td>
+        <td ${tdL}>${l2}</td><td ${tdV}>${cell(lora2)}</td>
+      </tr>`
+    }
+
     function renderDetailHtml(data) {
       if (data.error) {
         return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -138,10 +163,10 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${rowPair('LoRA 1 High', disp(loraName(data.lora_1), 18), 'LoRA 1 Low', disp(loraName(data.lora_2), 18))}
-        ${rowPair('LoRA 2 High', disp(loraName(data.lora_3), 18), 'LoRA 2 Low', disp(loraName(data.lora_4), 18))}
-        ${rowPair('LoRA 3 High', disp(loraName(data.lora_5), 18), 'LoRA 3 Low', disp(loraName(data.lora_6), 18))}
-        ${rowPair('LoRA 4 High', disp(loraName(data.lora_7), 18), 'LoRA 4 Low', disp(loraName(data.lora_8), 18))}
+        ${rowPairLora('LoRA 1 High', data.lora_1, 'LoRA 1 Low', data.lora_2)}
+        ${rowPairLora('LoRA 2 High', data.lora_3, 'LoRA 2 Low', data.lora_4)}
+        ${rowPairLora('LoRA 3 High', data.lora_5, 'LoRA 3 Low', data.lora_6)}
+        ${rowPairLora('LoRA 4 High', data.lora_7, 'LoRA 4 Low', data.lora_8)}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',    data.steps,      'Split Step', data.split_step)}
         ${row('Seed', data.seed)}
@@ -373,35 +398,59 @@ app.registerExtension({
           ${divider}
           <tr>
             <td ${tdL}>LoRA 1 High</td>
-            <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_1))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-1" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_1))}</select>
+              <input type="checkbox" id="daz-lora-1-enabled"${loraEnabled(data.lora_1) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 1 Low</td>
-            <td ${tdR}><select id="daz-lora-2" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_2))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-2" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_2))}</select>
+              <input type="checkbox" id="daz-lora-2-enabled"${loraEnabled(data.lora_2) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 2 High</td>
-            <td ${tdR}><select id="daz-lora-3" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_3))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-3" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_3))}</select>
+              <input type="checkbox" id="daz-lora-3-enabled"${loraEnabled(data.lora_3) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 2 Low</td>
-            <td ${tdR}><select id="daz-lora-4" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_4))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-4" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_4))}</select>
+              <input type="checkbox" id="daz-lora-4-enabled"${loraEnabled(data.lora_4) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 3 High</td>
-            <td ${tdR}><select id="daz-lora-5" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_5))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-5" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_5))}</select>
+              <input type="checkbox" id="daz-lora-5-enabled"${loraEnabled(data.lora_5) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 3 Low</td>
-            <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_6))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-6" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_6))}</select>
+              <input type="checkbox" id="daz-lora-6-enabled"${loraEnabled(data.lora_6) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 4 High</td>
-            <td ${tdR}><select id="daz-lora-7" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_7))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-7" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_7))}</select>
+              <input type="checkbox" id="daz-lora-7-enabled"${loraEnabled(data.lora_7) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 4 Low</td>
-            <td ${tdR}><select id="daz-lora-8" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_8))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-8" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_8))}</select>
+              <input type="checkbox" id="daz-lora-8-enabled"${loraEnabled(data.lora_8) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           ${divider}
           <tr>
@@ -556,14 +605,14 @@ app.registerExtension({
         vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
         clip:            wrap.querySelector('#daz-clip')?.value            ?? '',
         image_path:      wrap.querySelector('#daz-image-path')?.value      ?? '',
-        lora_1:          wrap.querySelector('#daz-lora-1')?.value          ?? '',
-        lora_2:          wrap.querySelector('#daz-lora-2')?.value          ?? '',
-        lora_3:          wrap.querySelector('#daz-lora-3')?.value          ?? '',
-        lora_4:          wrap.querySelector('#daz-lora-4')?.value          ?? '',
-        lora_5:          wrap.querySelector('#daz-lora-5')?.value          ?? '',
-        lora_6:          wrap.querySelector('#daz-lora-6')?.value          ?? '',
-        lora_7:          wrap.querySelector('#daz-lora-7')?.value          ?? '',
-        lora_8:          wrap.querySelector('#daz-lora-8')?.value          ?? '',
+        lora_1: { name: wrap.querySelector('#daz-lora-1')?.value ?? '', enabled: wrap.querySelector('#daz-lora-1-enabled')?.checked ?? true, strength: 1.0 },
+        lora_2: { name: wrap.querySelector('#daz-lora-2')?.value ?? '', enabled: wrap.querySelector('#daz-lora-2-enabled')?.checked ?? true, strength: 1.0 },
+        lora_3: { name: wrap.querySelector('#daz-lora-3')?.value ?? '', enabled: wrap.querySelector('#daz-lora-3-enabled')?.checked ?? true, strength: 1.0 },
+        lora_4: { name: wrap.querySelector('#daz-lora-4')?.value ?? '', enabled: wrap.querySelector('#daz-lora-4-enabled')?.checked ?? true, strength: 1.0 },
+        lora_5: { name: wrap.querySelector('#daz-lora-5')?.value ?? '', enabled: wrap.querySelector('#daz-lora-5-enabled')?.checked ?? true, strength: 1.0 },
+        lora_6: { name: wrap.querySelector('#daz-lora-6')?.value ?? '', enabled: wrap.querySelector('#daz-lora-6-enabled')?.checked ?? true, strength: 1.0 },
+        lora_7: { name: wrap.querySelector('#daz-lora-7')?.value ?? '', enabled: wrap.querySelector('#daz-lora-7-enabled')?.checked ?? true, strength: 1.0 },
+        lora_8: { name: wrap.querySelector('#daz-lora-8')?.value ?? '', enabled: wrap.querySelector('#daz-lora-8-enabled')?.checked ?? true, strength: 1.0 },
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
@@ -644,14 +693,14 @@ app.registerExtension({
         vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
         clip:            wrap.querySelector('#daz-clip')?.value            ?? '',
         image_path:      wrap.querySelector('#daz-image-path')?.value      ?? '',
-        lora_1:          wrap.querySelector('#daz-lora-1')?.value          ?? '',
-        lora_2:          wrap.querySelector('#daz-lora-2')?.value          ?? '',
-        lora_3:          wrap.querySelector('#daz-lora-3')?.value          ?? '',
-        lora_4:          wrap.querySelector('#daz-lora-4')?.value          ?? '',
-        lora_5:          wrap.querySelector('#daz-lora-5')?.value          ?? '',
-        lora_6:          wrap.querySelector('#daz-lora-6')?.value          ?? '',
-        lora_7:          wrap.querySelector('#daz-lora-7')?.value          ?? '',
-        lora_8:          wrap.querySelector('#daz-lora-8')?.value          ?? '',
+        lora_1: { name: wrap.querySelector('#daz-lora-1')?.value ?? '', enabled: wrap.querySelector('#daz-lora-1-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_1?.strength ?? 1.0 },
+        lora_2: { name: wrap.querySelector('#daz-lora-2')?.value ?? '', enabled: wrap.querySelector('#daz-lora-2-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_2?.strength ?? 1.0 },
+        lora_3: { name: wrap.querySelector('#daz-lora-3')?.value ?? '', enabled: wrap.querySelector('#daz-lora-3-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_3?.strength ?? 1.0 },
+        lora_4: { name: wrap.querySelector('#daz-lora-4')?.value ?? '', enabled: wrap.querySelector('#daz-lora-4-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_4?.strength ?? 1.0 },
+        lora_5: { name: wrap.querySelector('#daz-lora-5')?.value ?? '', enabled: wrap.querySelector('#daz-lora-5-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_5?.strength ?? 1.0 },
+        lora_6: { name: wrap.querySelector('#daz-lora-6')?.value ?? '', enabled: wrap.querySelector('#daz-lora-6-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_6?.strength ?? 1.0 },
+        lora_7: { name: wrap.querySelector('#daz-lora-7')?.value ?? '', enabled: wrap.querySelector('#daz-lora-7-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_7?.strength ?? 1.0 },
+        lora_8: { name: wrap.querySelector('#daz-lora-8')?.value ?? '', enabled: wrap.querySelector('#daz-lora-8-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_8?.strength ?? 1.0 },
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
