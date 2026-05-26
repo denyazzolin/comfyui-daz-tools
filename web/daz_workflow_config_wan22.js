@@ -119,13 +119,13 @@ app.registerExtension({
       return true
     }
 
-    function rowPairLora(l1, lora1, l2, lora2) {
-      function cell(lora) {
+    function rowPairLora(l1, lora1, l2, lora2, id1, id2) {
+      function cell(lora, id) {
         const enabled = loraEnabled(lora)
         const name    = loraName(lora)
         const d       = name ? disp(name, 16) : ''
-        const chk     = `<input type="checkbox"${enabled ? ' checked' : ''} disabled
-                          style="margin:0 4px 0 0;vertical-align:middle;cursor:default;flex-shrink:0">`
+        const chk     = `<input type="checkbox"${enabled ? ' checked' : ''}${id ? ` id="${id}"` : ''}
+                          style="margin:0 4px 0 0;vertical-align:middle;cursor:pointer;flex-shrink:0">`
         const txt     = d
           ? `<span style="color:${enabled ? '#ddd' : '#666'}">${esc(d)}</span>`
           : `<span style="color:#555">—</span>`
@@ -134,8 +134,8 @@ app.registerExtension({
       const tdL = 'style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:middle"'
       const tdV = 'style="padding:3px 10px;width:30%"'
       return `<tr>
-        <td ${tdL}>${l1}</td><td ${tdV}>${cell(lora1)}</td>
-        <td ${tdL}>${l2}</td><td ${tdV}>${cell(lora2)}</td>
+        <td ${tdL}>${l1}</td><td ${tdV}>${cell(lora1, id1)}</td>
+        <td ${tdL}>${l2}</td><td ${tdV}>${cell(lora2, id2)}</td>
       </tr>`
     }
 
@@ -163,10 +163,10 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${rowPairLora('LoRA 1 High', data.lora_1, 'LoRA 1 Low', data.lora_2)}
-        ${rowPairLora('LoRA 2 High', data.lora_3, 'LoRA 2 Low', data.lora_4)}
-        ${rowPairLora('LoRA 3 High', data.lora_5, 'LoRA 3 Low', data.lora_6)}
-        ${rowPairLora('LoRA 4 High', data.lora_7, 'LoRA 4 Low', data.lora_8)}
+        ${rowPairLora('LoRA 1 High', data.lora_1, 'LoRA 1 Low', data.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
+        ${rowPairLora('LoRA 2 High', data.lora_3, 'LoRA 2 Low', data.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
+        ${rowPairLora('LoRA 3 High', data.lora_5, 'LoRA 3 Low', data.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
+        ${rowPairLora('LoRA 4 High', data.lora_7, 'LoRA 4 Low', data.lora_8, 'daz-use-lora-7', 'daz-use-lora-8')}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',    data.steps,      'Split Step', data.split_step)}
         ${row('Seed', data.seed)}
@@ -188,8 +188,14 @@ app.registerExtension({
         data.width, data.height, data.steps, data.split_step, data.seed,
         trunc(data.master_prompt, 20), trunc(data.positive_prompt, 20), trunc(data.negative_prompt, 20),
         data.cfg_high, data.cfg_low, data.total_frames, data.fps,
-        loraName(data.lora_1), loraName(data.lora_2), loraName(data.lora_3), loraName(data.lora_4),
-        loraName(data.lora_5), loraName(data.lora_6), loraName(data.lora_7), loraName(data.lora_8),
+        loraEnabled(data.lora_1) ? loraName(data.lora_1) : '',
+        loraEnabled(data.lora_2) ? loraName(data.lora_2) : '',
+        loraEnabled(data.lora_3) ? loraName(data.lora_3) : '',
+        loraEnabled(data.lora_4) ? loraName(data.lora_4) : '',
+        loraEnabled(data.lora_5) ? loraName(data.lora_5) : '',
+        loraEnabled(data.lora_6) ? loraName(data.lora_6) : '',
+        loraEnabled(data.lora_7) ? loraName(data.lora_7) : '',
+        loraEnabled(data.lora_8) ? loraName(data.lora_8) : '',
         data.filename,
       ]
       values.forEach((val, i) => {
@@ -233,6 +239,44 @@ app.registerExtension({
         const filename = data.image_path?.split(/[\\/]/).pop()
         if (filename) showImagePreview(filename)
       })
+
+      const loraFields = ['lora_1','lora_2','lora_3','lora_4','lora_5','lora_6','lora_7','lora_8']
+      loraFields.forEach((field, i) => {
+        wrap.querySelector(`#daz-use-lora-${i + 1}`)?.addEventListener('change', async (e) => {
+          const detail = node._dazWan22Detail
+          if (!detail) return
+          const val = detail[field]
+          if (val && typeof val === 'object') {
+            val.enabled = e.target.checked
+          } else {
+            detail[field] = { name: val || '', enabled: e.target.checked, strength: 1.0 }
+          }
+          const span = e.target.nextElementSibling
+          if (span) span.style.color = e.target.checked ? '#ddd' : '#666'
+          updateOutputLabels(node, detail)
+          node.setDirtyCanvas(true, true)
+
+          const cw = node.widgets?.find(w => w.name === 'config')
+          const label = cw?.value
+          if (!label || label === '(no configs)') return
+          try {
+            const r = await fetch('/daz/workflow-config-save', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', [field]: detail[field] }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+            if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+            syncWidget(node)
+            if (cw) cw.value = result.label
+          } catch (err) {
+            console.warn('[DAZ TOOLS] WorkflowConfigWan22: could not save lora enabled state', err)
+          }
+        })
+      })
+
       updateOutputLabels(node, data)
       node.setDirtyCanvas(true, true)
     }
