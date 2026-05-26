@@ -23,25 +23,14 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 12
+CURRENT_SCHEMA = 1
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
 
-# Fields added per schema version (additive only — used for automatic migration).
-# Version 12 converts lora string values to objects — handled directly in _migrate.
-_SCHEMA_DEFAULTS: dict[int, dict] = {
-    2: {"lora_1": "", "lora_2": "", "lora_3": "", "lora_4": ""},
-    3: {"lora_5": "", "lora_6": ""},
-    4: {"audio_vae": ""},
-    5: {"type": ""},
-    6: {"group": ""},
-    7: {"filename": ""},
-    8: {"checkpoint": ""},
-    9: {"clip_2": ""},
-    10: {"seed": 0},
-    11: {"lora_7": "", "lora_8": ""},
-}
+# Fields added per schema version (additive only — new fields with default values only,
+# never modify or transform existing fields). Add a new entry here for each future version.
+_SCHEMA_DEFAULTS: dict[int, dict] = {}
 
 _missing_warned   = False
 # Tracks the highest schema version seen on disk. _save_configs uses this so an
@@ -83,17 +72,12 @@ def load_checkpoint(name: str):
 
 
 def _migrate(configs: dict, from_version: int) -> dict:
-    """Apply default values for every schema version between from_version+1 and CURRENT_SCHEMA."""
+    """Apply default values for every schema version between from_version+1 and CURRENT_SCHEMA.
+    Only adds new fields via setdefault — never modifies existing attribute values."""
     for version in range(from_version + 1, CURRENT_SCHEMA + 1):
-        if version == 12:
-            for entry in configs.values():
-                for field in _LORA_FIELDS:
-                    if field in entry:
-                        entry[field] = _coerce_lora(entry[field])
-        else:
-            for entry in configs.values():
-                for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
-                    entry.setdefault(field, default)
+        for entry in configs.values():
+            for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
+                entry.setdefault(field, default)
     return configs
 
 
