@@ -202,7 +202,7 @@ app.registerExtension({
         if (!node.outputs[i]) return
         const orig = node.outputs[i].name
         const d = (val !== undefined && val !== null && val !== '' && val !== 0)
-          ? disp(String(val)) : 'none'
+          ? disp(String(val), 20) : 'none'
         node.outputs[i].label = `(${d}) ${orig}`
       })
     }
