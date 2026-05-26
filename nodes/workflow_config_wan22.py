@@ -76,11 +76,25 @@ def _load_lora(name: str):
     return comfy.utils.load_torch_file(path, safe_load=True)
 
 
-def _apply_loras(model, lora_sds, strength=1.0):
+def _process_lora(val):
+    """Return (state_dict_or_None, strength) from a lora config value (string or object)."""
+    if isinstance(val, dict):
+        if not val.get("enabled", True):
+            return None, 1.0
+        name     = val.get("name", "")
+        strength = float(val.get("strength", 1.0))
+    else:
+        name     = val or ""
+        strength = 1.0
+    return _load_lora(name), strength
+
+
+def _apply_loras(model, lora_pairs):
+    """Apply a list of (state_dict, strength) pairs to the model. None state_dicts are skipped."""
     if model is None:
         return None
     result = model
-    for sd in lora_sds:
+    for sd, strength in lora_pairs:
         if sd is None:
             continue
         result, _ = comfy.sd.load_lora_for_models(result, None, sd, strength, strength)
@@ -146,14 +160,14 @@ class WorkflowConfigWan22:
         unet_high = _load_unet(entry.get("unet_high", ""))
         unet_low  = _load_unet(entry.get("unet_low",  ""))
 
-        lora_1 = _load_lora(entry.get("lora_1", ""))
-        lora_2 = _load_lora(entry.get("lora_2", ""))
-        lora_3 = _load_lora(entry.get("lora_3", ""))
-        lora_4 = _load_lora(entry.get("lora_4", ""))
-        lora_5 = _load_lora(entry.get("lora_5", ""))
-        lora_6 = _load_lora(entry.get("lora_6", ""))
-        lora_7 = _load_lora(entry.get("lora_7", ""))
-        lora_8 = _load_lora(entry.get("lora_8", ""))
+        lora_1_sd, lora_1_w = _process_lora(entry.get("lora_1", ""))
+        lora_2_sd, lora_2_w = _process_lora(entry.get("lora_2", ""))
+        lora_3_sd, lora_3_w = _process_lora(entry.get("lora_3", ""))
+        lora_4_sd, lora_4_w = _process_lora(entry.get("lora_4", ""))
+        lora_5_sd, lora_5_w = _process_lora(entry.get("lora_5", ""))
+        lora_6_sd, lora_6_w = _process_lora(entry.get("lora_6", ""))
+        lora_7_sd, lora_7_w = _process_lora(entry.get("lora_7", ""))
+        lora_8_sd, lora_8_w = _process_lora(entry.get("lora_8", ""))
 
         return (
             unet_high,
@@ -173,11 +187,17 @@ class WorkflowConfigWan22:
             float(entry.get("cfg_low",   0.0)),
             int(entry.get("total_frames", 0)),
             float(entry.get("fps", 0.0)),
-            lora_1, lora_2,
-            lora_3, lora_4,
-            lora_5, lora_6,
-            lora_7, lora_8,
+            lora_1_sd, lora_2_sd,
+            lora_3_sd, lora_4_sd,
+            lora_5_sd, lora_6_sd,
+            lora_7_sd, lora_8_sd,
             str(entry.get("filename", "")),
-            _apply_loras(unet_high, [lora_1, lora_3, lora_5, lora_7]),
-            _apply_loras(unet_low,  [lora_2, lora_4, lora_6, lora_8]),
+            _apply_loras(unet_high, [
+                (lora_1_sd, lora_1_w), (lora_3_sd, lora_3_w),
+                (lora_5_sd, lora_5_w), (lora_7_sd, lora_7_w),
+            ]),
+            _apply_loras(unet_low, [
+                (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
+                (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
+            ]),
         )
