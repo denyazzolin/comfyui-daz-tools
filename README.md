@@ -104,7 +104,7 @@ These attributes are common to both nodes:
 | `master_prompt` | string | A base prompt shared across positive/negative (e.g. scene description) or as master prompt for Prompt Relays |
 | `positive_prompt` | string | Positive conditioning text |
 | `negative_prompt` | string | Negative conditioning text |
-| `lora_1` – `lora_8` | string | Filenames of up to eight LoRA models (leave blank to skip loading) |
+| `lora_1` – `lora_8` | object | Up to eight LoRA models. Each entry stores `name` (filename), `strength` (float, applied at stacking time), and `enabled` (bool). Disabled or empty-name loras are skipped entirely at execution time. |
 | `filename` | string | Relative path and filename for Save Video nodes (e.g. `subfolder/my_clip`), resolved against ComfyUI's output directory |
 | `type` | string | Workflow type: `I2V`, `T2V`, or blank |
 | `group` | string | Custom group label for filtering |
@@ -123,9 +123,11 @@ These attributes are common to both nodes:
 
 #### WAN2.2 outputs
 
-`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `seed` (INT) · `cfg_high` · `cfg_low` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` · `lora_4_high` · `lora_4_low` (LORA — `None` if slot is empty)
+`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `seed` (INT) · `cfg_high` · `cfg_low` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` · `lora_4_high` · `lora_4_low` (LORA — `None` if slot is empty or disabled) · **`unet_stack_high` · `unet_stack_low`** (MODEL)
 
-LoRAs 1–4 use `lora_1`/`lora_2`, 3/`lora_4`, `lora_5`/`lora_6`, `lora_7`/`lora_8` from the config respectively, output as four High/Low pairs.
+LoRAs 1–4 use `lora_1`/`lora_2`, `lora_3`/`lora_4`, `lora_5`/`lora_6`, `lora_7`/`lora_8` from the config respectively, output as four High/Low pairs.
+
+`unet_stack_high` and `unet_stack_low` are convenience outputs — the `unet_high` and `unet_low` models with all enabled LoRAs already applied at their configured strengths. Wire these directly into your sampler to skip the separate LoRA loader nodes.
 
 #### LTX2.3-specific attributes
 
@@ -141,16 +143,18 @@ LoRAs 1–4 use `lora_1`/`lora_2`, 3/`lora_4`, `lora_5`/`lora_6`, `lora_7`/`lora
 
 #### LTX2.3 outputs
 
-`checkpoint_model` · `checkpoint_vae` · `checkpoint_clip` (from checkpoint) · `transformer_only` (MODEL) · `video_vae` · `audio_vae` (VAE) · `clip_2` · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `seed` (INT) · `cfg` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `distillation_lora` · `lora_2` – `lora_6` (LORA — `None` if slot is empty)
+`checkpoint_model` · `checkpoint_vae` · `checkpoint_clip` (from checkpoint) · `transformer_only` (MODEL) · `video_vae` · `audio_vae` (VAE) · `clip_2` · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `seed` (INT) · `cfg` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `distillation_lora` · `lora_2` – `lora_6` (LORA — `None` if slot is empty or disabled) · **`transformer_stack` · `checkpoint_stack`** (MODEL)
 
 Checkpoint outputs (`checkpoint_model`, `checkpoint_vae`, `checkpoint_clip`) are all `None` when no checkpoint is set; individual model outputs are `None` when their respective fields are empty.
+
+`transformer_stack` and `checkpoint_stack` are convenience outputs — the `transformer_only` and `checkpoint_model` with all enabled LoRAs already applied at their configured strengths. Wire these directly into your sampler to skip the separate LoRA loader nodes.
 
 #### Managing configurations
 
 The node panel has two modes:
 
-**Use mode** — shows a summary of the selected configuration's values. A **New** button creates a fresh config; an **Edit** button switches to the form.
+**Use mode** — shows a summary of the selected configuration's values. A **New** button creates a fresh config; an **Edit** button switches to the form. Each LoRA row shows a checkbox — clicking it toggles the LoRA on or off and auto-saves immediately, so the next workflow execution picks up the change without entering edit mode.
 
-**Edit mode** — an inline form with dropdowns for all model files and LoRAs (populated live from your ComfyUI model folders), an image picker with Upload and Preview buttons, number inputs for every numeric parameter, and text areas for the three prompts. **Save** writes back to the JSON file and returns to use mode. **Cancel** discards changes. **Delete** removes the configuration after a confirmation prompt.
+**Edit mode** — an inline form with dropdowns for all model files and LoRAs (populated live from your ComfyUI model folders), a strength number input and an enabled checkbox per LoRA slot, an image picker with Upload and Preview buttons, number inputs for every numeric parameter, and text areas for the three prompts. **Save** writes back to the JSON file and returns to use mode. **Cancel** discards changes. **Delete** removes the configuration after a confirmation prompt.
 
 When no configurations exist yet (first launch or empty file), the node opens directly in edit mode with a **Create** button so you can add your first preset without leaving the canvas.
