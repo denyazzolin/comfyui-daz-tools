@@ -66,19 +66,38 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]
 
 
-def _load_lora(val):
-    if isinstance(val, dict):
-        if not val.get("enabled", True):
-            return None
-        name = val.get("name", "")
-    else:
-        name = val or ""
+def _load_lora(name: str):
     if not name:
         return None
     path = folder_paths.get_full_path("loras", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: lora '{name}' not found")
     return comfy.utils.load_torch_file(path, safe_load=True)
+
+
+def _process_lora(val):
+    """Return (state_dict_or_None, strength) from a lora config value (string or object)."""
+    if isinstance(val, dict):
+        if not val.get("enabled", True):
+            return None, 1.0
+        name     = val.get("name", "")
+        strength = float(val.get("strength", 1.0))
+    else:
+        name     = val or ""
+        strength = 1.0
+    return _load_lora(name), strength
+
+
+def _apply_loras(model, lora_pairs):
+    """Apply a list of (state_dict, strength) pairs to the model. None state_dicts are skipped."""
+    if model is None:
+        return None
+    result = model
+    for sd, strength in lora_pairs:
+        if sd is None:
+            continue
+        result, _ = comfy.sd.load_lora_for_models(result, None, sd, strength, strength)
+    return result
 
 
 class WorkflowConfigLtx23:
@@ -104,6 +123,7 @@ class WorkflowConfigLtx23:
         "FLOAT",
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
+        "MODEL", "MODEL",
     )
     RETURN_NAMES = (
         "checkpoint_model", "checkpoint_vae", "checkpoint_clip",
@@ -118,6 +138,7 @@ class WorkflowConfigLtx23:
         "fps",
         "distillation_lora", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
         "filename",
+        "transformer_stack", "checkpoint_stack",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -137,12 +158,26 @@ class WorkflowConfigLtx23:
         entry = configs[name]
 
         ckpt_model, ckpt_clip, ckpt_vae = load_checkpoint(entry.get("checkpoint", ""))
+        unet = _load_unet(entry.get("unet_high", ""))
+
+        lora_1_sd, lora_1_w = _process_lora(entry.get("lora_1", ""))
+        lora_2_sd, lora_2_w = _process_lora(entry.get("lora_2", ""))
+        lora_3_sd, lora_3_w = _process_lora(entry.get("lora_3", ""))
+        lora_4_sd, lora_4_w = _process_lora(entry.get("lora_4", ""))
+        lora_5_sd, lora_5_w = _process_lora(entry.get("lora_5", ""))
+        lora_6_sd, lora_6_w = _process_lora(entry.get("lora_6", ""))
+
+        lora_pairs = [
+            (lora_1_sd, lora_1_w), (lora_2_sd, lora_2_w),
+            (lora_3_sd, lora_3_w), (lora_4_sd, lora_4_w),
+            (lora_5_sd, lora_5_w), (lora_6_sd, lora_6_w),
+        ]
 
         return (
             ckpt_model,
             ckpt_vae,
             ckpt_clip,
-            _load_unet(entry.get("unet_high",  "")),
+            unet,
             _load_vae( entry.get("vae",         "")),
             _load_vae( entry.get("audio_vae",   "")),
             _load_clip(entry.get("clip_2",      "")),
@@ -158,11 +193,8 @@ class WorkflowConfigLtx23:
             float(entry.get("cfg_high",   0.0)),
             int(entry.get("total_frames", 0)),
             float(entry.get("fps",        0.0)),
-            _load_lora(entry.get("lora_1", "")),
-            _load_lora(entry.get("lora_2", "")),
-            _load_lora(entry.get("lora_3", "")),
-            _load_lora(entry.get("lora_4", "")),
-            _load_lora(entry.get("lora_5", "")),
-            _load_lora(entry.get("lora_6", "")),
+            lora_1_sd, lora_2_sd, lora_3_sd, lora_4_sd, lora_5_sd, lora_6_sd,
             str(entry.get("filename", "")),
+            _apply_loras(unet,       lora_pairs),
+            _apply_loras(ckpt_model, lora_pairs),
         )

@@ -113,6 +113,31 @@ app.registerExtension({
       return val ?? ''
     }
 
+    function loraEnabled(val) {
+      if (val && typeof val === 'object') return val.enabled !== false
+      return true
+    }
+
+    function rowPairLora(l1, lora1, l2, lora2, id1, id2) {
+      function cell(lora, id) {
+        const enabled = loraEnabled(lora)
+        const name    = loraName(lora)
+        const d       = name ? disp(name, 16) : ''
+        const chk     = `<input type="checkbox"${enabled ? ' checked' : ''}${id ? ` id="${id}"` : ''}
+                          style="margin:0 4px 0 0;vertical-align:middle;cursor:pointer;flex-shrink:0">`
+        const txt     = d
+          ? `<span style="color:${enabled ? '#ddd' : '#666'}">${esc(d)}</span>`
+          : `<span style="color:#555">—</span>`
+        return `<div style="display:flex;align-items:center">${chk}${txt}</div>`
+      }
+      const tdL = 'style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:middle"'
+      const tdV = 'style="padding:3px 10px;width:30%"'
+      return `<tr>
+        <td ${tdL}>${l1}</td><td ${tdV}>${cell(lora1, id1)}</td>
+        <td ${tdL}>${l2}</td><td ${tdV}>${cell(lora2, id2)}</td>
+      </tr>`
+    }
+
     function renderDetailHtml(data) {
       if (data.error) {
         return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -139,9 +164,9 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${rowPair('Distill LoRA', disp(loraName(data.lora_1), 18), 'LoRA 2', disp(loraName(data.lora_2), 18))}
-        ${rowPair('LoRA 3',       disp(loraName(data.lora_3), 18), 'LoRA 4', disp(loraName(data.lora_4), 18))}
-        ${rowPair('LoRA 5',       disp(loraName(data.lora_5), 18), 'LoRA 6', disp(loraName(data.lora_6), 18))}
+        ${rowPairLora('Distill LoRA', data.lora_1, 'LoRA 2', data.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
+        ${rowPairLora('LoRA 3',      data.lora_3, 'LoRA 4', data.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
+        ${rowPairLora('LoRA 5',      data.lora_5, 'LoRA 6', data.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
         ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
         ${rowPair('Steps',   data.steps, 'Seed', data.seed)}
         ${row('CFG',         data.cfg_high)}
@@ -168,9 +193,15 @@ app.registerExtension({
         trunc(data.master_prompt, 20), trunc(data.positive_prompt, 20), trunc(data.negative_prompt, 20),
         data.cfg_high,
         data.total_frames, data.fps,
-        loraName(data.lora_1), loraName(data.lora_2), loraName(data.lora_3),
-        loraName(data.lora_4), loraName(data.lora_5), loraName(data.lora_6),
+        loraEnabled(data.lora_1) ? loraName(data.lora_1) : '',
+        loraEnabled(data.lora_2) ? loraName(data.lora_2) : '',
+        loraEnabled(data.lora_3) ? loraName(data.lora_3) : '',
+        loraEnabled(data.lora_4) ? loraName(data.lora_4) : '',
+        loraEnabled(data.lora_5) ? loraName(data.lora_5) : '',
+        loraEnabled(data.lora_6) ? loraName(data.lora_6) : '',
         data.filename,
+        data.unet_high,
+        data.checkpoint,
       ]
       values.forEach((val, i) => {
         if (!node.outputs[i]) return
@@ -214,6 +245,43 @@ app.registerExtension({
         if (filename) showImagePreview(filename)
       })
       updateOutputLabels(node, data)
+
+      const loraFields = ['lora_1','lora_2','lora_3','lora_4','lora_5','lora_6']
+      loraFields.forEach((field, i) => {
+        wrap.querySelector(`#daz-use-lora-${i + 1}`)?.addEventListener('change', async (e) => {
+          const detail = node._dazLtx23Detail
+          if (!detail) return
+          const val = detail[field]
+          if (val && typeof val === 'object') {
+            val.enabled = e.target.checked
+          } else {
+            detail[field] = { name: val || '', enabled: e.target.checked, strength: 1.0 }
+          }
+          const span = e.target.nextElementSibling
+          if (span) span.style.color = e.target.checked ? '#ddd' : '#666'
+          updateOutputLabels(node, detail)
+          node.setDirtyCanvas(true, true)
+          const cw = node.widgets?.find(w => w.name === 'config')
+          const label = cw?.value
+          if (!label || label === '(no configs)') return
+          try {
+            const r = await fetch('/daz/workflow-config-save', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', [field]: detail[field] }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+            if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+            syncWidget(node)
+            if (cw) cw.value = result.label
+          } catch (err) {
+            console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not save lora enabled state', err)
+          }
+        })
+      })
+
       node.setDirtyCanvas(true, true)
     }
 
@@ -381,27 +449,51 @@ app.registerExtension({
           ${divider}
           <tr>
             <td ${tdL}>Distill LoRA</td>
-            <td ${tdR}><select id="daz-lora-1" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_1))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-1" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_1))}</select>
+              <input type="number" id="daz-lora-1-strength" step="0.01" min="0" value="${(typeof data.lora_1 === 'object' ? data.lora_1?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
+              <input type="checkbox" id="daz-lora-1-enabled"${loraEnabled(data.lora_1) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 2</td>
-            <td ${tdR}><select id="daz-lora-2" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_2))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-2" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_2))}</select>
+              <input type="number" id="daz-lora-2-strength" step="0.01" min="0" value="${(typeof data.lora_2 === 'object' ? data.lora_2?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
+              <input type="checkbox" id="daz-lora-2-enabled"${loraEnabled(data.lora_2) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 3</td>
-            <td ${tdR}><select id="daz-lora-3" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_3))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-3" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_3))}</select>
+              <input type="number" id="daz-lora-3-strength" step="0.01" min="0" value="${(typeof data.lora_3 === 'object' ? data.lora_3?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
+              <input type="checkbox" id="daz-lora-3-enabled"${loraEnabled(data.lora_3) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 4</td>
-            <td ${tdR}><select id="daz-lora-4" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_4))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-4" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_4))}</select>
+              <input type="number" id="daz-lora-4-strength" step="0.01" min="0" value="${(typeof data.lora_4 === 'object' ? data.lora_4?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
+              <input type="checkbox" id="daz-lora-4-enabled"${loraEnabled(data.lora_4) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 5</td>
-            <td ${tdR}><select id="daz-lora-5" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_5))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-5" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_5))}</select>
+              <input type="number" id="daz-lora-5-strength" step="0.01" min="0" value="${(typeof data.lora_5 === 'object' ? data.lora_5?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
+              <input type="checkbox" id="daz-lora-5-enabled"${loraEnabled(data.lora_5) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           <tr>
             <td ${tdL}>LoRA 6</td>
-            <td ${tdR}><select id="daz-lora-6" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_6))}</select></td>
+            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+              <select id="daz-lora-6" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_6))}</select>
+              <input type="number" id="daz-lora-6-strength" step="0.01" min="0" value="${(typeof data.lora_6 === 'object' ? data.lora_6?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
+              <input type="checkbox" id="daz-lora-6-enabled"${loraEnabled(data.lora_6) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+            </div></td>
           </tr>
           ${divider}
           <tr>
@@ -533,12 +625,12 @@ app.registerExtension({
         clip_2:          wrap.querySelector('#daz-clip-2')?.value            ?? '',
         clip:            wrap.querySelector('#daz-clip')?.value              ?? '',
         image_path:      wrap.querySelector('#daz-image-path')?.value        ?? '',
-        lora_1:          wrap.querySelector('#daz-lora-1')?.value            ?? '',
-        lora_2:          wrap.querySelector('#daz-lora-2')?.value            ?? '',
-        lora_3:          wrap.querySelector('#daz-lora-3')?.value            ?? '',
-        lora_4:          wrap.querySelector('#daz-lora-4')?.value            ?? '',
-        lora_5:          wrap.querySelector('#daz-lora-5')?.value            ?? '',
-        lora_6:          wrap.querySelector('#daz-lora-6')?.value            ?? '',
+        lora_1: { name: wrap.querySelector('#daz-lora-1')?.value ?? '', enabled: wrap.querySelector('#daz-lora-1-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-1-strength')?.value ?? '1') || 1.0 },
+        lora_2: { name: wrap.querySelector('#daz-lora-2')?.value ?? '', enabled: wrap.querySelector('#daz-lora-2-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-2-strength')?.value ?? '1') || 1.0 },
+        lora_3: { name: wrap.querySelector('#daz-lora-3')?.value ?? '', enabled: wrap.querySelector('#daz-lora-3-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-3-strength')?.value ?? '1') || 1.0 },
+        lora_4: { name: wrap.querySelector('#daz-lora-4')?.value ?? '', enabled: wrap.querySelector('#daz-lora-4-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-4-strength')?.value ?? '1') || 1.0 },
+        lora_5: { name: wrap.querySelector('#daz-lora-5')?.value ?? '', enabled: wrap.querySelector('#daz-lora-5-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-5-strength')?.value ?? '1') || 1.0 },
+        lora_6: { name: wrap.querySelector('#daz-lora-6')?.value ?? '', enabled: wrap.querySelector('#daz-lora-6-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-6-strength')?.value ?? '1') || 1.0 },
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value     ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value   ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value   ?? '',
@@ -700,12 +792,12 @@ app.registerExtension({
         clip_2:          data.clip_2          ?? '',
         clip:            data.clip            ?? '',
         image_path:      data.image_path      ?? '',
-        lora_1:          data.lora_1          ?? '',
-        lora_2:          data.lora_2          ?? '',
-        lora_3:          data.lora_3          ?? '',
-        lora_4:          data.lora_4          ?? '',
-        lora_5:          data.lora_5          ?? '',
-        lora_6:          data.lora_6          ?? '',
+        lora_1:          data.lora_1          ?? { name: '', strength: 1.0, enabled: true },
+        lora_2:          data.lora_2          ?? { name: '', strength: 1.0, enabled: true },
+        lora_3:          data.lora_3          ?? { name: '', strength: 1.0, enabled: true },
+        lora_4:          data.lora_4          ?? { name: '', strength: 1.0, enabled: true },
+        lora_5:          data.lora_5          ?? { name: '', strength: 1.0, enabled: true },
+        lora_6:          data.lora_6          ?? { name: '', strength: 1.0, enabled: true },
         master_prompt:   data.master_prompt   ?? '',
         positive_prompt: data.positive_prompt ?? '',
         negative_prompt: data.negative_prompt ?? '',
