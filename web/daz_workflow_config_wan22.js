@@ -444,6 +444,7 @@ app.registerExtension({
             <td ${tdL}>LoRA 1 High</td>
             <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
               <select id="daz-lora-1" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_1))}</select>
+              <input type="number" id="daz-lora-1-strength" step="0.01" min="0" value="${(typeof data.lora_1 === 'object' ? data.lora_1?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
               <input type="checkbox" id="daz-lora-1-enabled"${loraEnabled(data.lora_1) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
             </div></td>
           </tr>
@@ -451,6 +452,7 @@ app.registerExtension({
             <td ${tdL}>LoRA 1 Low</td>
             <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
               <select id="daz-lora-2" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_2))}</select>
+              <input type="number" id="daz-lora-2-strength" step="0.01" min="0" value="${(typeof data.lora_2 === 'object' ? data.lora_2?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
               <input type="checkbox" id="daz-lora-2-enabled"${loraEnabled(data.lora_2) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
             </div></td>
           </tr>
@@ -458,6 +460,7 @@ app.registerExtension({
             <td ${tdL}>LoRA 2 High</td>
             <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
               <select id="daz-lora-3" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_3))}</select>
+              <input type="number" id="daz-lora-3-strength" step="0.01" min="0" value="${(typeof data.lora_3 === 'object' ? data.lora_3?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
               <input type="checkbox" id="daz-lora-3-enabled"${loraEnabled(data.lora_3) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
             </div></td>
           </tr>
@@ -465,6 +468,7 @@ app.registerExtension({
             <td ${tdL}>LoRA 2 Low</td>
             <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
               <select id="daz-lora-4" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_4))}</select>
+              <input type="number" id="daz-lora-4-strength" step="0.01" min="0" value="${(typeof data.lora_4 === 'object' ? data.lora_4?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
               <input type="checkbox" id="daz-lora-4-enabled"${loraEnabled(data.lora_4) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
             </div></td>
           </tr>
@@ -472,6 +476,7 @@ app.registerExtension({
             <td ${tdL}>LoRA 3 High</td>
             <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
               <select id="daz-lora-5" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_5))}</select>
+              <input type="number" id="daz-lora-5-strength" step="0.01" min="0" value="${(typeof data.lora_5 === 'object' ? data.lora_5?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
               <input type="checkbox" id="daz-lora-5-enabled"${loraEnabled(data.lora_5) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
             </div></td>
           </tr>
@@ -479,6 +484,7 @@ app.registerExtension({
             <td ${tdL}>LoRA 3 Low</td>
             <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
               <select id="daz-lora-6" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_6))}</select>
+              <input type="number" id="daz-lora-6-strength" step="0.01" min="0" value="${(typeof data.lora_6 === 'object' ? data.lora_6?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
               <input type="checkbox" id="daz-lora-6-enabled"${loraEnabled(data.lora_6) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
             </div></td>
           </tr>
@@ -486,6 +492,7 @@ app.registerExtension({
             <td ${tdL}>LoRA 4 High</td>
             <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
               <select id="daz-lora-7" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_7))}</select>
+              <input type="number" id="daz-lora-7-strength" step="0.01" min="0" value="${(typeof data.lora_7 === 'object' ? data.lora_7?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
               <input type="checkbox" id="daz-lora-7-enabled"${loraEnabled(data.lora_7) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
             </div></td>
           </tr>
@@ -493,6 +500,7 @@ app.registerExtension({
             <td ${tdL}>LoRA 4 Low</td>
             <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
               <select id="daz-lora-8" style="${fieldStyle}">${selectOptsLora(loraFiles, loraName(data.lora_8))}</select>
+              <input type="number" id="daz-lora-8-strength" step="0.01" min="0" value="${(typeof data.lora_8 === 'object' ? data.lora_8?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
               <input type="checkbox" id="daz-lora-8-enabled"${loraEnabled(data.lora_8) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
             </div></td>
           </tr>
@@ -649,14 +657,14 @@ app.registerExtension({
         vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
         clip:            wrap.querySelector('#daz-clip')?.value            ?? '',
         image_path:      wrap.querySelector('#daz-image-path')?.value      ?? '',
-        lora_1: { name: wrap.querySelector('#daz-lora-1')?.value ?? '', enabled: wrap.querySelector('#daz-lora-1-enabled')?.checked ?? true, strength: 1.0 },
-        lora_2: { name: wrap.querySelector('#daz-lora-2')?.value ?? '', enabled: wrap.querySelector('#daz-lora-2-enabled')?.checked ?? true, strength: 1.0 },
-        lora_3: { name: wrap.querySelector('#daz-lora-3')?.value ?? '', enabled: wrap.querySelector('#daz-lora-3-enabled')?.checked ?? true, strength: 1.0 },
-        lora_4: { name: wrap.querySelector('#daz-lora-4')?.value ?? '', enabled: wrap.querySelector('#daz-lora-4-enabled')?.checked ?? true, strength: 1.0 },
-        lora_5: { name: wrap.querySelector('#daz-lora-5')?.value ?? '', enabled: wrap.querySelector('#daz-lora-5-enabled')?.checked ?? true, strength: 1.0 },
-        lora_6: { name: wrap.querySelector('#daz-lora-6')?.value ?? '', enabled: wrap.querySelector('#daz-lora-6-enabled')?.checked ?? true, strength: 1.0 },
-        lora_7: { name: wrap.querySelector('#daz-lora-7')?.value ?? '', enabled: wrap.querySelector('#daz-lora-7-enabled')?.checked ?? true, strength: 1.0 },
-        lora_8: { name: wrap.querySelector('#daz-lora-8')?.value ?? '', enabled: wrap.querySelector('#daz-lora-8-enabled')?.checked ?? true, strength: 1.0 },
+        lora_1: { name: wrap.querySelector('#daz-lora-1')?.value ?? '', enabled: wrap.querySelector('#daz-lora-1-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-1-strength')?.value ?? '1') || 1.0 },
+        lora_2: { name: wrap.querySelector('#daz-lora-2')?.value ?? '', enabled: wrap.querySelector('#daz-lora-2-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-2-strength')?.value ?? '1') || 1.0 },
+        lora_3: { name: wrap.querySelector('#daz-lora-3')?.value ?? '', enabled: wrap.querySelector('#daz-lora-3-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-3-strength')?.value ?? '1') || 1.0 },
+        lora_4: { name: wrap.querySelector('#daz-lora-4')?.value ?? '', enabled: wrap.querySelector('#daz-lora-4-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-4-strength')?.value ?? '1') || 1.0 },
+        lora_5: { name: wrap.querySelector('#daz-lora-5')?.value ?? '', enabled: wrap.querySelector('#daz-lora-5-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-5-strength')?.value ?? '1') || 1.0 },
+        lora_6: { name: wrap.querySelector('#daz-lora-6')?.value ?? '', enabled: wrap.querySelector('#daz-lora-6-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-6-strength')?.value ?? '1') || 1.0 },
+        lora_7: { name: wrap.querySelector('#daz-lora-7')?.value ?? '', enabled: wrap.querySelector('#daz-lora-7-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-7-strength')?.value ?? '1') || 1.0 },
+        lora_8: { name: wrap.querySelector('#daz-lora-8')?.value ?? '', enabled: wrap.querySelector('#daz-lora-8-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-8-strength')?.value ?? '1') || 1.0 },
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
@@ -737,14 +745,14 @@ app.registerExtension({
         vae:             wrap.querySelector('#daz-vae')?.value             ?? '',
         clip:            wrap.querySelector('#daz-clip')?.value            ?? '',
         image_path:      wrap.querySelector('#daz-image-path')?.value      ?? '',
-        lora_1: { name: wrap.querySelector('#daz-lora-1')?.value ?? '', enabled: wrap.querySelector('#daz-lora-1-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_1?.strength ?? 1.0 },
-        lora_2: { name: wrap.querySelector('#daz-lora-2')?.value ?? '', enabled: wrap.querySelector('#daz-lora-2-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_2?.strength ?? 1.0 },
-        lora_3: { name: wrap.querySelector('#daz-lora-3')?.value ?? '', enabled: wrap.querySelector('#daz-lora-3-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_3?.strength ?? 1.0 },
-        lora_4: { name: wrap.querySelector('#daz-lora-4')?.value ?? '', enabled: wrap.querySelector('#daz-lora-4-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_4?.strength ?? 1.0 },
-        lora_5: { name: wrap.querySelector('#daz-lora-5')?.value ?? '', enabled: wrap.querySelector('#daz-lora-5-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_5?.strength ?? 1.0 },
-        lora_6: { name: wrap.querySelector('#daz-lora-6')?.value ?? '', enabled: wrap.querySelector('#daz-lora-6-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_6?.strength ?? 1.0 },
-        lora_7: { name: wrap.querySelector('#daz-lora-7')?.value ?? '', enabled: wrap.querySelector('#daz-lora-7-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_7?.strength ?? 1.0 },
-        lora_8: { name: wrap.querySelector('#daz-lora-8')?.value ?? '', enabled: wrap.querySelector('#daz-lora-8-enabled')?.checked ?? true, strength: node._dazWan22Detail?.lora_8?.strength ?? 1.0 },
+        lora_1: { name: wrap.querySelector('#daz-lora-1')?.value ?? '', enabled: wrap.querySelector('#daz-lora-1-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-1-strength')?.value ?? '1') || 1.0 },
+        lora_2: { name: wrap.querySelector('#daz-lora-2')?.value ?? '', enabled: wrap.querySelector('#daz-lora-2-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-2-strength')?.value ?? '1') || 1.0 },
+        lora_3: { name: wrap.querySelector('#daz-lora-3')?.value ?? '', enabled: wrap.querySelector('#daz-lora-3-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-3-strength')?.value ?? '1') || 1.0 },
+        lora_4: { name: wrap.querySelector('#daz-lora-4')?.value ?? '', enabled: wrap.querySelector('#daz-lora-4-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-4-strength')?.value ?? '1') || 1.0 },
+        lora_5: { name: wrap.querySelector('#daz-lora-5')?.value ?? '', enabled: wrap.querySelector('#daz-lora-5-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-5-strength')?.value ?? '1') || 1.0 },
+        lora_6: { name: wrap.querySelector('#daz-lora-6')?.value ?? '', enabled: wrap.querySelector('#daz-lora-6-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-6-strength')?.value ?? '1') || 1.0 },
+        lora_7: { name: wrap.querySelector('#daz-lora-7')?.value ?? '', enabled: wrap.querySelector('#daz-lora-7-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-7-strength')?.value ?? '1') || 1.0 },
+        lora_8: { name: wrap.querySelector('#daz-lora-8')?.value ?? '', enabled: wrap.querySelector('#daz-lora-8-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-8-strength')?.value ?? '1') || 1.0 },
         master_prompt:   wrap.querySelector('#daz-master-prompt')?.value   ?? '',
         positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
         negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value ?? '',
