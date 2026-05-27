@@ -1,7 +1,10 @@
 import os
 
 import folder_paths
-from .workflow_config_base import load_configs, labels_for_class, make_label, CONFIG_FILE
+from .workflow_config_base import (
+    load_configs, labels_for_class, make_label, CONFIG_FILE,
+    _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
+)
 
 try:
     import comfy.sd
@@ -156,42 +159,43 @@ class WorkflowConfigWan22:
                 f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found in {CONFIG_FILE}"
             )
         entry = configs[name]
+        loras = _get_loras(entry)
 
-        unet_high = _load_unet(entry.get("unet_high", ""))
-        unet_low  = _load_unet(entry.get("unet_low",  ""))
+        unet_high = _load_unet(_get_name(entry.get("unet_high")))
+        unet_low  = _load_unet(_get_name(entry.get("unet_low")))
 
-        lora_1_sd, lora_1_w = _process_lora(entry.get("lora_1", ""))
-        lora_2_sd, lora_2_w = _process_lora(entry.get("lora_2", ""))
-        lora_3_sd, lora_3_w = _process_lora(entry.get("lora_3", ""))
-        lora_4_sd, lora_4_w = _process_lora(entry.get("lora_4", ""))
-        lora_5_sd, lora_5_w = _process_lora(entry.get("lora_5", ""))
-        lora_6_sd, lora_6_w = _process_lora(entry.get("lora_6", ""))
-        lora_7_sd, lora_7_w = _process_lora(entry.get("lora_7", ""))
-        lora_8_sd, lora_8_w = _process_lora(entry.get("lora_8", ""))
+        lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
+        lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
+        lora_3_sd, lora_3_w = _process_lora(loras.get("lora_3", ""))
+        lora_4_sd, lora_4_w = _process_lora(loras.get("lora_4", ""))
+        lora_5_sd, lora_5_w = _process_lora(loras.get("lora_5", ""))
+        lora_6_sd, lora_6_w = _process_lora(loras.get("lora_6", ""))
+        lora_7_sd, lora_7_w = _process_lora(loras.get("lora_7", ""))
+        lora_8_sd, lora_8_w = _process_lora(loras.get("lora_8", ""))
 
         return (
             unet_high,
             unet_low,
-            _load_vae( entry.get("vae",        "")),
-            _load_clip(entry.get("clip",       "")),
-            _load_image(entry.get("image_path", "")),
-            int(entry.get("width",      0)),
-            int(entry.get("height",     0)),
-            int(entry.get("steps",      0)),
-            int(entry.get("split_step", 0)),
-            int(entry.get("seed",       0)),
-            str(entry.get("master_prompt",   "")),
-            str(entry.get("positive_prompt", "")),
-            str(entry.get("negative_prompt", "")),
-            float(entry.get("cfg_high",  0.0)),
-            float(entry.get("cfg_low",   0.0)),
-            int(entry.get("total_frames", 0)),
-            float(entry.get("fps", 0.0)),
+            _load_vae( _get_name(entry.get("vae"))),
+            _load_clip(_get_name(entry.get("clip"))),
+            _load_image(_get_path(entry.get("image_path"))),
+            _get_int(entry.get("width")),
+            _get_int(entry.get("height")),
+            _get_int(entry.get("steps")),
+            _get_int(entry.get("split_step")),
+            _get_int(entry.get("seed")),
+            _get_text(entry.get("master_prompt")),
+            _get_text(entry.get("positive_prompt")),
+            _get_text(entry.get("negative_prompt")),
+            _get_float(entry.get("cfg_high")),
+            _get_float(entry.get("cfg_low")),
+            _get_int(entry.get("total_frames")),
+            _get_float(entry.get("fps")),
             lora_1_sd, lora_2_sd,
             lora_3_sd, lora_4_sd,
             lora_5_sd, lora_6_sd,
             lora_7_sd, lora_8_sd,
-            str(entry.get("filename", "")),
+            _get_file(entry.get("filename")),
             _apply_loras(unet_high, [
                 (lora_1_sd, lora_1_w), (lora_3_sd, lora_3_w),
                 (lora_5_sd, lora_5_w), (lora_7_sd, lora_7_w),

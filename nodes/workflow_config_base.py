@@ -33,17 +33,73 @@ _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lor
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
 
 _missing_warned   = False
-# Tracks the highest schema version seen on disk. _save_configs uses this so an
-# older node installation never downgrades the file version written by a newer one.
+# Tracks the highest schema version seen on disk so an older node installation
+# never downgrades the file version written by a newer one.
 _effective_schema = CURRENT_SCHEMA
 
+
+# ── Schema v1 typed-object accessors ─────────────────────────────────────────
+# All helpers accept either a typed wrapper object or a bare scalar so that
+# legacy (pre-v1 flat) entries continue to load without a separate migration.
+
+def _get_name(val, default: str = "") -> str:
+    """Read a {"name": "…"} field, or fall back to a bare string."""
+    if isinstance(val, dict):
+        return str(val.get("name") or default)
+    return str(val or default)
+
+def _get_text(val, default: str = "") -> str:
+    """Read a {"text": "…"} field, or fall back to a bare string."""
+    if isinstance(val, dict):
+        return str(val.get("text") or default)
+    return str(val or default)
+
+def _get_path(val, default: str = "") -> str:
+    """Read a {"path": "…"} field, or fall back to a bare string."""
+    if isinstance(val, dict):
+        return str(val.get("path") or default)
+    return str(val or default)
+
+def _get_file(val, default: str = "") -> str:
+    """Read a {"file": "…"} field, or fall back to a bare string."""
+    if isinstance(val, dict):
+        return str(val.get("file") or default)
+    return str(val or default)
+
+def _get_int(val, default: int = 0) -> int:
+    """Read a {"value": N} field, or fall back to a bare integer."""
+    if isinstance(val, dict):
+        v = val.get("value")
+        return int(v) if v is not None else default
+    return int(val) if val is not None else default
+
+def _get_float(val, default: float = 0.0) -> float:
+    """Read a {"value": N} field, or fall back to a bare float."""
+    if isinstance(val, dict):
+        v = val.get("value")
+        return float(v) if v is not None else default
+    return float(val) if val is not None else default
+
+def _get_loras(entry: dict) -> dict:
+    """Return the loras mapping from an entry.
+    Schema v1 stores loras under a "loras" parent object; legacy files store
+    them at the top level as lora_1 … lora_8."""
+    loras_obj = entry.get("loras")
+    if isinstance(loras_obj, dict):
+        return loras_obj
+    # Legacy: top-level lora_N fields
+    return {key: entry.get(key, "") for key in _LORA_FIELDS}
+
+
+# ── Lora helpers ──────────────────────────────────────────────────────────────
 
 def _lora_obj(name="", strength=1.0, enabled=True) -> dict:
     return {"name": name, "strength": strength, "enabled": enabled}
 
 
 def _coerce_lora(value, existing=None) -> dict:
-    """Ensure a lora value is stored as an object. Accepts legacy strings or dicts."""
+    """Ensure a lora value is a flat object {name, strength, enabled}.
+    Accepts legacy bare strings or already-correct dicts."""
     if isinstance(value, dict):
         return value
     existing_obj = existing if isinstance(existing, dict) else {}
@@ -53,6 +109,58 @@ def _coerce_lora(value, existing=None) -> dict:
         enabled=existing_obj.get("enabled", True),
     )
 
+
+# ── API normalisation helpers ─────────────────────────────────────────────────
+
+def _flatten_entry(entry: dict) -> dict:
+    """Convert a v1 typed-object entry to flat scalars for REST API responses.
+    Also handles legacy flat entries transparently via the _get_* helpers."""
+    result: dict = {}
+    result["type"] = entry.get("type", "")
+    for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+        result[f] = _get_name(entry.get(f))
+    result["group"]      = _get_name(entry.get("group"))
+    result["image_path"] = _get_path(entry.get("image_path"))
+    result["filename"]   = _get_file(entry.get("filename"))
+    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+        result[f] = _get_text(entry.get(f))
+    for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
+        result[f] = _get_int(entry.get(f))
+    for f in ("cfg_high", "cfg_low", "fps"):
+        result[f] = _get_float(entry.get(f))
+    loras = _get_loras(entry)
+    for key in _LORA_FIELDS:
+        result[key] = _coerce_lora(loras.get(key, ""))
+    return result
+
+
+def _build_entry_fields(data: dict) -> dict:
+    """Convert flat API data (received from JS) into v1 typed-object format for storage.
+    Used when creating a new entry; all fields are expected to be present in data."""
+    result: dict = {}
+    result["type"] = data.get("type", "")
+    for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+        result[f] = {"name": str(data.get(f) or "")}
+    result["group"]      = {"name": str(data.get("group") or "")}
+    result["image_path"] = {"path": str(data.get("image_path") or "")}
+    result["filename"]   = {"file": str(data.get("filename") or "")}
+    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+        result[f] = {"text": str(data.get(f) or "")}
+    for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
+        try:
+            result[f] = {"value": int(data.get(f) or 0)}
+        except (ValueError, TypeError):
+            result[f] = {"value": 0}
+    for f in ("cfg_high", "cfg_low", "fps"):
+        try:
+            result[f] = {"value": float(data.get(f) or 0.0)}
+        except (ValueError, TypeError):
+            result[f] = {"value": 0.0}
+    result["loras"] = {key: _coerce_lora(data.get(key, "")) for key in _LORA_FIELDS}
+    return result
+
+
+# ── Checkpoint loader ─────────────────────────────────────────────────────────
 
 def load_checkpoint(name: str):
     """Load a checkpoint that embeds model+clip+vae (like ComfyUI's Load Checkpoint node).
@@ -70,6 +178,8 @@ def load_checkpoint(name: str):
     )
     return out[0], out[1], out[2]  # model, clip, vae
 
+
+# ── Schema migration ──────────────────────────────────────────────────────────
 
 def _migrate(configs: dict, from_version: int) -> dict:
     """Apply default values for every schema version between from_version+1 and CURRENT_SCHEMA.
@@ -124,6 +234,8 @@ def load_configs() -> dict:
     return configs
 
 
+# ── Label helpers ─────────────────────────────────────────────────────────────
+
 def make_label(name: str, created_at: str) -> str:
     try:
         dt = datetime.fromisoformat(created_at)
@@ -146,8 +258,8 @@ def configs_with_type_for_class(cls: str) -> list[dict]:
     return [
         {
             "label": make_label(name, entry.get("created_at", "")),
-            "type":  entry.get("type",  ""),
-            "group": entry.get("group", ""),
+            "type":  entry.get("type", ""),
+            "group": _get_name(entry.get("group", "")),
         }
         for name, entry in configs.items()
         if entry.get("class") == cls
@@ -190,8 +302,8 @@ try:
         )
         if name is None:
             return web.json_response({"error": f"Config '{label}' not found."})
-        entry = configs[name]
-        result = {k: v for k, v in entry.items() if k not in ("class", "created_at")}
+        entry  = configs[name]
+        result = _flatten_entry(entry)
         result["name"] = name
         return web.json_response(result)
 
@@ -236,26 +348,49 @@ try:
             return web.json_response({"error": f"Config '{label}' not found."}, status=404)
 
         entry = configs[name]
-        for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
-                      "master_prompt", "positive_prompt", "negative_prompt",
-                      "audio_vae", "type", "group", "filename", "checkpoint", "clip_2"):
-            if field in data:
-                entry[field] = data[field]
-        for field in _LORA_FIELDS:
-            if field in data:
-                entry[field] = _coerce_lora(data[field], entry.get(field))
-        for field in ("width", "height", "steps", "split_step", "seed", "total_frames"):
-            if field in data:
+
+        # Update typed-object fields — only those present in the payload
+        if "type" in data:
+            entry["type"] = data["type"]
+        for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+            if f in data:
+                entry[f] = {"name": str(data[f] or "")}
+        if "group" in data:
+            entry["group"] = {"name": str(data["group"] or "")}
+        if "image_path" in data:
+            entry["image_path"] = {"path": str(data["image_path"] or "")}
+        if "filename" in data:
+            entry["filename"] = {"file": str(data["filename"] or "")}
+        for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+            if f in data:
+                entry[f] = {"text": str(data[f] or "")}
+        for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
+            if f in data:
                 try:
-                    entry[field] = int(data[field])
+                    entry[f] = {"value": int(data[f] or 0)}
                 except (ValueError, TypeError):
                     pass
-        for field in ("fps", "cfg_high", "cfg_low"):
-            if field in data:
+        for f in ("cfg_high", "cfg_low", "fps"):
+            if f in data:
                 try:
-                    entry[field] = float(data[field])
+                    entry[f] = {"value": float(data[f] or 0.0)}
                 except (ValueError, TypeError):
                     pass
+
+        # Migrate legacy top-level lora fields into the "loras" dict on first touch,
+        # then update only the lora slots present in the payload.
+        if not isinstance(entry.get("loras"), dict):
+            entry["loras"] = {
+                key: _coerce_lora(entry.get(key, "")) for key in _LORA_FIELDS
+            }
+        for lora_key in _LORA_FIELDS:
+            if lora_key in data:
+                entry["loras"][lora_key] = _coerce_lora(
+                    data[lora_key], entry["loras"].get(lora_key)
+                )
+        # Remove legacy top-level lora fields now that they live under "loras"
+        for lora_key in _LORA_FIELDS:
+            entry.pop(lora_key, None)
 
         new_name = data.get("new_name", "").strip()
         if new_name and new_name != name:
@@ -301,22 +436,7 @@ try:
             return web.json_response({"error": f"A config named '{name}' already exists."}, status=409)
 
         entry = {"class": cls, "created_at": datetime.now().isoformat()}
-        for field in ("unet_high", "unet_low", "vae", "clip", "image_path",
-                      "master_prompt", "positive_prompt", "negative_prompt",
-                      "audio_vae", "type", "group", "filename", "checkpoint", "clip_2"):
-            entry[field] = data.get(field, "")
-        for field in _LORA_FIELDS:
-            entry[field] = _coerce_lora(data.get(field, ""))
-        for field in ("width", "height", "steps", "split_step", "seed", "total_frames"):
-            try:
-                entry[field] = int(data.get(field, 0))
-            except (ValueError, TypeError):
-                entry[field] = 0
-        for field in ("fps", "cfg_high", "cfg_low"):
-            try:
-                entry[field] = float(data.get(field, 0.0))
-            except (ValueError, TypeError):
-                entry[field] = 0.0
+        entry.update(_build_entry_fields(data))
 
         configs[name] = entry
 
