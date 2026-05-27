@@ -40,7 +40,7 @@ _effective_schema = CURRENT_SCHEMA
 
 # ── Schema v1 typed-object accessors ─────────────────────────────────────────
 # All helpers accept either a typed wrapper object or a bare scalar so that
-# legacy (pre-v1 flat) entries continue to load without a separate migration.
+# legacy (pre-v1 flat) entries continue to load without a separate migration step.
 
 def _get_name(val, default: str = "") -> str:
     """Read a {"name": "…"} field, or fall back to a bare string."""
@@ -110,53 +110,60 @@ def _coerce_lora(value, existing=None) -> dict:
     )
 
 
-# ── API normalisation helpers ─────────────────────────────────────────────────
+# ── API normalisation ─────────────────────────────────────────────────────────
 
-def _flatten_entry(entry: dict) -> dict:
-    """Convert a v1 typed-object entry to flat scalars for REST API responses.
-    Also handles legacy flat entries transparently via the _get_* helpers."""
-    result: dict = {}
-    result["type"] = entry.get("type", "")
+def _normalize_entry(entry: dict) -> dict:
+    """Ensure an entry is in v1 typed-object format before sending to the JS client.
+    Creates a shallow copy and upgrades any legacy flat fields — does not modify the
+    original. After this, every field the JS reads is a typed object (or flat for
+    scalars like 'type'), and loras live under a 'loras' dict."""
+    result = dict(entry)
+
     for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
-        result[f] = _get_name(entry.get(f))
-    result["group"]      = _get_name(entry.get("group"))
-    result["image_path"] = _get_path(entry.get("image_path"))
-    result["filename"]   = _get_file(entry.get("filename"))
+        v = result.get(f)
+        if not isinstance(v, dict):
+            result[f] = {"name": str(v or "")}
+
+    v = result.get("group")
+    if not isinstance(v, dict):
+        result["group"] = {"name": str(v or "")}
+
+    v = result.get("image_path")
+    if not isinstance(v, dict):
+        result["image_path"] = {"path": str(v or "")}
+
+    v = result.get("filename")
+    if not isinstance(v, dict):
+        result["filename"] = {"file": str(v or "")}
+
     for f in ("master_prompt", "positive_prompt", "negative_prompt"):
-        result[f] = _get_text(entry.get(f))
+        v = result.get(f)
+        if not isinstance(v, dict):
+            result[f] = {"text": str(v or "")}
+
     for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
-        result[f] = _get_int(entry.get(f))
+        v = result.get(f)
+        if not isinstance(v, dict):
+            try:
+                result[f] = {"value": int(v or 0)}
+            except (ValueError, TypeError):
+                result[f] = {"value": 0}
+
     for f in ("cfg_high", "cfg_low", "fps"):
-        result[f] = _get_float(entry.get(f))
-    loras = _get_loras(entry)
+        v = result.get(f)
+        if not isinstance(v, dict):
+            try:
+                result[f] = {"value": float(v or 0.0)}
+            except (ValueError, TypeError):
+                result[f] = {"value": 0.0}
+
+    # Ensure loras live under "loras" dict; migrate legacy top-level lora_N fields
+    if not isinstance(result.get("loras"), dict):
+        result["loras"] = {key: _coerce_lora(result.get(key, "")) for key in _LORA_FIELDS}
+    # Remove any legacy top-level lora fields from the response
     for key in _LORA_FIELDS:
-        result[key] = _coerce_lora(loras.get(key, ""))
-    return result
+        result.pop(key, None)
 
-
-def _build_entry_fields(data: dict) -> dict:
-    """Convert flat API data (received from JS) into v1 typed-object format for storage.
-    Used when creating a new entry; all fields are expected to be present in data."""
-    result: dict = {}
-    result["type"] = data.get("type", "")
-    for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
-        result[f] = {"name": str(data.get(f) or "")}
-    result["group"]      = {"name": str(data.get("group") or "")}
-    result["image_path"] = {"path": str(data.get("image_path") or "")}
-    result["filename"]   = {"file": str(data.get("filename") or "")}
-    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
-        result[f] = {"text": str(data.get(f) or "")}
-    for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
-        try:
-            result[f] = {"value": int(data.get(f) or 0)}
-        except (ValueError, TypeError):
-            result[f] = {"value": 0}
-    for f in ("cfg_high", "cfg_low", "fps"):
-        try:
-            result[f] = {"value": float(data.get(f) or 0.0)}
-        except (ValueError, TypeError):
-            result[f] = {"value": 0.0}
-    result["loras"] = {key: _coerce_lora(data.get(key, "")) for key in _LORA_FIELDS}
     return result
 
 
@@ -192,9 +199,7 @@ def _migrate(configs: dict, from_version: int) -> dict:
 
 
 def _save_configs(configs: dict) -> None:
-    """Write configs to disk prefixed with the schema meta block.
-    Always uses _effective_schema (the max of this node's CURRENT_SCHEMA and whatever
-    was already on disk) so an older node never downgrades the file version."""
+    """Write configs to disk prefixed with the schema meta block."""
     data: dict = {_META_KEY: {"schema_version": _effective_schema}}
     data.update(configs)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -302,8 +307,10 @@ try:
         )
         if name is None:
             return web.json_response({"error": f"Config '{label}' not found."})
-        entry  = configs[name]
-        result = _flatten_entry(entry)
+        # Normalize to v1 typed-object format; strip internal fields; add name
+        result = _normalize_entry(configs[name])
+        result.pop("class",      None)
+        result.pop("created_at", None)
         result["name"] = name
         return web.json_response(result)
 
@@ -315,8 +322,6 @@ try:
         try:
             import folder_paths as fp
             if folder == "input":
-                # "input" is not in folder_names_and_paths; scan it directly
-                # to match the behaviour of ComfyUI's built-in Load Image node.
                 d = fp.get_input_directory()
                 files = sorted([
                     f for f in os.listdir(d)
@@ -349,48 +354,69 @@ try:
 
         entry = configs[name]
 
-        # Update typed-object fields — only those present in the payload
+        # JS sends typed objects directly; store them as-is.
+        # Defensive fallback: if a bare scalar arrives (e.g. from legacy JS), wrap it.
         if "type" in data:
-            entry["type"] = data["type"]
+            entry["type"] = data["type"]   # stays flat
+
         for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
             if f in data:
-                entry[f] = {"name": str(data[f] or "")}
+                v = data[f]
+                entry[f] = v if isinstance(v, dict) else {"name": str(v or "")}
+
         if "group" in data:
-            entry["group"] = {"name": str(data["group"] or "")}
+            v = data["group"]
+            entry["group"] = v if isinstance(v, dict) else {"name": str(v or "")}
+
         if "image_path" in data:
-            entry["image_path"] = {"path": str(data["image_path"] or "")}
+            v = data["image_path"]
+            entry["image_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
+
         if "filename" in data:
-            entry["filename"] = {"file": str(data["filename"] or "")}
+            v = data["filename"]
+            entry["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
+
         for f in ("master_prompt", "positive_prompt", "negative_prompt"):
             if f in data:
-                entry[f] = {"text": str(data[f] or "")}
+                v = data[f]
+                entry[f] = v if isinstance(v, dict) else {"text": str(v or "")}
+
         for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
             if f in data:
-                try:
-                    entry[f] = {"value": int(data[f] or 0)}
-                except (ValueError, TypeError):
-                    pass
+                v = data[f]
+                if isinstance(v, dict):
+                    entry[f] = v
+                else:
+                    try:
+                        entry[f] = {"value": int(v or 0)}
+                    except (ValueError, TypeError):
+                        pass
+
         for f in ("cfg_high", "cfg_low", "fps"):
             if f in data:
-                try:
-                    entry[f] = {"value": float(data[f] or 0.0)}
-                except (ValueError, TypeError):
-                    pass
+                v = data[f]
+                if isinstance(v, dict):
+                    entry[f] = v
+                else:
+                    try:
+                        entry[f] = {"value": float(v or 0.0)}
+                    except (ValueError, TypeError):
+                        pass
 
-        # Migrate legacy top-level lora fields into the "loras" dict on first touch,
-        # then update only the lora slots present in the payload.
-        if not isinstance(entry.get("loras"), dict):
-            entry["loras"] = {
-                key: _coerce_lora(entry.get(key, "")) for key in _LORA_FIELDS
-            }
-        for lora_key in _LORA_FIELDS:
-            if lora_key in data:
-                entry["loras"][lora_key] = _coerce_lora(
-                    data[lora_key], entry["loras"].get(lora_key)
-                )
-        # Remove legacy top-level lora fields now that they live under "loras"
-        for lora_key in _LORA_FIELDS:
-            entry.pop(lora_key, None)
+        # Loras: JS sends {"loras": {"lora_1": {...}}} — may be a partial update (toggle)
+        # or a full set (edit form save). Merge slot-by-slot into entry["loras"].
+        if "loras" in data and isinstance(data["loras"], dict):
+            if not isinstance(entry.get("loras"), dict):
+                # Migrate legacy top-level lora_N fields on first touch
+                entry["loras"] = {key: _coerce_lora(entry.get(key, "")) for key in _LORA_FIELDS}
+            for lora_key, lora_val in data["loras"].items():
+                if lora_key in _LORA_FIELDS:
+                    entry["loras"][lora_key] = _coerce_lora(
+                        lora_val, entry["loras"].get(lora_key)
+                    )
+            # Clean up any legacy top-level lora fields
+            for key in _LORA_FIELDS:
+                entry.pop(key, None)
 
         new_name = data.get("new_name", "").strip()
         if new_name and new_name != name:
@@ -435,8 +461,49 @@ try:
         if name in configs:
             return web.json_response({"error": f"A config named '{name}' already exists."}, status=409)
 
-        entry = {"class": cls, "created_at": datetime.now().isoformat()}
-        entry.update(_build_entry_fields(data))
+        entry: dict = {"class": cls, "created_at": datetime.now().isoformat()}
+
+        entry["type"] = data.get("type", "")
+
+        for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+            v = data.get(f)
+            entry[f] = v if isinstance(v, dict) else {"name": str(v or "")}
+
+        v = data.get("group")
+        entry["group"] = v if isinstance(v, dict) else {"name": str(v or "")}
+
+        v = data.get("image_path")
+        entry["image_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
+
+        v = data.get("filename")
+        entry["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
+
+        for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+            v = data.get(f)
+            entry[f] = v if isinstance(v, dict) else {"text": str(v or "")}
+
+        for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
+            v = data.get(f)
+            if isinstance(v, dict):
+                entry[f] = v
+            else:
+                try:
+                    entry[f] = {"value": int(v or 0)}
+                except (ValueError, TypeError):
+                    entry[f] = {"value": 0}
+
+        for f in ("cfg_high", "cfg_low", "fps"):
+            v = data.get(f)
+            if isinstance(v, dict):
+                entry[f] = v
+            else:
+                try:
+                    entry[f] = {"value": float(v or 0.0)}
+                except (ValueError, TypeError):
+                    entry[f] = {"value": 0.0}
+
+        loras_data = data.get("loras") if isinstance(data.get("loras"), dict) else {}
+        entry["loras"] = {key: _coerce_lora(loras_data.get(key, "")) for key in _LORA_FIELDS}
 
         configs[name] = entry
 
