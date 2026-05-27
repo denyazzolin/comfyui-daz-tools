@@ -28,8 +28,8 @@ _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
 
-# Fields added per schema version (additive only — new fields with default values only,
-# never modify or transform existing fields). Add a new entry here for each future version.
+# Purely additive field defaults per schema version (setdefault only — no structural changes).
+# For structural changes (field renames, type changes, grouping), add a branch in _migrate.
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
 
 _missing_warned   = False
@@ -209,9 +209,17 @@ def load_checkpoint(name: str):
 # ── Schema migration ──────────────────────────────────────────────────────────
 
 def _migrate(configs: dict, from_version: int) -> dict:
-    """Apply default values for every schema version between from_version+1 and CURRENT_SCHEMA.
-    Only adds new fields via setdefault — never modifies existing attribute values."""
+    """Apply structural changes and field defaults for every schema version between
+    from_version+1 and CURRENT_SCHEMA (inclusive).
+
+    Structural migrations (whole-entry transformations) go in the version branches below.
+    Purely additive new-field defaults go in _SCHEMA_DEFAULTS.
+    """
     for version in range(from_version + 1, CURRENT_SCHEMA + 1):
+        if version == 1:
+            # v0 → v1: convert legacy flat-format entries to typed-object format.
+            # _normalize_entry is idempotent — already-typed fields are left unchanged.
+            configs = {name: _normalize_entry(entry) for name, entry in configs.items()}
         for entry in configs.values():
             for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
                 entry.setdefault(field, default)
@@ -244,11 +252,18 @@ def load_configs() -> dict:
         print("[DAZ TOOLS] WorkflowConfig: config file has unexpected format")
         return {}
 
-    file_version = raw.get(_META_KEY, {}).get("schema_version", 1)
+    # Legacy files have no _meta block at all → treat as v0 so migration is triggered.
+    file_version = raw.get(_META_KEY, {}).get("schema_version", 0)
+    # Never downgrade the on-disk version: if a newer node wrote v2, preserve that.
     _effective_schema = max(file_version, CURRENT_SCHEMA)
     configs = {k: v for k, v in raw.items() if k != _META_KEY}
 
-    if file_version < CURRENT_SCHEMA:
+    if file_version > CURRENT_SCHEMA:
+        # File was written by a newer node. Read what we understand; do not migrate.
+        # Writes (edits, saves) will preserve the higher version number.
+        print(f"[DAZ TOOLS] WorkflowConfig: config file is schema v{file_version} "
+              f"(node understands v{CURRENT_SCHEMA}) — skipping migration")
+    elif file_version < CURRENT_SCHEMA:
         print(f"[DAZ TOOLS] WorkflowConfig: migrating schema v{file_version} → v{CURRENT_SCHEMA}")
         configs = _migrate(configs, file_version)
         try:
