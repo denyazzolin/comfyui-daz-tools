@@ -251,7 +251,6 @@ app.registerExtension({
         const filename  = imagePath.split(/[\\/]/).pop()
         if (filename) showImagePreview(filename)
       })
-      updateOutputLabels(node, data)
 
       const loraKeys = ['lora_1','lora_2','lora_3','lora_4','lora_5','lora_6']
       loraKeys.forEach((key, i) => {
@@ -290,6 +289,7 @@ app.registerExtension({
         })
       })
 
+      updateOutputLabels(node, data)
       node.setDirtyCanvas(true, true)
     }
 
