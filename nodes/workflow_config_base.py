@@ -209,17 +209,14 @@ def load_checkpoint(name: str):
 # ── Schema migration ──────────────────────────────────────────────────────────
 
 def _migrate(configs: dict, from_version: int) -> dict:
-    """Apply structural changes and field defaults for every schema version between
+    """Apply field defaults and structural changes for every schema version between
     from_version+1 and CURRENT_SCHEMA (inclusive).
 
-    Structural migrations (whole-entry transformations) go in the version branches below.
-    Purely additive new-field defaults go in _SCHEMA_DEFAULTS.
+    v1 is the base schema — no migration exists below it. Add future versions here:
+      - Additive new-field defaults → _SCHEMA_DEFAULTS[N]
+      - Structural changes (renames, type changes, grouping) → add an `if version == N:` branch
     """
     for version in range(from_version + 1, CURRENT_SCHEMA + 1):
-        if version == 1:
-            # v0 → v1: convert legacy flat-format entries to typed-object format.
-            # _normalize_entry is idempotent — already-typed fields are left unchanged.
-            configs = {name: _normalize_entry(entry) for name, entry in configs.items()}
         for entry in configs.values():
             for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
                 entry.setdefault(field, default)
@@ -252,8 +249,9 @@ def load_configs() -> dict:
         print("[DAZ TOOLS] WorkflowConfig: config file has unexpected format")
         return {}
 
-    # Legacy files have no _meta block at all → treat as v0 so migration is triggered.
-    file_version = raw.get(_META_KEY, {}).get("schema_version", 0)
+    # v1 is the base schema. Files without a _meta block are treated as v1 — the
+    # _get_*() helpers handle both flat and typed-object values at read time.
+    file_version = raw.get(_META_KEY, {}).get("schema_version", 1)
     # Never downgrade the on-disk version: if a newer node wrote v2, preserve that.
     _effective_schema = max(file_version, CURRENT_SCHEMA)
     configs = {k: v for k, v in raw.items() if k != _META_KEY}
