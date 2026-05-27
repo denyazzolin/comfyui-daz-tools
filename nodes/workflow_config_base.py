@@ -70,15 +70,35 @@ def _get_int(val, default: int = 0) -> int:
     """Read a {"value": N} field, or fall back to a bare integer."""
     if isinstance(val, dict):
         v = val.get("value")
-        return int(v) if v is not None else default
-    return int(val) if val is not None else default
+        if v is None:
+            return default
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return default
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
 
 def _get_float(val, default: float = 0.0) -> float:
     """Read a {"value": N} field, or fall back to a bare float."""
     if isinstance(val, dict):
         v = val.get("value")
-        return float(v) if v is not None else default
-    return float(val) if val is not None else default
+        if v is None:
+            return default
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return default
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
 
 def _get_loras(entry: dict) -> dict:
     """Return the loras mapping from an entry.

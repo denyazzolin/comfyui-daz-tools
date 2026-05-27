@@ -214,6 +214,8 @@ app.registerExtension({
         loraEnabled(loras.lora_7) ? loraName(loras.lora_7) : '',
         loraEnabled(loras.lora_8) ? loraName(loras.lora_8) : '',
         fFile(data.filename),
+        fName(data.unet_high),
+        fName(data.unet_low),
       ]
       values.forEach((val, i) => {
         if (!node.outputs[i]) return
