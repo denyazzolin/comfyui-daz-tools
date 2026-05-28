@@ -100,6 +100,14 @@ def _get_float(val, default: float = 0.0) -> float:
     except (ValueError, TypeError):
         return default
 
+_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3}
+
+def _get_prompt_type_int(val, default: int = 1) -> int:
+    """Return 1=smart, 2=beats, 3=simple from a positive_prompt typed object."""
+    t = val.get("type", "smart") if isinstance(val, dict) else "smart"
+    return _PROMPT_TYPE_TO_INT.get(t, default)
+
+
 def _get_loras(entry: dict) -> dict:
     """Return the loras mapping from an entry.
     Schema v1 stores loras under a "loras" parent object; legacy files store
