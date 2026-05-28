@@ -4,6 +4,7 @@ import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
+    _get_prompt_type_int,
 )
 
 try:
@@ -121,6 +122,7 @@ class WorkflowConfigWan22:
         "IMAGE",
         "INT", "INT", "INT", "INT", "INT",
         "STRING", "STRING", "STRING",
+        "INT",
         "FLOAT", "FLOAT", "INT",
         "FLOAT",
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
@@ -134,6 +136,7 @@ class WorkflowConfigWan22:
         "image",
         "width", "height", "steps", "split_step", "seed",
         "master_prmt", "pos_prompt", "neg_prompt",
+        "prompt_type",
         "cfg_high", "cfg_low", "total_frames",
         "fps",
         "lora_1_high", "lora_1_low",
@@ -187,6 +190,7 @@ class WorkflowConfigWan22:
             _get_text(entry.get("master_prompt")),
             _get_text(entry.get("positive_prompt")),
             _get_text(entry.get("negative_prompt")),
+            _get_prompt_type_int(entry.get("positive_prompt")),
             _get_float(entry.get("cfg_high")),
             _get_float(entry.get("cfg_low")),
             _get_int(entry.get("total_frames")),

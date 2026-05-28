@@ -81,6 +81,7 @@ app.registerExtension({
     function fText(val)  { return (val && typeof val === 'object') ? (val.text  ?? '') : (val ?? '') }
     function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
     function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
+    function fType(val)  { return (val && typeof val === 'object') ? (val.type  ?? 'smart') : 'smart' }
 
     function row(label, value) {
       const v = value !== undefined && value !== '' && value !== 0
@@ -203,6 +204,7 @@ app.registerExtension({
         trunc(fText(data.master_prompt), 20),
         trunc(fText(data.positive_prompt), 20),
         trunc(fText(data.negative_prompt), 20),
+        fType(data.positive_prompt),
         fValue(data.cfg_high), fValue(data.cfg_low),
         fValue(data.total_frames), fValue(data.fps),
         loraEnabled(loras.lora_1) ? loraName(loras.lora_1) : '',
@@ -251,9 +253,16 @@ app.registerExtension({
                    border-radius:3px;cursor:pointer">Edit</button>
         </div>
         ${renderDetailHtml(data)}
+        <div style="padding:4px 8px 6px">
+          <button id="daz-prompt-editor-btn"
+            style="font-family:monospace;font-size:11px;padding:3px 10px;width:100%;
+                   background:#000000;color:#ddd;border:1px solid #54af7b;
+                   border-radius:3px;cursor:pointer">Prompt Editor</button>
+        </div>
       `
       wrap.querySelector('#daz-new-btn')?.addEventListener('click', () => enterEditForm(node, true))
       wrap.querySelector('#daz-edit-btn')?.addEventListener('click', () => enterEditForm(node, false))
+      wrap.querySelector('#daz-prompt-editor-btn')?.addEventListener('click', () => openPromptEditorFromUse(node))
       wrap.querySelector('#daz-use-preview-btn')?.addEventListener('click', () => {
         const filename = fPath(data.image_path).split(/[\\/]/).pop()
         if (filename) showImagePreview(filename)
@@ -519,11 +528,22 @@ app.registerExtension({
           </tr>
           <tr>
             <td ${tdLTop}>Positive Prompt</td>
-            <td ${tdR}><textarea id="daz-positive-prompt" style="${taStyle}">${esc(fText(data.positive_prompt))}</textarea></td>
+            <td ${tdR}>
+              <textarea id="daz-positive-prompt" style="${taStyle}">${esc(fText(data.positive_prompt))}</textarea>
+              <input type="hidden" id="daz-positive-prompt-type" value="${esc(fType(data.positive_prompt))}">
+            </td>
           </tr>
           <tr>
             <td ${tdLTop}>Negative Prompt</td>
             <td ${tdR}><textarea id="daz-negative-prompt" style="${taStyle}">${esc(fText(data.negative_prompt))}</textarea></td>
+          </tr>
+          <tr>
+            <td colspan="4" style="padding:4px 8px 6px">
+              <button id="daz-prompt-editor-btn"
+                style="font-family:monospace;font-size:11px;padding:3px 10px;width:100%;
+                       background:#000000;color:#ddd;border:1px solid #54af7b;
+                       border-radius:3px;cursor:pointer">Prompt Editor</button>
+            </td>
           </tr>
           ${divider}
           <tr>
@@ -604,7 +624,84 @@ app.registerExtension({
         wrap.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, wrap))
       }
 
+      wrap.querySelector('#daz-prompt-editor-btn')?.addEventListener('click', () => {
+        openPromptEditorFromEdit(node, wrap, isNew)
+      })
+
       node.setDirtyCanvas(true, true)
+    }
+
+    // ── Prompt Editor integration ─────────────────────────────────────────────
+
+    function openPromptEditorFromUse(node) {
+      if (!window.DazPromptEditor) return
+      window.DazPromptEditor.open({
+        detail: node._dazWan22Detail || {},
+        onSave: async (updates) => {
+          const cw    = node.widgets?.find(w => w.name === 'config')
+          const label = cw?.value
+          if (!label || label === '(no configs)') return
+          const detail = node._dazWan22Detail || {}
+          try {
+            const r = await fetch('/daz/workflow-config-save', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({
+                label,
+                class:           CLASS,
+                new_name:        detail.name || '',
+                master_prompt:   updates.master_prompt,
+                positive_prompt: updates.positive_prompt,
+                negative_prompt: updates.negative_prompt,
+                total_frames:    updates.total_frames,
+                fps:             updates.fps,
+              }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+            if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+            if (cw) cw.value = result.label
+            syncWidget(node)
+            const detailResp = await fetch(
+              `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
+            )
+            if (detailResp.ok) node._dazWan22Detail = await detailResp.json()
+            renderUseMode(node, node._dazWan22Detail, false)
+          } catch (err) {
+            console.warn('[DAZ TOOLS] WorkflowConfigWan22: prompt editor save failed', err)
+          }
+        },
+      })
+    }
+
+    function openPromptEditorFromEdit(node, wrap, isNewConfig = false) {
+      if (!window.DazPromptEditor) return
+      const posType = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
+      window.DazPromptEditor.open({
+        detail: {
+          master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
+          positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },
+          negative_prompt: { text: wrap.querySelector('#daz-negative-prompt')?.value ?? '' },
+          total_frames:    { value: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) },
+          fps:             { value: parseFloat(wrap.querySelector('#daz-fps')?.value ?? '0') },
+        },
+        onSave: (updates) => {
+          const masterTA = wrap.querySelector('#daz-master-prompt')
+          if (masterTA) masterTA.value = updates.master_prompt.text
+          const posTA = wrap.querySelector('#daz-positive-prompt')
+          if (posTA) posTA.value = updates.positive_prompt.text
+          const posTypeInput = wrap.querySelector('#daz-positive-prompt-type')
+          if (posTypeInput) posTypeInput.value = updates.positive_prompt.type
+          const negTA = wrap.querySelector('#daz-negative-prompt')
+          if (negTA) negTA.value = updates.negative_prompt.text
+          const framesInput = wrap.querySelector('#daz-total-frames')
+          if (framesInput) framesInput.value = updates.total_frames.value
+          const fpsInput = wrap.querySelector('#daz-fps')
+          if (fpsInput) fpsInput.value = updates.fps.value
+          if (!isNewConfig) saveConfig(node, wrap)
+        },
+      })
     }
 
     // ── Build typed-object payload from the edit form ─────────────────────────
@@ -627,7 +724,10 @@ app.registerExtension({
         image_path:      { path: wrap.querySelector('#daz-image-path')?.value      ?? '' },
         loras,
         master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
-        positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '' },
+        positive_prompt: {
+          text: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
+          type: wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart',
+        },
         negative_prompt: { text: wrap.querySelector('#daz-negative-prompt')?.value ?? '' },
         filename:        { file: wrap.querySelector('#daz-filename')?.value         ?? '' },
         width:        { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },

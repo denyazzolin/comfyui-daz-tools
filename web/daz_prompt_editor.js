@@ -1,0 +1,452 @@
+// Shared floating Prompt Editor panel for WorkflowConfig nodes.
+// Exposes window.DazPromptEditor.open({ detail, onSave })
+// onSave receives: { master_prompt, positive_prompt, negative_prompt, total_frames, fps }
+//   where positive_prompt is { text, type } and the rest are typed objects.
+
+;(function () {
+  'use strict'
+
+  let _overlay = null
+
+  // ── Constants ─────────────────────────────────────────────────────────────
+
+  const TA_STYLE =
+    'box-sizing:border-box;width:100%;background:#000;color:#ddd;' +
+    'border:1px solid #444;border-radius:4px;font-family:monospace;' +
+    'font-size:11px;padding:4px 6px;resize:vertical'
+
+  const NUM_STYLE =
+    'width:56px;background:#000;color:#ddd;border:1px solid #555;' +
+    'border-radius:3px;padding:2px 4px;font-family:monospace;font-size:11px'
+
+  const SEG_PALETTE = [
+    '#1e5c8a','#1e7a3a','#7a5210','#6a1e6a',
+    '#5c1e1e','#1e5c5c','#6a6a1e','#4a2a1e',
+  ]
+
+  // ── HTML helpers ──────────────────────────────────────────────────────────
+
+  function esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  function mkBtn(id, label, border, bg, color) {
+    return `<button id="${id}"
+      style="font-family:monospace;font-size:11px;padding:2px 8px;border-radius:3px;
+             cursor:pointer;border:1px solid ${border};background:${bg};color:${color}"
+      >${label}</button>`
+  }
+
+  function mkRadio(id, name, value, label, checked) {
+    return `<label style="display:flex;align-items:center;gap:3px;cursor:pointer;color:#ccc;font-size:11px">
+      <input type="radio" id="${id}" name="${name}" value="${value}"${checked ? ' checked' : ''}
+        style="cursor:pointer;accent-color:#54af7b;margin:0">
+      ${label}
+    </label>`
+  }
+
+  function el(tag, css) {
+    const e = document.createElement(tag)
+    if (css) e.style.cssText = css
+    return e
+  }
+
+  function greenDiv() {
+    return el('div', 'border-top:1px solid #54af7b;margin:0 10px')
+  }
+
+  function sectionLabel(text) {
+    return `<span style="color:#888;font-size:10px;letter-spacing:1px">${text}</span>`
+  }
+
+  // ── Segment parsing ───────────────────────────────────────────────────────
+
+  function parseSegments(text, type, totalFrames) {
+    text = (text || '').trim()
+    if (!text) return [{ text: '', frames: Math.max(1, totalFrames) }]
+
+    if (type === 'smart') {
+      const parts = text.split(/\s*\|\s*/)
+      return parts.map(part => {
+        const m = part.match(/^([\s\S]*?)\s*\[(\d+)\s*[-–]\s*(\d+)\]\s*$/)
+        if (m) return { text: m[1].trim(), frames: Math.max(1, parseInt(m[3]) - parseInt(m[2])) }
+        return { text: part.trim(), frames: Math.max(1, Math.floor(totalFrames / parts.length)) }
+      })
+    }
+
+    if (type === 'beats') {
+      const lines = text.split('\n').filter(l => l.trim())
+      if (!lines.length) return [{ text: '', frames: totalFrames }]
+      return lines.map(line => {
+        const m = line.match(/^\[(\d+)\s*[-–]\s*(\d+)\]\s*([\s\S]*)$/)
+        if (m) return { text: m[3].trim(), frames: Math.max(1, parseInt(m[2]) - parseInt(m[1])) }
+        return { text: line.trim(), frames: Math.max(1, Math.floor(totalFrames / lines.length)) }
+      })
+    }
+
+    // simple: split on newlines, equalize frames
+    const lines = text.split('\n')
+    const n     = lines.length
+    const base  = Math.max(1, Math.floor(totalFrames / n))
+    return lines.map((l, i) => ({
+      text:   l,
+      frames: i === n - 1 ? Math.max(1, totalFrames - base * (n - 1)) : base,
+    }))
+  }
+
+  // ── Segment writing ───────────────────────────────────────────────────────
+
+  function writeSegments(segments, type) {
+    if (!segments.length) return ''
+    if (type === 'smart') {
+      let pos = 0
+      return segments.map(s => {
+        const end  = pos + s.frames
+        const part = `${s.text} [${pos}-${end}]`
+        pos = end
+        return part
+      }).join(' | ')
+    }
+    if (type === 'beats') {
+      let pos = 0
+      return segments.map(s => {
+        const end  = pos + s.frames
+        const line = `[${pos}-${end}] ${s.text}`
+        pos = end
+        return line
+      }).join('\n')
+    }
+    // simple
+    return segments.map(s => s.text).join('\n')
+  }
+
+  // ── Main open ─────────────────────────────────────────────────────────────
+
+  function open({ detail, onSave }) {
+    if (_overlay) _overlay.remove()
+
+    const fText  = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
+    const fValue = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
+
+    let totalFrames = Math.max(1, fValue(detail.total_frames))
+    let fps         = fValue(detail.fps)
+    let masterText  = fText(detail.master_prompt)
+    let negText     = fText(detail.negative_prompt)
+    let promptType  = (detail.positive_prompt && typeof detail.positive_prompt === 'object')
+                        ? (detail.positive_prompt.type || 'smart') : 'smart'
+    let segments    = parseSegments(fText(detail.positive_prompt), promptType, totalFrames)
+    let selIdx      = 0
+
+    // ── Overlay / panel ───────────────────────────────────────────────────
+
+    _overlay = el('div',
+      'position:fixed;top:0;left:0;right:0;bottom:0;' +
+      'background:rgba(0,0,0,0.75);z-index:10000;' +
+      'display:flex;align-items:center;justify-content:center')
+
+    const panel = el('div',
+      'background:#1a1a1a;border:1px solid #444;border-radius:6px;' +
+      'width:640px;max-height:90vh;overflow-y:auto;overflow-x:hidden;' +
+      'font-family:monospace;font-size:12px;color:#ddd;' +
+      'display:flex;flex-direction:column')
+
+    _overlay.appendChild(panel)
+    document.body.appendChild(_overlay)
+    panel.addEventListener('click',    e => e.stopPropagation())
+    _overlay.addEventListener('click', () => doCancel())
+
+    // ── State helpers ─────────────────────────────────────────────────────
+
+    function clampSel() {
+      if (selIdx >= segments.length) selIdx = Math.max(0, segments.length - 1)
+    }
+
+    function saveDomState() {
+      const segTA    = panel.querySelector('#pe-seg-text')
+      if (segTA    && segments[selIdx])  segments[selIdx].text = segTA.value
+      const masterTA = panel.querySelector('#pe-master')
+      if (masterTA) masterText = masterTA.value
+      const negTA    = panel.querySelector('#pe-neg')
+      if (negTA)    negText    = negTA.value
+    }
+
+    function equalize() {
+      const n    = segments.length
+      if (!n) return
+      const base = Math.max(1, Math.floor(totalFrames / n))
+      segments.forEach((s, i) => {
+        s.frames = i === n - 1 ? Math.max(1, totalFrames - base * (n - 1)) : base
+      })
+    }
+
+    function changeTotalFrames(nv) {
+      const old = totalFrames
+      totalFrames = nv
+      if (nv >= old) { render(); return }
+      // Proportional scale-down
+      const ratio = nv / old
+      segments = segments.map(s => ({ ...s, frames: Math.max(1, Math.round(s.frames * ratio)) }))
+      let sum  = segments.reduce((a, s) => a + s.frames, 0)
+      let safety = 200
+      while (sum > nv && safety-- > 0) {
+        const mi = segments.reduce((bi, s, i) => s.frames > segments[bi].frames ? i : bi, 0)
+        if (segments[mi].frames <= 1) break
+        segments[mi].frames--
+        sum--
+      }
+      render()
+    }
+
+    // ── Segment bar ───────────────────────────────────────────────────────
+
+    function makeSegBar() {
+      const wrap  = el('div', 'padding:2px 10px;display:flex;height:22px')
+      wrap.id     = 'pe-bar'
+      const used  = segments.reduce((a, s) => a + s.frames, 0)
+      const unalloc = Math.max(0, totalFrames - used)
+
+      segments.forEach((seg, i) => {
+        const d = document.createElement('div')
+        d.style.cssText = [
+          `flex:${seg.frames} 0 0`,
+          `background:${i === selIdx ? '#3a9a5a' : SEG_PALETTE[i % SEG_PALETTE.length]}`,
+          `border:1px solid ${i === selIdx ? '#6adf9a' : 'transparent'}`,
+          'cursor:pointer;box-sizing:border-box;min-width:4px',
+        ].join(';')
+        d.title = `Segment ${i + 1}: ${seg.frames} frames`
+        d.addEventListener('click', () => { selIdx = i; render() })
+        wrap.appendChild(d)
+      })
+
+      if (unalloc > 0) {
+        const d = document.createElement('div')
+        d.style.cssText =
+          `flex:${unalloc} 0 0;background:#252525;border:1px solid #333;box-sizing:border-box;min-width:4px`
+        d.title = `Unallocated: ${unalloc} frames`
+        wrap.appendChild(d)
+      }
+      return wrap
+    }
+
+    function refreshBar() {
+      const old = panel.querySelector('#pe-bar')
+      if (old) old.replaceWith(makeSegBar())
+    }
+
+    // ── Full render ───────────────────────────────────────────────────────
+
+    function render() {
+      clampSel()
+      panel.innerHTML = ''
+
+      // ── Top row: Frames / FPS / Master label ────────────────────────────
+      const topRow = el('div',
+        'display:flex;align-items:center;gap:8px;padding:8px 10px 4px;border-bottom:1px solid #2a2a2a')
+      topRow.innerHTML = `
+        <label style="color:#999;font-size:11px">Frames:</label>
+        <input id="pe-tf"  type="number" min="1"        value="${esc(totalFrames)}" style="${NUM_STYLE}">
+        <label style="color:#999;font-size:11px">FPS:</label>
+        <input id="pe-fps" type="number" step="0.01" min="0" value="${esc(fps)}" style="${NUM_STYLE}">
+        <span style="flex:1"></span>
+        ${sectionLabel('MASTER')}
+      `
+      panel.appendChild(topRow)
+
+      topRow.querySelector('#pe-tf').addEventListener('change', e => {
+        const nv = Math.max(1, parseInt(e.target.value) || 1)
+        e.target.value = nv
+        changeTotalFrames(nv)
+      })
+      topRow.querySelector('#pe-fps').addEventListener('change', e => {
+        fps = parseFloat(e.target.value) || 0
+      })
+
+      // ── Master ──────────────────────────────────────────────────────────
+      const masterSec = el('div', 'padding:6px 10px')
+      masterSec.innerHTML = `
+        <textarea id="pe-master" style="${TA_STYLE};min-height:60px">${esc(masterText)}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:3px">
+          ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
+        </div>
+      `
+      panel.appendChild(masterSec)
+      masterSec.querySelector('#pe-master').addEventListener('input', e => { masterText = e.target.value })
+      masterSec.querySelector('#pe-master-clear').addEventListener('click', () => {
+        masterText = ''
+        masterSec.querySelector('#pe-master').value = ''
+      })
+
+      panel.appendChild(greenDiv())
+
+      // ── Prompt mode radios ──────────────────────────────────────────────
+      const promptHdr = el('div', 'display:flex;align-items:center;gap:10px;padding:6px 10px 4px')
+      promptHdr.innerHTML = `
+        ${mkRadio('pe-smart',  'pe-type', 'smart',  'Smart',  promptType === 'smart')}
+        ${mkRadio('pe-beats',  'pe-type', 'beats',  'Beats',  promptType === 'beats')}
+        ${mkRadio('pe-simple', 'pe-type', 'simple', 'Simple', promptType === 'simple')}
+        <span style="flex:1"></span>
+        ${sectionLabel('PROMPT')}
+      `
+      panel.appendChild(promptHdr)
+      promptHdr.querySelectorAll('input[name="pe-type"]').forEach(r => {
+        r.addEventListener('change', e => { if (e.target.checked) promptType = e.target.value })
+      })
+
+      // ── Segment text area ───────────────────────────────────────────────
+      const posSec = el('div', 'padding:0 10px 4px')
+      posSec.innerHTML = `
+        <textarea id="pe-seg-text" style="${TA_STYLE};min-height:80px">${esc(segments[selIdx]?.text ?? '')}</textarea>
+      `
+      panel.appendChild(posSec)
+      posSec.querySelector('#pe-seg-text').addEventListener('input', e => {
+        if (segments[selIdx]) segments[selIdx].text = e.target.value
+      })
+
+      // ── Ruler ───────────────────────────────────────────────────────────
+      const q       = Math.round(totalFrames / 4)
+      const ruler   = el('div',
+        'display:flex;justify-content:space-between;padding:1px 10px 0;font-size:9px;color:#555')
+      ruler.innerHTML = `<span>0</span><span>${q}</span><span>${q*2}</span><span>${q*3}</span><span>${totalFrames}</span>`
+      panel.appendChild(ruler)
+
+      // ── Segment bar ─────────────────────────────────────────────────────
+      panel.appendChild(makeSegBar())
+
+      // ── Segment controls ─────────────────────────────────────────────────
+      const selSeg  = segments[selIdx]
+      const segCtrl = el('div', 'display:flex;align-items:center;gap:6px;padding:4px 10px 8px')
+      segCtrl.innerHTML = `
+        <label style="color:#999;font-size:11px">Frames:</label>
+        <input id="pe-seg-f" type="number" min="1" value="${esc(selSeg?.frames ?? 1)}" style="${NUM_STYLE}">
+        ${mkBtn('pe-seg-clear',  'clear',    '#555',    '#333',    '#999')}
+        <span style="flex:1"></span>
+        <span id="pe-seg-err" style="color:#f88;font-size:10px"></span>
+        ${mkBtn('pe-seg-del', 'delete',   '#803030', '#5c1a1a', '#f99')}
+        ${mkBtn('pe-seg-eq',  'equalize', '#555',    '#333',    '#ccc')}
+        ${mkBtn('pe-seg-add', 'add',      '#2a8050', '#1a5c35', '#cde')}
+      `
+      panel.appendChild(segCtrl)
+
+      const segFInput = segCtrl.querySelector('#pe-seg-f')
+      const segErr    = segCtrl.querySelector('#pe-seg-err')
+      let   prevFrames = selSeg?.frames ?? 1
+
+      segFInput.addEventListener('change', e => {
+        const nv       = Math.max(1, parseInt(e.target.value) || 1)
+        const otherSum = segments.reduce((a, s, i) => i === selIdx ? a : a + s.frames, 0)
+        const maxOk    = totalFrames - otherSum
+        if (nv > maxOk) {
+          segErr.textContent = `Max ${maxOk}`
+          setTimeout(() => { segErr.textContent = '' }, 2000)
+          e.target.value = prevFrames
+          return
+        }
+        prevFrames = nv
+        if (segments[selIdx]) segments[selIdx].frames = nv
+        refreshBar()
+      })
+
+      segCtrl.querySelector('#pe-seg-clear').addEventListener('click', () => {
+        if (segments[selIdx]) {
+          segments[selIdx].text = ''
+          posSec.querySelector('#pe-seg-text').value = ''
+        }
+      })
+
+      segCtrl.querySelector('#pe-seg-del').addEventListener('click', () => {
+        if (segments.length <= 1) return
+        segments.splice(selIdx, 1)
+        clampSel()
+        render()
+      })
+
+      segCtrl.querySelector('#pe-seg-eq').addEventListener('click', () => {
+        equalize()
+        render()
+      })
+
+      segCtrl.querySelector('#pe-seg-add').addEventListener('click', () => {
+        const used = segments.reduce((a, s) => a + s.frames, 0)
+        const rem  = totalFrames - used
+        if (rem >= 1) {
+          segments.push({ text: '', frames: rem })
+        } else {
+          segments.push({ text: '', frames: 1 })
+          equalize()
+        }
+        selIdx = segments.length - 1
+        render()
+      })
+
+      panel.appendChild(greenDiv())
+
+      // ── Negative ────────────────────────────────────────────────────────
+      const negHdr = el('div', 'display:flex;justify-content:flex-end;padding:6px 10px 2px')
+      negHdr.innerHTML = sectionLabel('NEGATIVE')
+      panel.appendChild(negHdr)
+
+      const negSec = el('div', 'padding:0 10px 6px')
+      negSec.innerHTML = `
+        <textarea id="pe-neg" style="${TA_STYLE};min-height:60px">${esc(negText)}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:3px">
+          ${mkBtn('pe-neg-clear','clear','#555','#333','#999')}
+        </div>
+      `
+      panel.appendChild(negSec)
+      negSec.querySelector('#pe-neg').addEventListener('input', e => { negText = e.target.value })
+      negSec.querySelector('#pe-neg-clear').addEventListener('click', () => {
+        negText = ''
+        negSec.querySelector('#pe-neg').value = ''
+      })
+
+      panel.appendChild(greenDiv())
+
+      // ── Footer ───────────────────────────────────────────────────────────
+      const footer = el('div', 'display:flex;align-items:center;gap:8px;padding:8px 10px')
+      footer.innerHTML = `
+        ${mkBtn('pe-clear-all', 'clear all', '#803030', '#5c1a1a', '#f99')}
+        <span style="flex:1"></span>
+        ${mkBtn('pe-cancel', 'cancel', '#555', '#333', '#bbb')}
+        ${mkBtn('pe-ok',     'ok',     '#2a8050', '#1a5c35', '#cde')}
+      `
+      panel.appendChild(footer)
+
+      footer.querySelector('#pe-clear-all').addEventListener('click', () => {
+        masterText = ''
+        negText    = ''
+        segments   = [{ text: '', frames: totalFrames }]
+        selIdx     = 0
+        render()
+      })
+      footer.querySelector('#pe-cancel').addEventListener('click', () => doCancel())
+      footer.querySelector('#pe-ok').addEventListener('click',     () => doSave())
+    }
+
+    // ── Actions ───────────────────────────────────────────────────────────
+
+    function doCancel() { _overlay.remove(); _overlay = null }
+
+    function doSave() {
+      saveDomState()
+      const fpsEl = panel.querySelector('#pe-fps')
+      if (fpsEl) fps = parseFloat(fpsEl.value) || fps
+      const tfEl = panel.querySelector('#pe-tf')
+      if (tfEl) totalFrames = Math.max(1, parseInt(tfEl.value) || 1)
+      onSave({
+        master_prompt:   { text: masterText },
+        positive_prompt: { text: writeSegments(segments, promptType), type: promptType },
+        negative_prompt: { text: negText },
+        total_frames:    { value: totalFrames },
+        fps:             { value: fps },
+      })
+      _overlay.remove()
+      _overlay = null
+    }
+
+    render()
+  }
+
+  window.DazPromptEditor = { open }
+})()

@@ -23,7 +23,7 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 1
+CURRENT_SCHEMA = 2
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -100,6 +100,14 @@ def _get_float(val, default: float = 0.0) -> float:
     except (ValueError, TypeError):
         return default
 
+_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3}
+
+def _get_prompt_type_int(val, default: int = 1) -> int:
+    """Return 1=smart, 2=beats, 3=simple from a positive_prompt typed object."""
+    t = val.get("type", "smart") if isinstance(val, dict) else "smart"
+    return _PROMPT_TYPE_TO_INT.get(t, default)
+
+
 def _get_loras(entry: dict) -> dict:
     """Return the loras mapping from an entry.
     Schema v1 stores loras under a "loras" parent object; legacy files store
@@ -156,10 +164,16 @@ def _normalize_entry(entry: dict) -> dict:
     if not isinstance(v, dict):
         result["filename"] = {"file": str(v or "")}
 
-    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+    for f in ("master_prompt", "negative_prompt"):
         v = result.get(f)
         if not isinstance(v, dict):
             result[f] = {"text": str(v or "")}
+
+    v = result.get("positive_prompt")
+    if not isinstance(v, dict):
+        result["positive_prompt"] = {"text": str(v or ""), "type": "smart"}
+    elif "type" not in v:
+        result["positive_prompt"] = {**v, "type": "smart"}
 
     for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
         v = result.get(f)
@@ -220,6 +234,13 @@ def _migrate(configs: dict, from_version: int) -> dict:
         for entry in configs.values():
             for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
                 entry.setdefault(field, default)
+            if version == 2:
+                v = entry.get("positive_prompt")
+                if isinstance(v, dict):
+                    if "type" not in v:
+                        entry["positive_prompt"] = {**v, "type": "smart"}
+                else:
+                    entry["positive_prompt"] = {"text": str(v or ""), "type": "smart"}
     return configs
 
 
