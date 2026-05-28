@@ -23,7 +23,7 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 1
+CURRENT_SCHEMA = 2
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -226,6 +226,13 @@ def _migrate(configs: dict, from_version: int) -> dict:
         for entry in configs.values():
             for field, default in _SCHEMA_DEFAULTS.get(version, {}).items():
                 entry.setdefault(field, default)
+            if version == 2:
+                v = entry.get("positive_prompt")
+                if isinstance(v, dict):
+                    if "type" not in v:
+                        entry["positive_prompt"] = {**v, "type": "smart"}
+                else:
+                    entry["positive_prompt"] = {"text": str(v or ""), "type": "smart"}
     return configs
 
 
