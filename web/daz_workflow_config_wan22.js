@@ -204,6 +204,7 @@ app.registerExtension({
         trunc(fText(data.master_prompt), 20),
         trunc(fText(data.positive_prompt), 20),
         trunc(fText(data.negative_prompt), 20),
+        fType(data.positive_prompt),
         fValue(data.cfg_high), fValue(data.cfg_low),
         fValue(data.total_frames), fValue(data.fps),
         loraEnabled(loras.lora_1) ? loraName(loras.lora_1) : '',

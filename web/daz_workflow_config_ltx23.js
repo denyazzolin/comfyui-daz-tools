@@ -198,6 +198,7 @@ app.registerExtension({
         fPath(data.image_path),
         fValue(data.width), fValue(data.height), fValue(data.steps), fValue(data.seed),
         trunc(fText(data.master_prompt), 20), trunc(fText(data.positive_prompt), 20), trunc(fText(data.negative_prompt), 20),
+        fType(data.positive_prompt),
         fValue(data.cfg_high),
         fValue(data.total_frames), fValue(data.fps),
         loraEnabled(loras.lora_1) ? fName(loras.lora_1) : '',
