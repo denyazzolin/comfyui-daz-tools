@@ -1,7 +1,10 @@
 import os
 
 import folder_paths
-from .workflow_config_base import load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint
+from .workflow_config_base import (
+    load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint,
+    _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
+)
 
 try:
     import comfy.sd
@@ -156,16 +159,17 @@ class WorkflowConfigLtx23:
                 f"[DAZ TOOLS] WorkflowConfigLtx23: '{config}' not found in {CONFIG_FILE}"
             )
         entry = configs[name]
+        loras = _get_loras(entry)
 
-        ckpt_model, ckpt_clip, ckpt_vae = load_checkpoint(entry.get("checkpoint", ""))
-        unet = _load_unet(entry.get("unet_high", ""))
+        ckpt_model, ckpt_clip, ckpt_vae = load_checkpoint(_get_name(entry.get("checkpoint")))
+        unet = _load_unet(_get_name(entry.get("unet_high")))
 
-        lora_1_sd, lora_1_w = _process_lora(entry.get("lora_1", ""))
-        lora_2_sd, lora_2_w = _process_lora(entry.get("lora_2", ""))
-        lora_3_sd, lora_3_w = _process_lora(entry.get("lora_3", ""))
-        lora_4_sd, lora_4_w = _process_lora(entry.get("lora_4", ""))
-        lora_5_sd, lora_5_w = _process_lora(entry.get("lora_5", ""))
-        lora_6_sd, lora_6_w = _process_lora(entry.get("lora_6", ""))
+        lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
+        lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
+        lora_3_sd, lora_3_w = _process_lora(loras.get("lora_3", ""))
+        lora_4_sd, lora_4_w = _process_lora(loras.get("lora_4", ""))
+        lora_5_sd, lora_5_w = _process_lora(loras.get("lora_5", ""))
+        lora_6_sd, lora_6_w = _process_lora(loras.get("lora_6", ""))
 
         lora_pairs = [
             (lora_1_sd, lora_1_w), (lora_2_sd, lora_2_w),
@@ -178,23 +182,23 @@ class WorkflowConfigLtx23:
             ckpt_vae,
             ckpt_clip,
             unet,
-            _load_vae( entry.get("vae",         "")),
-            _load_vae( entry.get("audio_vae",   "")),
-            _load_clip(entry.get("clip_2",      "")),
-            _load_clip(entry.get("clip",        "")),
-            _load_image(entry.get("image_path", "")),
-            int(entry.get("width",        0)),
-            int(entry.get("height",       0)),
-            int(entry.get("steps",        0)),
-            int(entry.get("seed",         0)),
-            str(entry.get("master_prompt",   "")),
-            str(entry.get("positive_prompt", "")),
-            str(entry.get("negative_prompt", "")),
-            float(entry.get("cfg_high",   0.0)),
-            int(entry.get("total_frames", 0)),
-            float(entry.get("fps",        0.0)),
+            _load_vae( _get_name(entry.get("vae"))),
+            _load_vae( _get_name(entry.get("audio_vae"))),
+            _load_clip(_get_name(entry.get("clip_2"))),
+            _load_clip(_get_name(entry.get("clip"))),
+            _load_image(_get_path(entry.get("image_path"))),
+            _get_int(entry.get("width")),
+            _get_int(entry.get("height")),
+            _get_int(entry.get("steps")),
+            _get_int(entry.get("seed")),
+            _get_text(entry.get("master_prompt")),
+            _get_text(entry.get("positive_prompt")),
+            _get_text(entry.get("negative_prompt")),
+            _get_float(entry.get("cfg_high")),
+            _get_int(entry.get("total_frames")),
+            _get_float(entry.get("fps")),
             lora_1_sd, lora_2_sd, lora_3_sd, lora_4_sd, lora_5_sd, lora_6_sd,
-            str(entry.get("filename", "")),
+            _get_file(entry.get("filename")),
             _apply_loras(unet,       lora_pairs),
             _apply_loras(ckpt_model, lora_pairs),
         )

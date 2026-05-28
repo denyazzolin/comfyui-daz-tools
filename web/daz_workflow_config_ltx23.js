@@ -34,6 +34,14 @@ app.registerExtension({
       return folderFiles[folder]
     }
 
+    // ── Typed-object accessors (backward-compatible) ───────────────────────
+
+    function fName(val)  { return (val && typeof val === 'object') ? (val.name  ?? '') : (val ?? '') }
+    function fValue(val) { return (val && typeof val === 'object') ? (val.value ?? 0)  : (val ?? 0)  }
+    function fText(val)  { return (val && typeof val === 'object') ? (val.text  ?? '') : (val ?? '') }
+    function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
+    function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     function filteredLabels(typeFilter, groupFilter) {
@@ -108,11 +116,6 @@ app.registerExtension({
       return maxLen && d.length > maxLen ? d.substring(0, maxLen - 1) + '…' : d
     }
 
-    function loraName(val) {
-      if (val && typeof val === 'object') return val.name ?? ''
-      return val ?? ''
-    }
-
     function loraEnabled(val) {
       if (val && typeof val === 'object') return val.enabled !== false
       return true
@@ -121,7 +124,7 @@ app.registerExtension({
     function rowPairLora(l1, lora1, l2, lora2, id1, id2) {
       function cell(lora, id) {
         const enabled = loraEnabled(lora)
-        const name    = loraName(lora)
+        const name    = fName(lora)
         const d       = name ? disp(name, 16) : ''
         const chk     = `<input type="checkbox"${enabled ? ' checked' : ''}${id ? ` id="${id}"` : ''}
                           style="margin:0 4px 0 0;vertical-align:middle;cursor:pointer;flex-shrink:0">`
@@ -142,39 +145,41 @@ app.registerExtension({
       if (data.error) {
         return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
       }
-      const imageCell = data.image_path
+      const imagePath = fPath(data.image_path)
+      const imageCell = imagePath
         ? `<div style="display:flex;align-items:flex-start;gap:6px">
-             <span style="color:#ddd;word-break:break-all;flex:1">${esc(data.image_path)}</span>
+             <span style="color:#ddd;word-break:break-all;flex:1">${esc(imagePath)}</span>
              <button id="daz-use-preview-btn"
                style="font-family:monospace;font-size:12px;padding:2px 6px;background:#000000;color:#ffffff;
                       border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
            </div>`
         : `<span style="color:#555">—</span>`
       const typeLabel = data.type === 'I2V' ? 'I2V' : data.type === 'T2V' ? 'T2V' : 'No type'
+      const loras = data.loras ?? {}
       return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
-        ${row('Group',       data.group)}
+        ${row('Group',       fName(data.group))}
         ${row('Type',        typeLabel)}
-        ${row('Checkpoint',  disp(data.checkpoint))}
-        ${row('Transformer', disp(data.unet_high))}
-        ${row('Video VAE',   disp(data.vae))}
-        ${row('Audio VAE',   disp(data.audio_vae))}
-        ${row('CLIP 2',      disp(data.clip_2))}
-        ${row('CLIP',        disp(data.clip))}
+        ${row('Checkpoint',  disp(fName(data.checkpoint)))}
+        ${row('Transformer', disp(fName(data.unet_high)))}
+        ${row('Video VAE',   disp(fName(data.vae)))}
+        ${row('Audio VAE',   disp(fName(data.audio_vae)))}
+        ${row('CLIP 2',      disp(fName(data.clip_2)))}
+        ${row('CLIP',        disp(fName(data.clip)))}
         <tr>
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${rowPairLora('Distill LoRA', data.lora_1, 'LoRA 2', data.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
-        ${rowPairLora('LoRA 3',      data.lora_3, 'LoRA 4', data.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
-        ${rowPairLora('LoRA 5',      data.lora_5, 'LoRA 6', data.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
-        ${row('Resolution',  data.width && data.height ? `${data.width} × ${data.height}` : '')}
-        ${rowPair('Steps',   data.steps, 'Seed', data.seed)}
-        ${row('CFG',         data.cfg_high)}
-        ${rowPair('Frames',  data.total_frames, 'FPS', data.fps)}
-        ${row('Master',      trunc(data.master_prompt))}
-        ${row('Positive',    trunc(data.positive_prompt))}
-        ${row('Negative',    trunc(data.negative_prompt))}
-        ${row('Filename',    data.filename)}
+        ${rowPairLora('Distill LoRA', loras.lora_1, 'LoRA 2', loras.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
+        ${rowPairLora('LoRA 3',      loras.lora_3, 'LoRA 4', loras.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
+        ${rowPairLora('LoRA 5',      loras.lora_5, 'LoRA 6', loras.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
+        ${row('Resolution',  fValue(data.width) && fValue(data.height) ? `${fValue(data.width)} × ${fValue(data.height)}` : '')}
+        ${rowPair('Steps',   fValue(data.steps), 'Seed', fValue(data.seed))}
+        ${row('CFG',         fValue(data.cfg_high))}
+        ${rowPair('Frames',  fValue(data.total_frames), 'FPS', fValue(data.fps))}
+        ${row('Master',      trunc(fText(data.master_prompt)))}
+        ${row('Positive',    trunc(fText(data.positive_prompt)))}
+        ${row('Negative',    trunc(fText(data.negative_prompt)))}
+        ${row('Filename',    fFile(data.filename))}
       </table>`
     }
 
@@ -182,26 +187,27 @@ app.registerExtension({
 
     function updateOutputLabels(node, data) {
       if (!node.outputs) return
-      const ckpt = data.checkpoint
+      const ckpt  = fName(data.checkpoint)
+      const loras = data.loras ?? {}
       const values = [
         ckpt, ckpt, ckpt,
-        data.unet_high,
-        data.vae, data.audio_vae,
-        data.clip_2, data.clip,
-        data.image_path,
-        data.width, data.height, data.steps, data.seed,
-        trunc(data.master_prompt, 20), trunc(data.positive_prompt, 20), trunc(data.negative_prompt, 20),
-        data.cfg_high,
-        data.total_frames, data.fps,
-        loraEnabled(data.lora_1) ? loraName(data.lora_1) : '',
-        loraEnabled(data.lora_2) ? loraName(data.lora_2) : '',
-        loraEnabled(data.lora_3) ? loraName(data.lora_3) : '',
-        loraEnabled(data.lora_4) ? loraName(data.lora_4) : '',
-        loraEnabled(data.lora_5) ? loraName(data.lora_5) : '',
-        loraEnabled(data.lora_6) ? loraName(data.lora_6) : '',
-        data.filename,
-        data.unet_high,
-        data.checkpoint,
+        fName(data.unet_high),
+        fName(data.vae), fName(data.audio_vae),
+        fName(data.clip_2), fName(data.clip),
+        fPath(data.image_path),
+        fValue(data.width), fValue(data.height), fValue(data.steps), fValue(data.seed),
+        trunc(fText(data.master_prompt), 20), trunc(fText(data.positive_prompt), 20), trunc(fText(data.negative_prompt), 20),
+        fValue(data.cfg_high),
+        fValue(data.total_frames), fValue(data.fps),
+        loraEnabled(loras.lora_1) ? fName(loras.lora_1) : '',
+        loraEnabled(loras.lora_2) ? fName(loras.lora_2) : '',
+        loraEnabled(loras.lora_3) ? fName(loras.lora_3) : '',
+        loraEnabled(loras.lora_4) ? fName(loras.lora_4) : '',
+        loraEnabled(loras.lora_5) ? fName(loras.lora_5) : '',
+        loraEnabled(loras.lora_6) ? fName(loras.lora_6) : '',
+        fFile(data.filename),
+        fName(data.unet_high),
+        ckpt,
       ]
       values.forEach((val, i) => {
         if (!node.outputs[i]) return
@@ -241,21 +247,22 @@ app.registerExtension({
       wrap.querySelector('#daz-new-btn')?.addEventListener('click', () => enterEditForm(node, true))
       wrap.querySelector('#daz-edit-btn')?.addEventListener('click', () => enterEditForm(node, false))
       wrap.querySelector('#daz-use-preview-btn')?.addEventListener('click', () => {
-        const filename = data.image_path?.split(/[\\/]/).pop()
+        const imagePath = fPath(data.image_path)
+        const filename  = imagePath.split(/[\\/]/).pop()
         if (filename) showImagePreview(filename)
       })
-      updateOutputLabels(node, data)
 
-      const loraFields = ['lora_1','lora_2','lora_3','lora_4','lora_5','lora_6']
-      loraFields.forEach((field, i) => {
+      const loraKeys = ['lora_1','lora_2','lora_3','lora_4','lora_5','lora_6']
+      loraKeys.forEach((key, i) => {
         wrap.querySelector(`#daz-use-lora-${i + 1}`)?.addEventListener('change', async (e) => {
           const detail = node._dazLtx23Detail
           if (!detail) return
-          const val = detail[field]
+          if (!detail.loras) detail.loras = {}
+          const val = detail.loras[key]
           if (val && typeof val === 'object') {
             val.enabled = e.target.checked
           } else {
-            detail[field] = { name: val || '', enabled: e.target.checked, strength: 1.0 }
+            detail.loras[key] = { name: fName(val), enabled: e.target.checked, strength: 1.0 }
           }
           const span = e.target.nextElementSibling
           if (span) span.style.color = e.target.checked ? '#ddd' : '#666'
@@ -268,7 +275,7 @@ app.registerExtension({
             const r = await fetch('/daz/workflow-config-save', {
               method:  'POST',
               headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', [field]: detail[field] }),
+              body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', loras: { [key]: detail.loras[key] } }),
             })
             const result = await r.json()
             if (!r.ok || result.error) throw new Error(result.error || r.statusText)
@@ -282,6 +289,7 @@ app.registerExtension({
         })
       })
 
+      updateOutputLabels(node, data)
       node.setDirtyCanvas(true, true)
     }
 
@@ -332,9 +340,10 @@ app.registerExtension({
         getFolderFiles('loras'),
       ])
 
-      const data = isNew ? {} : (node._dazLtx23Detail || {})
-      const rawImagePath = data.image_path || ''
-      const imageName = rawImagePath.split(/[\\/]/).pop() || ''
+      const data  = isNew ? {} : (node._dazLtx23Detail || {})
+      const loras = data.loras ?? {}
+      const rawImagePath = fPath(data.image_path)
+      const imageName    = rawImagePath.split(/[\\/]/).pop() || ''
 
       function selectOptsOpt(files, current) {
         return `<option value="">— none —</option>` + files.map(f =>
@@ -373,7 +382,7 @@ app.registerExtension({
            <tr>
              <td ${tdL}>Group</td>
              <td ${tdR}><input id="daz-group" type="text"
-               value="${esc(data.group || '')}"
+               value="${esc(fName(data.group))}"
                placeholder="Optional group…"
                style="${fieldStyle}"></td>
            </tr>
@@ -402,6 +411,19 @@ app.registerExtension({
              <button id="daz-save-btn"   style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
            </div>`
 
+      function loraRow(label, key) {
+        const lora = loras[key] ?? {}
+        const n    = key.replace('lora_', '')
+        return `<tr>
+          <td ${tdL}>${label}</td>
+          <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
+            <select id="daz-lora-${n}" style="${fieldStyle}">${selectOptsOpt(loraFiles, fName(lora))}</select>
+            <input type="number" id="daz-lora-${n}-strength" step="0.01" min="0" value="${lora.strength ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
+            <input type="checkbox" id="daz-lora-${n}-enabled"${loraEnabled(lora) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+          </div></td>
+        </tr>`
+      }
+
       wrap.innerHTML = `
         ${header}
         <table style="border-collapse:collapse;width:100%">
@@ -409,27 +431,27 @@ app.registerExtension({
           ${divider}
           <tr>
             <td ${tdL}>Checkpoint</td>
-            <td ${tdR}><select id="daz-checkpoint" style="${fieldStyle}">${selectOptsOpt(checkpointFiles, data.checkpoint)}</select></td>
+            <td ${tdR}><select id="daz-checkpoint" style="${fieldStyle}">${selectOptsOpt(checkpointFiles, fName(data.checkpoint))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>Transformer</td>
-            <td ${tdR}><select id="daz-unet-high" style="${fieldStyle}">${selectOptsOpt(unetFiles, data.unet_high)}</select></td>
+            <td ${tdR}><select id="daz-unet-high" style="${fieldStyle}">${selectOptsOpt(unetFiles, fName(data.unet_high))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>Video VAE</td>
-            <td ${tdR}><select id="daz-vae" style="${fieldStyle}">${selectOptsOpt(vaeFiles, data.vae)}</select></td>
+            <td ${tdR}><select id="daz-vae" style="${fieldStyle}">${selectOptsOpt(vaeFiles, fName(data.vae))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>Audio VAE</td>
-            <td ${tdR}><select id="daz-audio-vae" style="${fieldStyle}">${selectOptsOpt(vaeFiles, data.audio_vae)}</select></td>
+            <td ${tdR}><select id="daz-audio-vae" style="${fieldStyle}">${selectOptsOpt(vaeFiles, fName(data.audio_vae))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>CLIP 2</td>
-            <td ${tdR}><select id="daz-clip-2" style="${fieldStyle}">${selectOptsOpt(clipFiles, data.clip_2)}</select></td>
+            <td ${tdR}><select id="daz-clip-2" style="${fieldStyle}">${selectOptsOpt(clipFiles, fName(data.clip_2))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>CLIP</td>
-            <td ${tdR}><select id="daz-clip" style="${fieldStyle}">${selectOptsOpt(clipFiles, data.clip)}</select></td>
+            <td ${tdR}><select id="daz-clip" style="${fieldStyle}">${selectOptsOpt(clipFiles, fName(data.clip))}</select></td>
           </tr>
           <tr>
             <td ${tdL}>Image</td>
@@ -447,96 +469,54 @@ app.registerExtension({
             </td>
           </tr>
           ${divider}
-          <tr>
-            <td ${tdL}>Distill LoRA</td>
-            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
-              <select id="daz-lora-1" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_1))}</select>
-              <input type="number" id="daz-lora-1-strength" step="0.01" min="0" value="${(typeof data.lora_1 === 'object' ? data.lora_1?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
-              <input type="checkbox" id="daz-lora-1-enabled"${loraEnabled(data.lora_1) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
-            </div></td>
-          </tr>
-          <tr>
-            <td ${tdL}>LoRA 2</td>
-            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
-              <select id="daz-lora-2" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_2))}</select>
-              <input type="number" id="daz-lora-2-strength" step="0.01" min="0" value="${(typeof data.lora_2 === 'object' ? data.lora_2?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
-              <input type="checkbox" id="daz-lora-2-enabled"${loraEnabled(data.lora_2) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
-            </div></td>
-          </tr>
-          <tr>
-            <td ${tdL}>LoRA 3</td>
-            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
-              <select id="daz-lora-3" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_3))}</select>
-              <input type="number" id="daz-lora-3-strength" step="0.01" min="0" value="${(typeof data.lora_3 === 'object' ? data.lora_3?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
-              <input type="checkbox" id="daz-lora-3-enabled"${loraEnabled(data.lora_3) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
-            </div></td>
-          </tr>
-          <tr>
-            <td ${tdL}>LoRA 4</td>
-            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
-              <select id="daz-lora-4" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_4))}</select>
-              <input type="number" id="daz-lora-4-strength" step="0.01" min="0" value="${(typeof data.lora_4 === 'object' ? data.lora_4?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
-              <input type="checkbox" id="daz-lora-4-enabled"${loraEnabled(data.lora_4) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
-            </div></td>
-          </tr>
-          <tr>
-            <td ${tdL}>LoRA 5</td>
-            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
-              <select id="daz-lora-5" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_5))}</select>
-              <input type="number" id="daz-lora-5-strength" step="0.01" min="0" value="${(typeof data.lora_5 === 'object' ? data.lora_5?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
-              <input type="checkbox" id="daz-lora-5-enabled"${loraEnabled(data.lora_5) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
-            </div></td>
-          </tr>
-          <tr>
-            <td ${tdL}>LoRA 6</td>
-            <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
-              <select id="daz-lora-6" style="${fieldStyle}">${selectOptsOpt(loraFiles, loraName(data.lora_6))}</select>
-              <input type="number" id="daz-lora-6-strength" step="0.01" min="0" value="${(typeof data.lora_6 === 'object' ? data.lora_6?.strength : null) ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
-              <input type="checkbox" id="daz-lora-6-enabled"${loraEnabled(data.lora_6) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
-            </div></td>
-          </tr>
+          ${loraRow('Distill LoRA', 'lora_1')}
+          ${loraRow('LoRA 2',       'lora_2')}
+          ${loraRow('LoRA 3',       'lora_3')}
+          ${loraRow('LoRA 4',       'lora_4')}
+          ${loraRow('LoRA 5',       'lora_5')}
+          ${loraRow('LoRA 6',       'lora_6')}
           ${divider}
           <tr>
             <td ${tdL}>Width</td>
-            <td ${tdRNum}><input id="daz-width" type="number" value="${data.width || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-width" type="number" value="${fValue(data.width)}" style="${numStyle}"></td>
             <td ${tdL}>Height</td>
-            <td ${tdRNum}><input id="daz-height" type="number" value="${data.height || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-height" type="number" value="${fValue(data.height)}" style="${numStyle}"></td>
           </tr>
           <tr>
             <td ${tdL}>Steps</td>
-            <td ${tdRNum}><input id="daz-steps" type="number" value="${data.steps || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-steps" type="number" value="${fValue(data.steps)}" style="${numStyle}"></td>
             <td ${tdL}>Seed</td>
-            <td ${tdRNum}><input id="daz-seed" type="number" value="${data.seed ?? 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-seed" type="number" value="${fValue(data.seed)}" style="${numStyle}"></td>
           </tr>
           <tr>
             <td ${tdL}>CFG</td>
-            <td ${tdRNum}><input id="daz-cfg" type="number" step="0.1" value="${data.cfg_high || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-cfg" type="number" step="0.1" value="${fValue(data.cfg_high)}" style="${numStyle}"></td>
             <td colspan="2"></td>
           </tr>
           <tr>
             <td ${tdL}>Frames</td>
-            <td ${tdRNum}><input id="daz-total-frames" type="number" value="${data.total_frames || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-total-frames" type="number" value="${fValue(data.total_frames)}" style="${numStyle}"></td>
             <td ${tdL}>FPS</td>
-            <td ${tdRNum}><input id="daz-fps" type="number" step="0.01" value="${data.fps || 0}" style="${numStyle}"></td>
+            <td ${tdRNum}><input id="daz-fps" type="number" step="0.01" value="${fValue(data.fps)}" style="${numStyle}"></td>
           </tr>
           ${divider}
           <tr>
             <td ${tdLTop}>Master Prompt</td>
-            <td ${tdR}><textarea id="daz-master-prompt" style="${taStyle}">${esc(data.master_prompt || '')}</textarea></td>
+            <td ${tdR}><textarea id="daz-master-prompt" style="${taStyle}">${esc(fText(data.master_prompt))}</textarea></td>
           </tr>
           <tr>
             <td ${tdLTop}>Positive Prompt</td>
-            <td ${tdR}><textarea id="daz-positive-prompt" style="${taStyle}">${esc(data.positive_prompt || '')}</textarea></td>
+            <td ${tdR}><textarea id="daz-positive-prompt" style="${taStyle}">${esc(fText(data.positive_prompt))}</textarea></td>
           </tr>
           <tr>
             <td ${tdLTop}>Negative Prompt</td>
-            <td ${tdR}><textarea id="daz-negative-prompt" style="${taStyle}">${esc(data.negative_prompt || '')}</textarea></td>
+            <td ${tdR}><textarea id="daz-negative-prompt" style="${taStyle}">${esc(fText(data.negative_prompt))}</textarea></td>
           </tr>
           ${divider}
           <tr>
             <td ${tdL}>Filename</td>
             <td ${tdR}><input id="daz-filename" type="text"
-              value="${esc(data.filename || '')}"
+              value="${esc(fFile(data.filename))}"
               placeholder="subdir/output_name"
               style="${fieldStyle}"></td>
           </tr>
@@ -617,31 +597,36 @@ app.registerExtension({
     // ── Build payload ─────────────────────────────────────────────────────────
 
     function buildPayload(wrap) {
+      const loraKeys = ['lora_1','lora_2','lora_3','lora_4','lora_5','lora_6']
+      const loras = {}
+      loraKeys.forEach(key => {
+        const n = key.replace('lora_', '')
+        loras[key] = {
+          name:     wrap.querySelector(`#daz-lora-${n}`)?.value          ?? '',
+          enabled:  wrap.querySelector(`#daz-lora-${n}-enabled`)?.checked ?? true,
+          strength: parseFloat(wrap.querySelector(`#daz-lora-${n}-strength`)?.value ?? '1') || 1.0,
+        }
+      })
       return {
-        checkpoint:      wrap.querySelector('#daz-checkpoint')?.value       ?? '',
-        unet_high:       wrap.querySelector('#daz-unet-high')?.value        ?? '',
-        vae:             wrap.querySelector('#daz-vae')?.value               ?? '',
-        audio_vae:       wrap.querySelector('#daz-audio-vae')?.value        ?? '',
-        clip_2:          wrap.querySelector('#daz-clip-2')?.value            ?? '',
-        clip:            wrap.querySelector('#daz-clip')?.value              ?? '',
-        image_path:      wrap.querySelector('#daz-image-path')?.value        ?? '',
-        lora_1: { name: wrap.querySelector('#daz-lora-1')?.value ?? '', enabled: wrap.querySelector('#daz-lora-1-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-1-strength')?.value ?? '1') || 1.0 },
-        lora_2: { name: wrap.querySelector('#daz-lora-2')?.value ?? '', enabled: wrap.querySelector('#daz-lora-2-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-2-strength')?.value ?? '1') || 1.0 },
-        lora_3: { name: wrap.querySelector('#daz-lora-3')?.value ?? '', enabled: wrap.querySelector('#daz-lora-3-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-3-strength')?.value ?? '1') || 1.0 },
-        lora_4: { name: wrap.querySelector('#daz-lora-4')?.value ?? '', enabled: wrap.querySelector('#daz-lora-4-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-4-strength')?.value ?? '1') || 1.0 },
-        lora_5: { name: wrap.querySelector('#daz-lora-5')?.value ?? '', enabled: wrap.querySelector('#daz-lora-5-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-5-strength')?.value ?? '1') || 1.0 },
-        lora_6: { name: wrap.querySelector('#daz-lora-6')?.value ?? '', enabled: wrap.querySelector('#daz-lora-6-enabled')?.checked ?? true, strength: parseFloat(wrap.querySelector('#daz-lora-6-strength')?.value ?? '1') || 1.0 },
-        master_prompt:   wrap.querySelector('#daz-master-prompt')?.value     ?? '',
-        positive_prompt: wrap.querySelector('#daz-positive-prompt')?.value   ?? '',
-        negative_prompt: wrap.querySelector('#daz-negative-prompt')?.value   ?? '',
-        filename:        wrap.querySelector('#daz-filename')?.value           ?? '',
-        width:        parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10),
-        height:       parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10),
-        steps:        parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10),
-        seed:         parseInt(wrap.querySelector('#daz-seed')?.value         ?? '0', 10),
-        cfg_high:    parseFloat(wrap.querySelector('#daz-cfg')?.value         ?? '0'),
-        total_frames: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10),
-        fps:         parseFloat(wrap.querySelector('#daz-fps')?.value          ?? '0'),
+        checkpoint:      { name:  wrap.querySelector('#daz-checkpoint')?.value       ?? '' },
+        unet_high:       { name:  wrap.querySelector('#daz-unet-high')?.value        ?? '' },
+        vae:             { name:  wrap.querySelector('#daz-vae')?.value              ?? '' },
+        audio_vae:       { name:  wrap.querySelector('#daz-audio-vae')?.value        ?? '' },
+        clip_2:          { name:  wrap.querySelector('#daz-clip-2')?.value           ?? '' },
+        clip:            { name:  wrap.querySelector('#daz-clip')?.value             ?? '' },
+        image_path:      { path:  wrap.querySelector('#daz-image-path')?.value       ?? '' },
+        loras,
+        master_prompt:   { text:  wrap.querySelector('#daz-master-prompt')?.value    ?? '' },
+        positive_prompt: { text:  wrap.querySelector('#daz-positive-prompt')?.value  ?? '' },
+        negative_prompt: { text:  wrap.querySelector('#daz-negative-prompt')?.value  ?? '' },
+        filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '' },
+        width:           { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
+        height:          { value: parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10) },
+        steps:           { value: parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10) },
+        seed:            { value: parseInt(wrap.querySelector('#daz-seed')?.value         ?? '0', 10) },
+        cfg_high:        { value: parseFloat(wrap.querySelector('#daz-cfg')?.value        ?? '0') },
+        total_frames:    { value: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) },
+        fps:             { value: parseFloat(wrap.querySelector('#daz-fps')?.value        ?? '0') },
       }
     }
 
@@ -666,8 +651,8 @@ app.registerExtension({
       const payload = {
         name,
         class: CLASS,
-        group: wrap.querySelector('#daz-group')?.value ?? '',
-        type:  wrap.querySelector('#daz-type')?.value  ?? '',
+        group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
+        type:  wrap.querySelector('#daz-type')?.value ?? '',
         ...buildPayload(wrap),
       }
 
@@ -729,8 +714,8 @@ app.registerExtension({
         label,
         class:    CLASS,
         new_name: newName,
-        group:    wrap.querySelector('#daz-group')?.value ?? '',
-        type:     wrap.querySelector('#daz-type')?.value  ?? '',
+        group:    { name: wrap.querySelector('#daz-group')?.value ?? '' },
+        type:     wrap.querySelector('#daz-type')?.value ?? '',
         ...buildPayload(wrap),
       }
 
@@ -783,32 +768,27 @@ app.registerExtension({
       const payload = {
         name:            newName,
         class:           CLASS,
-        group:           data.group           ?? '',
+        group:           data.group           ?? { name: '' },
         type:            data.type            ?? '',
-        checkpoint:      data.checkpoint      ?? '',
-        unet_high:       data.unet_high       ?? '',
-        vae:             data.vae             ?? '',
-        audio_vae:       data.audio_vae       ?? '',
-        clip_2:          data.clip_2          ?? '',
-        clip:            data.clip            ?? '',
-        image_path:      data.image_path      ?? '',
-        lora_1:          data.lora_1          ?? { name: '', strength: 1.0, enabled: true },
-        lora_2:          data.lora_2          ?? { name: '', strength: 1.0, enabled: true },
-        lora_3:          data.lora_3          ?? { name: '', strength: 1.0, enabled: true },
-        lora_4:          data.lora_4          ?? { name: '', strength: 1.0, enabled: true },
-        lora_5:          data.lora_5          ?? { name: '', strength: 1.0, enabled: true },
-        lora_6:          data.lora_6          ?? { name: '', strength: 1.0, enabled: true },
-        master_prompt:   data.master_prompt   ?? '',
-        positive_prompt: data.positive_prompt ?? '',
-        negative_prompt: data.negative_prompt ?? '',
-        filename:        data.filename        ?? '',
-        width:           data.width           ?? 0,
-        height:          data.height          ?? 0,
-        steps:           data.steps           ?? 0,
-        seed:            data.seed            ?? 0,
-        cfg_high:        data.cfg_high        ?? 0,
-        total_frames:    data.total_frames    ?? 0,
-        fps:             data.fps             ?? 0,
+        checkpoint:      data.checkpoint      ?? { name: '' },
+        unet_high:       data.unet_high       ?? { name: '' },
+        vae:             data.vae             ?? { name: '' },
+        audio_vae:       data.audio_vae       ?? { name: '' },
+        clip_2:          data.clip_2          ?? { name: '' },
+        clip:            data.clip            ?? { name: '' },
+        image_path:      data.image_path      ?? { path: '' },
+        loras:           data.loras           ?? {},
+        master_prompt:   data.master_prompt   ?? { text: '' },
+        positive_prompt: data.positive_prompt ?? { text: '' },
+        negative_prompt: data.negative_prompt ?? { text: '' },
+        filename:        data.filename        ?? { file: '' },
+        width:           data.width           ?? { value: 0 },
+        height:          data.height          ?? { value: 0 },
+        steps:           data.steps           ?? { value: 0 },
+        seed:            data.seed            ?? { value: 0 },
+        cfg_high:        data.cfg_high        ?? { value: 0 },
+        total_frames:    data.total_frames    ?? { value: 0 },
+        fps:             data.fps             ?? { value: 0 },
       }
 
       try {
