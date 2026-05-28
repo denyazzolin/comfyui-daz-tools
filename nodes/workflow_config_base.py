@@ -156,10 +156,16 @@ def _normalize_entry(entry: dict) -> dict:
     if not isinstance(v, dict):
         result["filename"] = {"file": str(v or "")}
 
-    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+    for f in ("master_prompt", "negative_prompt"):
         v = result.get(f)
         if not isinstance(v, dict):
             result[f] = {"text": str(v or "")}
+
+    v = result.get("positive_prompt")
+    if not isinstance(v, dict):
+        result["positive_prompt"] = {"text": str(v or ""), "type": "smart"}
+    elif "type" not in v:
+        result["positive_prompt"] = {**v, "type": "smart"}
 
     for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
         v = result.get(f)
