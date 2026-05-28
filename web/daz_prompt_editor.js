@@ -216,7 +216,7 @@
           'cursor:pointer;box-sizing:border-box;min-width:4px',
         ].join(';')
         d.title = `Segment ${i + 1}: ${seg.frames} frames`
-        d.addEventListener('click', () => { saveDomState(); selIdx = i; render() })
+        d.addEventListener('click', () => { selIdx = i; render() })
         wrap.appendChild(d)
       })
 
@@ -238,7 +238,6 @@
     // ── Full render ───────────────────────────────────────────────────────
 
     function render() {
-      saveDomState()
       clampSel()
       panel.innerHTML = ''
 
@@ -431,6 +430,10 @@
 
     function doSave() {
       saveDomState()
+      const fpsEl = panel.querySelector('#pe-fps')
+      if (fpsEl) fps = parseFloat(fpsEl.value) || fps
+      const tfEl = panel.querySelector('#pe-tf')
+      if (tfEl) totalFrames = Math.max(1, parseInt(tfEl.value) || 1)
       onSave({
         master_prompt:   { text: masterText },
         positive_prompt: { text: writeSegments(segments, promptType), type: promptType },
