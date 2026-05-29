@@ -117,16 +117,6 @@ def _apply_loras(model, lora_pairs):
     return result
 
 
-def _apply_loras_to_clip(clip, lora_pairs):
-    if clip is None:
-        return None
-    result = clip
-    for sd, strength in lora_pairs:
-        if sd is None:
-            continue
-        _, result = comfy.sd.load_lora_for_models(None, result, sd, strength, strength)
-    return result
-
 
 class WorkflowConfigLtx23:
     @classmethod
@@ -230,10 +220,7 @@ class WorkflowConfigLtx23:
             unet,
             video_vae,
             audio_vae,
-            _apply_loras_to_clip(
-                _load_dual_clip(_get_name(entry.get("clip_2")), _get_name(entry.get("clip"))),
-                lora_pairs,
-            ),
+            _load_dual_clip(_get_name(entry.get("clip_2")), _get_name(entry.get("clip"))),
             _load_image(_get_path(entry.get("image_path"))),
             _get_int(entry.get("width")),
             _get_int(entry.get("height")),
