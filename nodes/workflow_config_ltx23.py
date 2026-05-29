@@ -24,30 +24,13 @@ _CLASS      = "ltx2.3"
 _NO_CONFIGS = "(no configs)"
 
 
-def _detect_model_options(sd: dict) -> dict:
-    for v in sd.values():
-        if not hasattr(v, 'dtype'):
-            continue
-        if v.dtype == torch.float8_e4m3fn:
-            return {"dtype": torch.float8_e4m3fn}
-        if v.dtype == torch.float8_e5m2:
-            return {"dtype": torch.float8_e5m2}
-    return {}
-
-
 def _load_unet(name: str):
     if not name:
         return None
     path = folder_paths.get_full_path("diffusion_models", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: diffusion model '{name}' not found")
-    sd, metadata = comfy.utils.load_torch_file(path, return_metadata=True)
-    model_options = _detect_model_options(sd)
-    model = comfy.sd.load_diffusion_model_state_dict(sd, model_options=model_options, metadata=metadata)
-    if model is None:
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: could not detect model type for '{name}'")
-    model.cached_patcher_init = (comfy.sd.load_diffusion_model, (path, model_options))
-    return model
+    return comfy.sd.load_diffusion_model(path)
 
 
 def _load_vae(name: str):
