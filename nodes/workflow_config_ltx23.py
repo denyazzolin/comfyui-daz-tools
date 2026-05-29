@@ -178,8 +178,27 @@ class WorkflowConfigLtx23:
         entry = configs[name]
         loras = _get_loras(entry)
 
-        ckpt_model, ckpt_clip, ckpt_vae = load_checkpoint(_get_name(entry.get("checkpoint")))
-        unet = _load_unet(_get_name(entry.get("unet_high")))
+        ckpt_name = _get_name(entry.get("checkpoint"))
+        unet_name = _get_name(entry.get("unet_high"))
+        vae_name  = _get_name(entry.get("vae"))
+        avae_name = _get_name(entry.get("audio_vae"))
+
+        try:
+            ckpt_model, ckpt_clip, ckpt_vae = load_checkpoint(ckpt_name)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: checkpoint load failed ('{ckpt_name}'): {e}") from e
+        try:
+            unet = _load_unet(unet_name)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: transformer load failed ('{unet_name}'): {e}") from e
+        try:
+            video_vae = _load_vae(vae_name)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: video VAE load failed ('{vae_name}'): {e}") from e
+        try:
+            audio_vae = _load_audio_vae(avae_name)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: audio VAE load failed ('{avae_name}'): {e}") from e
 
         lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
         lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
@@ -199,8 +218,8 @@ class WorkflowConfigLtx23:
             ckpt_vae,
             ckpt_clip,
             unet,
-            _load_vae( _get_name(entry.get("vae"))),
-            _load_audio_vae(_get_name(entry.get("audio_vae"))),
+            video_vae,
+            audio_vae,
             _load_dual_clip(_get_name(entry.get("clip_2")), _get_name(entry.get("clip"))),
             _load_image(_get_path(entry.get("image_path"))),
             _get_int(entry.get("width")),
