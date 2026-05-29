@@ -43,6 +43,16 @@ def _load_vae(name: str):
     return comfy.sd.VAE(sd=sd)
 
 
+def _load_audio_vae(name: str):
+    if not name:
+        return None
+    path = folder_paths.get_full_path("vae", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: audio VAE '{name}' not found")
+    sd = comfy.utils.load_torch_file(path)
+    return comfy.sd.VAE(sd=sd, dtype=torch.bfloat16)
+
+
 def _load_dual_clip(name1: str, name2: str):
     paths = []
     for name in (name1, name2):
@@ -121,7 +131,7 @@ class WorkflowConfigLtx23:
     RETURN_TYPES = (
         "MODEL", "VAE", "CLIP",
         "MODEL",
-        "VAE", "AUDIO_VAE",
+        "VAE", "VAE",
         "CLIP",
         "IMAGE",
         "INT", "INT", "INT", "INT",
@@ -190,7 +200,7 @@ class WorkflowConfigLtx23:
             ckpt_clip,
             unet,
             _load_vae( _get_name(entry.get("vae"))),
-            _load_vae( _get_name(entry.get("audio_vae"))),
+            _load_audio_vae(_get_name(entry.get("audio_vae"))),
             _load_dual_clip(_get_name(entry.get("clip_2")), _get_name(entry.get("clip"))),
             _load_image(_get_path(entry.get("image_path"))),
             _get_int(entry.get("width")),
