@@ -50,7 +50,7 @@ def _load_audio_vae(name: str):
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: audio VAE '{name}' not found")
     sd = comfy.utils.load_torch_file(path)
-    return comfy.sd.VAE(sd=sd, dtype=torch.bfloat16)
+    return comfy.sd.VAE(sd=sd)
 
 
 def _load_dual_clip(name1: str, name2: str):
