@@ -117,6 +117,13 @@ app.registerExtension({
       return maxLen && d.length > maxLen ? d.substring(0, maxLen - 1) + '…' : d
     }
 
+    function dualClipDisp(n1, n2) {
+      const a = disp(n1, 9)
+      const b = disp(n2, 9)
+      if (a && b) return `${a}/${b}`
+      return a || b || ''
+    }
+
     function loraEnabled(val) {
       if (val && typeof val === 'object') return val.enabled !== false
       return true
@@ -194,7 +201,7 @@ app.registerExtension({
         ckpt, ckpt, ckpt,
         fName(data.unet_high),
         fName(data.vae), fName(data.audio_vae),
-        fName(data.clip_2), fName(data.clip),
+        dualClipDisp(fName(data.clip_2), fName(data.clip)),
         fPath(data.image_path),
         fValue(data.width), fValue(data.height), fValue(data.steps), fValue(data.seed),
         trunc(fText(data.master_prompt), 20), trunc(fText(data.positive_prompt), 20), trunc(fText(data.negative_prompt), 20),

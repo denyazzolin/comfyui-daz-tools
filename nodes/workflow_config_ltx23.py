@@ -43,14 +43,18 @@ def _load_vae(name: str):
     return comfy.sd.VAE(sd=sd)
 
 
-def _load_clip(name: str):
-    if not name:
+def _load_dual_clip(name1: str, name2: str):
+    paths = []
+    for name in (name1, name2):
+        if name:
+            path = folder_paths.get_full_path("text_encoders", name)
+            if not path:
+                raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: text encoder '{name}' not found")
+            paths.append(path)
+    if not paths:
         return None
-    path = folder_paths.get_full_path("text_encoders", name)
-    if not path:
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: text encoder '{name}' not found")
     return comfy.sd.load_clip(
-        ckpt_paths=[path],
+        ckpt_paths=paths,
         embedding_directory=folder_paths.get_folder_paths("embeddings"),
         clip_type=comfy.sd.CLIPType.LTXV,
     )
@@ -117,8 +121,8 @@ class WorkflowConfigLtx23:
     RETURN_TYPES = (
         "MODEL", "VAE", "CLIP",
         "MODEL",
-        "VAE", "VAE",
-        "CLIP", "CLIP",
+        "VAE", "AUDIO_VAE",
+        "CLIP",
         "IMAGE",
         "INT", "INT", "INT", "INT",
         "STRING", "STRING", "STRING",
@@ -134,7 +138,7 @@ class WorkflowConfigLtx23:
         "checkpoint_model", "checkpoint_vae", "checkpoint_clip",
         "transformer_only",
         "video_vae", "audio_vae",
-        "clip_2", "clip",
+        "dual_clip",
         "image",
         "width", "height", "steps", "seed",
         "master_prmt", "pos_prompt", "neg_prompt",
@@ -187,8 +191,7 @@ class WorkflowConfigLtx23:
             unet,
             _load_vae( _get_name(entry.get("vae"))),
             _load_vae( _get_name(entry.get("audio_vae"))),
-            _load_clip(_get_name(entry.get("clip_2"))),
-            _load_clip(_get_name(entry.get("clip"))),
+            _load_dual_clip(_get_name(entry.get("clip_2")), _get_name(entry.get("clip"))),
             _load_image(_get_path(entry.get("image_path"))),
             _get_int(entry.get("width")),
             _get_int(entry.get("height")),
