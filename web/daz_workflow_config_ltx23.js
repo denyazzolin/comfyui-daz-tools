@@ -77,7 +77,8 @@ app.registerExtension({
     function fText(val)  { return (val && typeof val === 'object') ? (val.text  ?? '') : (val ?? '') }
     function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
     function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
-    function fType(val)  { return (val && typeof val === 'object') ? (val.type  ?? 'smart') : 'smart' }
+    function fType(val)       { return (val && typeof val === 'object') ? (val.type      ?? 'smart') : 'smart' }
+    function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false   }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -219,7 +220,19 @@ app.registerExtension({
         ${rowPairLora('LoRA 3',      loras.lora_3, 'LoRA 4', loras.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
         ${rowPairLora('LoRA 5',      loras.lora_5, 'LoRA 6', loras.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
         ${row('Resolution',  fValue(data.width) && fValue(data.height) ? `${fValue(data.width)} × ${fValue(data.height)}` : '')}
-        ${rowPair('Steps',   fValue(data.steps), 'Seed', fValue(data.seed))}
+        <tr>
+          <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Steps</td>
+          <td style="color:#ddd;padding:3px 10px;width:30%">${fValue(data.steps) ? esc(String(fValue(data.steps))) : '<span style="color:#555">—</span>'}</td>
+          <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Seed</td>
+          <td style="padding:3px 10px;width:30%">
+            <div style="display:flex;align-items:center;gap:6px">
+              ${fValue(data.seed) ? `<span style="color:#ddd">${esc(String(fValue(data.seed)))}</span>` : '<span style="color:#555">—</span>'}
+              <input type="checkbox" id="daz-use-seed-randomize"${fRandomize(data.seed) ? ' checked' : ''}
+                style="cursor:pointer;accent-color:#54af7b;width:13px;height:13px;flex-shrink:0">
+              <span style="color:#999;font-size:11px;font-family:monospace">rnd</span>
+            </div>
+          </td>
+        </tr>
         ${row('CFG',         fValue(data.cfg_high))}
         ${rowPair('Frames',  fValue(data.total_frames), 'FPS', fValue(data.fps))}
         ${row('Master',      trunc(fText(data.master_prompt)))}
@@ -241,7 +254,8 @@ app.registerExtension({
         fName(data.vae), fName(data.audio_vae),
         dualClipDisp(fName(data.clip_2), fName(data.clip)),
         fPath(data.image_path),
-        fValue(data.width), fValue(data.height), fValue(data.steps), fValue(data.seed),
+        fValue(data.width), fValue(data.height), fValue(data.steps),
+        fRandomize(data.seed) ? 'rnd' : fValue(data.seed),
         trunc(fText(data.master_prompt), 20), trunc(fText(data.positive_prompt), 20), trunc(fText(data.negative_prompt), 20),
         fType(data.positive_prompt),
         fValue(data.cfg_high),
@@ -346,6 +360,33 @@ app.registerExtension({
             console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not save lora enabled state', err)
           }
         })
+      })
+
+      wrap.querySelector('#daz-use-seed-randomize')?.addEventListener('change', async (e) => {
+        const detail = node._dazLtx23Detail
+        if (!detail) return
+        const seed = detail.seed && typeof detail.seed === 'object' ? detail.seed : { value: 0 }
+        detail.seed = { ...seed, randomize: e.target.checked }
+        updateOutputLabels(node, detail)
+        node.setDirtyCanvas(true, true)
+        const cw = node.widgets?.find(w => w.name === 'config')
+        const label = cw?.value
+        if (!label || label === '(no configs)') return
+        try {
+          const r = await fetch('/daz/workflow-config-save', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', seed: detail.seed }),
+          })
+          const result = await r.json()
+          if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+          const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+          if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+          syncWidget(node)
+          if (cw) cw.value = result.label
+        } catch (err) {
+          console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not save seed randomize', err)
+        }
       })
 
       updateOutputLabels(node, data)
@@ -556,7 +597,15 @@ app.registerExtension({
             <td ${tdL}>Steps</td>
             <td ${tdRNum}><input id="daz-steps" type="number" value="${fValue(data.steps)}" style="${numStyle}"></td>
             <td ${tdL}>Seed</td>
-            <td ${tdRNum}><input id="daz-seed" type="number" value="${fValue(data.seed)}" style="${numStyle}"></td>
+            <td ${tdRNum}>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input id="daz-seed" type="number" value="${fValue(data.seed)}" style="${numStyle}">
+                <input type="checkbox" id="daz-seed-randomize"${fRandomize(data.seed) ? ' checked' : ''}
+                  title="Randomize seed on every run"
+                  style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
+                <span style="color:#999;font-size:11px;font-family:monospace">rnd</span>
+              </div>
+            </td>
           </tr>
           <tr>
             <td ${tdL}>CFG</td>
@@ -652,6 +701,33 @@ app.registerExtension({
         }
         btn.textContent = 'Upload…'
         btn.disabled    = false
+      })
+
+      // ── Seed randomize immediate save ─────────────────────────────────────
+      wrap.querySelector('#daz-seed-randomize')?.addEventListener('change', async (e) => {
+        if (isNew) return
+        const cw = node.widgets?.find(w => w.name === 'config')
+        const label = cw?.value
+        if (!label || label === '(no configs)') return
+        const detail = node._dazLtx23Detail || {}
+        const seedVal = parseInt(wrap.querySelector('#daz-seed')?.value ?? '0', 10)
+        const newSeed = { value: seedVal, randomize: e.target.checked }
+        try {
+          const r = await fetch('/daz/workflow-config-save', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', seed: newSeed }),
+          })
+          const result = await r.json()
+          if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+          if (node._dazLtx23Detail) node._dazLtx23Detail.seed = newSeed
+          const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+          if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+          syncWidget(node)
+          if (cw) cw.value = result.label
+        } catch (err) {
+          console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not save seed randomize', err)
+        }
       })
 
       // ── Mode-specific handlers ────────────────────────────────────────────
@@ -784,7 +860,8 @@ app.registerExtension({
         width:           { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
         height:          { value: parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10) },
         steps:           { value: parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10) },
-        seed:            { value: parseInt(wrap.querySelector('#daz-seed')?.value         ?? '0', 10) },
+        seed:            { value: parseInt(wrap.querySelector('#daz-seed')?.value         ?? '0', 10),
+                           randomize: wrap.querySelector('#daz-seed-randomize')?.checked ?? false },
         cfg_high:        { value: parseFloat(wrap.querySelector('#daz-cfg')?.value        ?? '0') },
         total_frames:    { value: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) },
         fps:             { value: parseFloat(wrap.querySelector('#daz-fps')?.value        ?? '0') },

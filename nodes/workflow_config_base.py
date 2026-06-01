@@ -27,7 +27,7 @@ CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 # Multi-config manager directory: scan this for dx_*.json files
 _MGR_DIR    = os.path.join(_WORKFLOWS_DIR, "_mgr")
 
-CURRENT_SCHEMA = 3
+CURRENT_SCHEMA = 4
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -206,6 +206,12 @@ def _get_float(val, default: float = 0.0) -> float:
     except (ValueError, TypeError):
         return default
 
+def _get_seed_randomize(val) -> bool:
+    """Read the randomize flag from a {"value": N, "randomize": bool} seed object."""
+    if isinstance(val, dict):
+        return bool(val.get("randomize", False))
+    return False
+
 _PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3}
 
 def _get_prompt_type_int(val, default: int = 1) -> int:
@@ -348,6 +354,10 @@ def _migrate(configs: dict, from_version: int) -> dict:
                 else:
                     entry["positive_prompt"] = {"text": str(v or ""), "type": "smart"}
             # v3: _meta gains name/version/created_at/updated_at — no per-entry changes.
+            if version == 4:
+                seed = entry.get("seed")
+                if isinstance(seed, dict) and "randomize" not in seed:
+                    seed["randomize"] = False
     return configs
 
 

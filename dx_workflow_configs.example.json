@@ -116,7 +116,8 @@
       "name": ""
     },
     "seed": {
-      "value": 0
+      "value": 0,
+      "randomize": false
     }
   }
 }

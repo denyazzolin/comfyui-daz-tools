@@ -1,10 +1,11 @@
 import os
+import random
 
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_prompt_type_int,
+    _get_prompt_type_int, _get_seed_randomize, _save_configs,
 )
 
 try:
@@ -198,6 +199,16 @@ class WorkflowConfigLtx23:
         entry = configs[name]
         loras = _get_loras(entry)
 
+        seed_obj = entry.get("seed", {"value": 0})
+        seed_val = _get_int(seed_obj)
+        if _get_seed_randomize(seed_obj):
+            seed_val = random.randint(1, 2**31 - 1)
+            entry["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
+            try:
+                _save_configs(configs)
+            except Exception as e:
+                print(f"[DAZ TOOLS] WorkflowConfigLtx23: could not save random seed — {e}")
+
         ckpt_name = _get_name(entry.get("checkpoint"))
         unet_name = _get_name(entry.get("unet_high"))
         vae_name  = _get_name(entry.get("vae"))
@@ -245,7 +256,7 @@ class WorkflowConfigLtx23:
             _get_int(entry.get("width")),
             _get_int(entry.get("height")),
             _get_int(entry.get("steps")),
-            _get_int(entry.get("seed")),
+            seed_val,
             _get_text(entry.get("master_prompt")),
             _get_text(entry.get("positive_prompt")),
             _get_text(entry.get("negative_prompt")),
