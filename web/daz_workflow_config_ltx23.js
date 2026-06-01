@@ -1,4 +1,5 @@
 import { app } from '../../scripts/app.js'
+import { api } from '../../scripts/api.js'
 
 const PANEL_H      = 528
 const EDIT_PANEL_H = 960
@@ -1317,6 +1318,24 @@ app.registerExtension({
         } else {
           loadDetail(this, w.value)
         }
+      }
+
+      // Refresh panel after this node executes (picks up the new random seed value)
+      const executedHandler = ({ detail }) => {
+        if (String(detail.node) !== String(this.id)) return
+        if (this._dazLtx23EditMode) return
+        const cw = this.widgets?.find(w => w.name === 'config')
+        if (cw && cw.value && cw.value !== '(no configs)') loadDetail(this, cw.value)
+      }
+      api.addEventListener('executed', executedHandler)
+      this._dazLtx23ExecutedHandler = executedHandler
+    }
+
+    const onRemoved = nodeType.prototype.onRemoved
+    nodeType.prototype.onRemoved = function () {
+      onRemoved?.apply(this, arguments)
+      if (this._dazLtx23ExecutedHandler) {
+        api.removeEventListener('executed', this._dazLtx23ExecutedHandler)
       }
     }
 
