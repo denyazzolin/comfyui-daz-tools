@@ -2,7 +2,7 @@ import os
 
 import folder_paths
 from .workflow_config_base import (
-    load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint,
+    load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_prompt_type_int,
 )
@@ -20,8 +20,9 @@ try:
 except Exception:
     pass
 
-_CLASS      = "ltx2.3"
-_NO_CONFIGS = "(no configs)"
+_CLASS        = "ltx2.3"
+_NO_CONFIGS   = "(no configs)"
+_FILE_DEFAULT = "(default)"
 
 
 def _load_unet(name: str):
@@ -121,10 +122,28 @@ def _apply_loras(model, lora_pairs):
 class WorkflowConfigLtx23:
     @classmethod
     def INPUT_TYPES(cls):
-        labels = labels_for_class(_CLASS)
+        files       = scan_config_files(_CLASS)
+        file_labels = [f["file"] for f in files] if files else [_FILE_DEFAULT]
+        # Always include "(default)" so old saved workflows still pass validation
+        if files and _FILE_DEFAULT not in file_labels:
+            file_labels = file_labels + [_FILE_DEFAULT]
+
+        # Collect labels from ALL sources (every _mgr/ file + legacy) so any
+        # valid selection — including from a renamed or relocated config — passes
+        # ComfyUI's combo validation at execution time.
+        seen, all_labels = set(), []
+        for f in files:
+            for lbl in labels_for_class(_CLASS, file=f["file"]):
+                if lbl not in seen:
+                    seen.add(lbl); all_labels.append(lbl)
+        for lbl in labels_for_class(_CLASS, file=None):
+            if lbl not in seen:
+                seen.add(lbl); all_labels.append(lbl)
+
         return {
             "required": {
-                "config": (labels if labels else [_NO_CONFIGS],),
+                "config_file": (file_labels,),
+                "config":      (all_labels if all_labels else [_NO_CONFIGS],),
             }
         }
 
@@ -164,8 +183,9 @@ class WorkflowConfigLtx23:
     CATEGORY    = "utils"
     OUTPUT_NODE = False
 
-    def load_config(self, config: str):
-        configs = load_configs()
+    def load_config(self, config_file: str, config: str):
+        file    = None if config_file == _FILE_DEFAULT else config_file
+        configs = load_configs(file=file)
         name = next(
             (n for n, e in configs.items()
              if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
@@ -173,7 +193,7 @@ class WorkflowConfigLtx23:
         )
         if name is None:
             raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigLtx23: '{config}' not found in {CONFIG_FILE}"
+                f"[DAZ TOOLS] WorkflowConfigLtx23: '{config}' not found"
             )
         entry = configs[name]
         loras = _get_loras(entry)

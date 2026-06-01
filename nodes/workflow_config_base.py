@@ -21,7 +21,11 @@ except Exception:
     _comfy_sd = None
 
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
+
+# Legacy single-file path (pre-multi-config)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
+# Multi-config manager directory: scan this for dx_*.json files
+_MGR_DIR    = os.path.join(_WORKFLOWS_DIR, "_mgr")
 
 CURRENT_SCHEMA = 3
 _META_KEY      = "_meta"
@@ -32,12 +36,112 @@ _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lor
 # For structural changes (field renames, type changes, grouping), add a branch in _migrate.
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
 
-_missing_warned   = False
-# Tracks the highest schema version seen on disk so an older node installation
-# never downgrades the file version written by a newer one.
-_effective_schema = CURRENT_SCHEMA
-# Stores non-version _meta fields (name, version, created_at, updated_at) read from disk.
-_meta_extra: dict = {}
+_warned_missing: set = set()  # paths already logged as missing, to avoid log spam
+
+
+# ── Path resolution ───────────────────────────────────────────────────────────
+
+def _resolve_path(file: str = None) -> str:
+    """Resolve a file selector to an absolute config file path.
+    None / empty / '(default)' → legacy CONFIG_FILE.
+    Any other value → _MGR_DIR/<basename> (must start with dx_ and end with .json)."""
+    if not file or file == "(default)":
+        return CONFIG_FILE
+    basename = os.path.basename(file)
+    if not (basename.startswith("dx_") and basename.endswith(".json")):
+        raise ValueError(f"[DAZ TOOLS] Invalid config file name: {file!r}")
+    return os.path.join(_MGR_DIR, basename)
+
+
+# ── Core file I/O ─────────────────────────────────────────────────────────────
+
+def _load_file(path: str) -> tuple[dict, dict, int]:
+    """Load a config file. Returns (configs, meta_extra, effective_schema).
+    If the file is at an older schema version it is migrated and immediately saved."""
+    if not os.path.exists(path):
+        if path not in _warned_missing:
+            print(f"[DAZ TOOLS] WorkflowConfig: config file not found at {path}")
+            _warned_missing.add(path)
+        return {}, {}, CURRENT_SCHEMA
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception as e:
+        print(f"[DAZ TOOLS] WorkflowConfig: could not read {os.path.basename(path)} — {e}")
+        return {}, {}, CURRENT_SCHEMA
+
+    if not isinstance(raw, dict):
+        print(f"[DAZ TOOLS] WorkflowConfig: {os.path.basename(path)} has unexpected format")
+        return {}, {}, CURRENT_SCHEMA
+
+    file_meta    = raw.get(_META_KEY, {})
+    file_version = file_meta.get("schema_version", 1)
+    effective    = max(file_version, CURRENT_SCHEMA)
+    meta_extra   = {k: v for k, v in file_meta.items() if k != "schema_version"}
+    configs      = {k: v for k, v in raw.items() if k != _META_KEY}
+
+    if file_version > CURRENT_SCHEMA:
+        print(f"[DAZ TOOLS] WorkflowConfig: {os.path.basename(path)} is schema v{file_version} "
+              f"(node understands v{CURRENT_SCHEMA}) — skipping migration")
+    elif file_version < CURRENT_SCHEMA:
+        print(f"[DAZ TOOLS] WorkflowConfig: migrating {os.path.basename(path)} "
+              f"v{file_version} → v{CURRENT_SCHEMA}")
+        configs = _migrate(configs, file_version)
+        try:
+            _write_file(path, configs, meta_extra, effective)
+        except Exception as e:
+            print(f"[DAZ TOOLS] WorkflowConfig: could not write migrated config — {e}")
+
+    return configs, meta_extra, effective
+
+
+def _write_file(path: str, configs: dict, meta_extra: dict, effective_schema: int) -> None:
+    """Write configs to disk with a full _meta block."""
+    now = datetime.now().isoformat()
+    meta: dict = {
+        "schema_version": effective_schema,
+        "name":           meta_extra.get("name",       "dx_workflow_configs"),
+        "version":        meta_extra.get("version",    "1.0"),
+        "created_at":     meta_extra.get("created_at", now),
+        "updated_at":     now,
+    }
+    data: dict = {_META_KEY: meta}
+    data.update(configs)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+# ── Multi-file scanning ───────────────────────────────────────────────────────
+
+def scan_config_files(cls: str = None) -> list[dict]:
+    """Scan _mgr/ for dx_*.json files. Returns [{file, name, path}] sorted by filename.
+    If cls is given, only includes files that contain at least one entry of that class.
+    Files that fail to load or have no matching class entries are silently excluded."""
+    os.makedirs(_MGR_DIR, exist_ok=True)
+    results = []
+    try:
+        candidates = sorted(
+            f for f in os.listdir(_MGR_DIR)
+            if f.startswith("dx_") and f.endswith(".json")
+        )
+    except OSError:
+        return results
+
+    for filename in candidates:
+        path = os.path.join(_MGR_DIR, filename)
+        try:
+            configs, meta_extra, _ = _load_file(path)
+        except Exception:
+            continue
+        if cls and not any(e.get("class") == cls for e in configs.values()):
+            continue
+        results.append({
+            "file": filename,
+            "name": meta_extra.get("name") or os.path.splitext(filename)[0],
+            "path": path,
+        })
+    return results
 
 
 # ── Schema v1 typed-object accessors ─────────────────────────────────────────
@@ -247,67 +351,14 @@ def _migrate(configs: dict, from_version: int) -> dict:
     return configs
 
 
-def _save_configs(configs: dict) -> None:
-    """Write configs to disk prefixed with the schema meta block."""
-    now = datetime.now().isoformat()
-    meta: dict = {
-        "schema_version": _effective_schema,
-        "name":           _meta_extra.get("name",       "dx_workflow_configs"),
-        "version":        _meta_extra.get("version",    "1.0"),
-        "created_at":     _meta_extra.get("created_at", now),
-        "updated_at":     now,
-    }
-    data: dict = {_META_KEY: meta}
-    data.update(configs)
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+# ── Public API ────────────────────────────────────────────────────────────────
 
-
-def load_configs() -> dict:
-    global _missing_warned, _effective_schema, _meta_extra
-    if not os.path.exists(CONFIG_FILE):
-        if not _missing_warned:
-            print(f"[DAZ TOOLS] WorkflowConfig: config file not found at {CONFIG_FILE}")
-            _missing_warned = True
-        return {}
-    try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception as e:
-        print(f"[DAZ TOOLS] WorkflowConfig: could not read config file — {e}")
-        return {}
-
-    if not isinstance(raw, dict):
-        print("[DAZ TOOLS] WorkflowConfig: config file has unexpected format")
-        return {}
-
-    # v1 is the base schema. Files without a _meta block are treated as v1 — the
-    # _get_*() helpers handle both flat and typed-object values at read time.
-    file_meta    = raw.get(_META_KEY, {})
-    file_version = file_meta.get("schema_version", 1)
-    # Never downgrade the on-disk version: if a newer node wrote v3, preserve that.
-    _effective_schema = max(file_version, CURRENT_SCHEMA)
-    # Preserve non-version _meta fields so _save_configs can round-trip them.
-    _meta_extra = {k: v for k, v in file_meta.items() if k != "schema_version"}
-    configs = {k: v for k, v in raw.items() if k != _META_KEY}
-
-    if file_version > CURRENT_SCHEMA:
-        # File was written by a newer node. Read what we understand; do not migrate.
-        # Writes (edits, saves) will preserve the higher version number.
-        print(f"[DAZ TOOLS] WorkflowConfig: config file is schema v{file_version} "
-              f"(node understands v{CURRENT_SCHEMA}) — skipping migration")
-    elif file_version < CURRENT_SCHEMA:
-        print(f"[DAZ TOOLS] WorkflowConfig: migrating schema v{file_version} → v{CURRENT_SCHEMA}")
-        configs = _migrate(configs, file_version)
-        try:
-            _save_configs(configs)
-        except Exception as e:
-            print(f"[DAZ TOOLS] WorkflowConfig: could not write migrated config — {e}")
-
+def load_configs(file: str = None) -> dict:
+    """Load configs from the given file (basename from _mgr/) or the legacy CONFIG_FILE."""
+    path = _resolve_path(file)
+    configs, _, _ = _load_file(path)
     return configs
 
-
-# ── Label helpers ─────────────────────────────────────────────────────────────
 
 def make_label(name: str, created_at: str) -> str:
     try:
@@ -317,8 +368,8 @@ def make_label(name: str, created_at: str) -> str:
         return name
 
 
-def labels_for_class(cls: str) -> list[str]:
-    configs = load_configs()
+def labels_for_class(cls: str, file: str = None) -> list[str]:
+    configs = load_configs(file)
     return [
         make_label(name, entry.get("created_at", ""))
         for name, entry in configs.items()
@@ -326,8 +377,8 @@ def labels_for_class(cls: str) -> list[str]:
     ]
 
 
-def configs_with_type_for_class(cls: str) -> list[dict]:
-    configs = load_configs()
+def configs_with_type_for_class(cls: str, file: str = None) -> list[dict]:
+    configs = load_configs(file)
     return [
         {
             "label": make_label(name, entry.get("created_at", "")),
@@ -339,8 +390,8 @@ def configs_with_type_for_class(cls: str) -> list[dict]:
     ]
 
 
-def label_to_name(label: str, cls: str) -> Optional[str]:
-    configs = load_configs()
+def label_to_name(label: str, cls: str, file: str = None) -> Optional[str]:
+    configs = load_configs(file)
     for name, entry in configs.items():
         if entry.get("class") == cls and make_label(name, entry.get("created_at", "")) == label:
             return name
@@ -353,33 +404,74 @@ try:
     from server import PromptServer
     from aiohttp import web
 
+    @PromptServer.instance.routes.get("/daz/config-files")
+    async def _daz_config_files(request):
+        cls = request.rel_url.query.get("class", "")
+        files = scan_config_files(cls or None)
+        return web.json_response([{"file": f["file"], "name": f["name"]} for f in files])
+
     @PromptServer.instance.routes.get("/daz/workflow-configs")
     async def _daz_workflow_configs(request):
-        cls = request.rel_url.query.get("class", "")
-        return web.json_response(labels_for_class(cls))
+        cls  = request.rel_url.query.get("class", "")
+        file = request.rel_url.query.get("file") or None
+        return web.json_response(labels_for_class(cls, file=file))
 
     @PromptServer.instance.routes.get("/daz/workflow-configs-with-type")
     async def _daz_workflow_configs_with_type(request):
-        cls = request.rel_url.query.get("class", "")
-        return web.json_response(configs_with_type_for_class(cls))
+        cls  = request.rel_url.query.get("class", "")
+        file = request.rel_url.query.get("file") or None
+        return web.json_response(configs_with_type_for_class(cls, file=file))
 
     @PromptServer.instance.routes.get("/daz/workflow-config-detail")
     async def _daz_workflow_config_detail(request):
         label = request.rel_url.query.get("label", "")
         cls   = request.rel_url.query.get("class", "")
-        configs = load_configs()
-        name = next(
-            (n for n, e in configs.items()
-             if e.get("class") == cls and make_label(n, e.get("created_at", "")) == label),
-            None,
-        )
+        file  = request.rel_url.query.get("file") or None
+
+        def _find(path: str):
+            cfgs, _, _ = _load_file(path)
+            n = next(
+                (k for k, e in cfgs.items()
+                 if e.get("class") == cls and make_label(k, e.get("created_at", "")) == label),
+                None,
+            )
+            return n, cfgs
+
+        # Try the requested file first (guard against invalid file values from old workflows)
+        try:
+            requested_path = _resolve_path(file)
+        except ValueError:
+            requested_path = CONFIG_FILE
+            file = None
+        name, configs = _find(requested_path)
+        source_file = file  # tracks which file actually had the config
+
+        if name is None:
+            # Fallback: search all other _mgr/ files, then the legacy file
+            fallbacks = [
+                (s["file"], s["path"]) for s in scan_config_files(cls)
+                if s["path"] != requested_path
+            ]
+            if requested_path != CONFIG_FILE:
+                fallbacks.append((None, CONFIG_FILE))
+            for fb_file, fb_path in fallbacks:
+                name, configs = _find(fb_path)
+                if name is not None:
+                    source_file = fb_file
+                    break
+
         if name is None:
             return web.json_response({"error": f"Config '{label}' not found."})
+
         # Normalize to v1 typed-object format; strip internal fields; add name
         result = _normalize_entry(configs[name])
         result.pop("class",      None)
         result.pop("created_at", None)
         result["name"] = name
+        # Tell the JS client which file the config was actually found in, so it
+        # can correct its file selection when the saved workflow pointed elsewhere.
+        if source_file != file:
+            result["_source_file"] = source_file
         return web.json_response(result)
 
     @PromptServer.instance.routes.get("/daz/folder-files")
@@ -410,8 +502,11 @@ try:
 
         label = data.get("label", "")
         cls   = data.get("class", "")
+        file  = data.get("file") or None
 
-        configs = load_configs()
+        path = _resolve_path(file)
+        configs, meta_extra, effective = _load_file(path)
+
         name = next(
             (n for n, e in configs.items()
              if e.get("class") == cls and make_label(n, e.get("created_at", "")) == label),
@@ -503,7 +598,7 @@ try:
         configs[name] = entry
 
         try:
-            _save_configs(configs)
+            _write_file(path, configs, meta_extra, effective)
         except Exception as e:
             return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
 
@@ -519,13 +614,16 @@ try:
 
         name = data.get("name", "").strip()
         cls  = data.get("class", "")
+        file = data.get("file") or None
 
         if not name:
             return web.json_response({"error": "Config name is required."}, status=400)
         if name == _META_KEY:
             return web.json_response({"error": f"'{_META_KEY}' is a reserved name."}, status=400)
 
-        configs = load_configs()
+        path = _resolve_path(file)
+        configs, meta_extra, effective = _load_file(path)
+
         if name in configs:
             return web.json_response({"error": f"A config named '{name}' already exists."}, status=409)
 
@@ -576,7 +674,7 @@ try:
         configs[name] = entry
 
         try:
-            _save_configs(configs)
+            _write_file(path, configs, meta_extra, effective)
         except Exception as e:
             return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
 
@@ -592,8 +690,11 @@ try:
 
         label = data.get("label", "")
         cls   = data.get("class", "")
+        file  = data.get("file") or None
 
-        configs = load_configs()
+        path = _resolve_path(file)
+        configs, meta_extra, effective = _load_file(path)
+
         name = next(
             (n for n, e in configs.items()
              if e.get("class") == cls and make_label(n, e.get("created_at", "")) == label),
@@ -605,7 +706,7 @@ try:
         del configs[name]
 
         try:
-            _save_configs(configs)
+            _write_file(path, configs, meta_extra, effective)
         except Exception as e:
             return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
 
