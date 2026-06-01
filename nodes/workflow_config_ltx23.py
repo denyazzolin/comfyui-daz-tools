@@ -5,7 +5,7 @@ import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_prompt_type_int, _get_seed_randomize,
+    _get_prompt_type_int, _get_seed_randomize, _get_flag_value,
     _resolve_path, _load_file, _write_file,
 )
 
@@ -164,6 +164,7 @@ class WorkflowConfigLtx23:
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
         "MODEL", "MODEL",
+        "BOOLEAN", "BOOLEAN",
     )
     RETURN_NAMES = (
         "checkpoint_model", "checkpoint_vae", "checkpoint_clip",
@@ -180,6 +181,7 @@ class WorkflowConfigLtx23:
         "distillation_lora", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
         "filename",
         "transformer_stack", "checkpoint_stack",
+        "flag_1", "flag_2",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -287,4 +289,6 @@ class WorkflowConfigLtx23:
             _get_file(entry.get("filename")),
             _apply_loras(unet,       lora_pairs),
             _apply_loras(ckpt_model, lora_pairs),
+            _get_flag_value(entry.get("flags", {}).get("flag_1")),
+            _get_flag_value(entry.get("flags", {}).get("flag_2")),
         )

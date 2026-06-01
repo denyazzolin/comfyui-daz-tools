@@ -120,8 +120,10 @@ app.registerExtension({
     function fText(val)  { return (val && typeof val === 'object') ? (val.text  ?? '') : (val ?? '') }
     function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
     function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
-    function fType(val)       { return (val && typeof val === 'object') ? (val.type      ?? 'smart') : 'smart' }
-    function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false   }
+    function fType(val)       { return (val && typeof val === 'object') ? (val.type      ?? 'smart') : 'smart'  }
+    function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
+    function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
+    function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
 
     function row(label, value) {
       const v = value !== undefined && value !== '' && value !== 0
@@ -237,6 +239,23 @@ app.registerExtension({
         ${row('Positive',    trunc(fText(data.positive_prompt)))}
         ${row('Negative',    trunc(fText(data.negative_prompt)))}
         ${row('Filename',    fFile(data.filename))}
+        <tr>
+          <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:middle">Flags</td>
+          <td colspan="3" style="padding:3px 10px">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="display:flex;align-items:center;gap:4px">
+                <input type="checkbox" id="daz-use-flag-1"${fFlagValue(data.flags?.flag_1) ? ' checked' : ''}
+                  style="cursor:pointer;accent-color:#54af7b;width:13px;height:13px;flex-shrink:0">
+                <span style="color:#999;font-size:11px;font-family:monospace">${esc(fFlagLabel(data.flags?.flag_1, 'flag 1'))}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <input type="checkbox" id="daz-use-flag-2"${fFlagValue(data.flags?.flag_2) ? ' checked' : ''}
+                  style="cursor:pointer;accent-color:#54af7b;width:13px;height:13px;flex-shrink:0">
+                <span style="color:#999;font-size:11px;font-family:monospace">${esc(fFlagLabel(data.flags?.flag_2, 'flag 2'))}</span>
+              </div>
+            </div>
+          </td>
+        </tr>
       </table>`
     }
 
@@ -269,6 +288,8 @@ app.registerExtension({
         fFile(data.filename),
         fName(data.unet_high),
         fName(data.unet_low),
+        fFlagLabel(data.flags?.flag_1, 'flag 1') + ': ' + fFlagValue(data.flags?.flag_1),
+        fFlagLabel(data.flags?.flag_2, 'flag 2') + ': ' + fFlagValue(data.flags?.flag_2),
       ]
       values.forEach((val, i) => {
         if (!node.outputs[i]) return
@@ -386,6 +407,35 @@ app.registerExtension({
         } catch (err) {
           console.warn('[DAZ TOOLS] WorkflowConfigWan22: could not save seed randomize', err)
         }
+      })
+
+      ;[['flag_1', 'daz-use-flag-1'], ['flag_2', 'daz-use-flag-2']].forEach(([flagKey, id]) => {
+        wrap.querySelector(`#${id}`)?.addEventListener('change', async (e) => {
+          const detail = node._dazWan22Detail
+          if (!detail) return
+          if (!detail.flags) detail.flags = {}
+          if (!detail.flags[flagKey]) detail.flags[flagKey] = { label: flagKey.replace('_', ' '), value: false }
+          detail.flags[flagKey].value = e.target.checked
+          updateOutputLabels(node, detail)
+          node.setDirtyCanvas(true, true)
+          const cw = node.widgets?.find(w => w.name === 'config')
+          const label = cw?.value
+          if (!label || label === '(no configs)') return
+          try {
+            const r = await fetch('/daz/workflow-config-save', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ label, class: CLASS, file: currentFile(node), new_name: detail.name || '', flags: { [flagKey]: detail.flags[flagKey] } }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            await reloadNodeConfigs(node)
+            syncWidget(node)
+            if (cw) cw.value = result.label
+          } catch (err) {
+            console.warn('[DAZ TOOLS] WorkflowConfigWan22: could not save flag', err)
+          }
+        })
       })
 
       updateOutputLabels(node, data)
@@ -616,6 +666,22 @@ app.registerExtension({
             <td ${tdRNum}><input id="daz-total-frames" type="number" value="${fValue(data.total_frames) || 0}" style="${numStyle}"></td>
             <td ${tdL}>FPS</td>
             <td ${tdRNum}><input id="daz-fps" type="number" step="0.01" value="${fValue(data.fps) || 0}" style="${numStyle}"></td>
+          </tr>
+          ${divider}
+          <tr>
+            <td ${tdL}>Flags</td>
+            <td colspan="3" style="padding:3px 8px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <input id="daz-flag-1-label" type="text" value="${esc(fFlagLabel(data.flags?.flag_1, 'flag 1'))}"
+                  placeholder="flag 1" style="width:110px;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px">
+                <input type="checkbox" id="daz-flag-1-value"${fFlagValue(data.flags?.flag_1) ? ' checked' : ''}
+                  title="Flag 1 value" style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+                <input id="daz-flag-2-label" type="text" value="${esc(fFlagLabel(data.flags?.flag_2, 'flag 2'))}"
+                  placeholder="flag 2" style="width:110px;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px">
+                <input type="checkbox" id="daz-flag-2-value"${fFlagValue(data.flags?.flag_2) ? ' checked' : ''}
+                  title="Flag 2 value" style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+              </div>
+            </td>
           </tr>
           ${divider}
           <tr>
@@ -858,6 +924,10 @@ app.registerExtension({
         split_step:   { value: parseInt(wrap.querySelector('#daz-split-step')?.value   ?? '0', 10) },
         seed:         { value: parseInt(wrap.querySelector('#daz-seed')?.value         ?? '0', 10),
                         randomize: wrap.querySelector('#daz-seed-randomize')?.checked  ?? false },
+        flags: {
+          flag_1: { label: wrap.querySelector('#daz-flag-1-label')?.value ?? 'flag 1', value: wrap.querySelector('#daz-flag-1-value')?.checked ?? false },
+          flag_2: { label: wrap.querySelector('#daz-flag-2-label')?.value ?? 'flag 2', value: wrap.querySelector('#daz-flag-2-value')?.checked ?? false },
+        },
         cfg_high:     { value: parseFloat(wrap.querySelector('#daz-cfg-high')?.value   ?? '0') },
         cfg_low:      { value: parseFloat(wrap.querySelector('#daz-cfg-low')?.value    ?? '0') },
         total_frames: { value: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) },
@@ -1025,6 +1095,10 @@ app.registerExtension({
         cfg_low:         data.cfg_low         ?? { value: 0 },
         total_frames:    data.total_frames    ?? { value: 0 },
         fps:             data.fps             ?? { value: 0 },
+        flags: data.flags ?? {
+          flag_1: { label: 'flag 1', value: false },
+          flag_2: { label: 'flag 2', value: false },
+        },
       }
 
       try {

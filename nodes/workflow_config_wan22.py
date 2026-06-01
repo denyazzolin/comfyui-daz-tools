@@ -5,7 +5,7 @@ import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_prompt_type_int, _get_seed_randomize,
+    _get_prompt_type_int, _get_seed_randomize, _get_flag_value,
     _resolve_path, _load_file, _write_file,
 )
 
@@ -149,6 +149,7 @@ class WorkflowConfigWan22:
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
         "MODEL", "MODEL",
+        "BOOLEAN", "BOOLEAN",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -166,6 +167,7 @@ class WorkflowConfigWan22:
         "lora_4_high", "lora_4_low",
         "filename",
         "unet_stack_high", "unet_stack_low",
+        "flag_1", "flag_2",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -258,4 +260,6 @@ class WorkflowConfigWan22:
                 (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
                 (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
             ]),
+            _get_flag_value(entry.get("flags", {}).get("flag_1")),
+            _get_flag_value(entry.get("flags", {}).get("flag_2")),
         )

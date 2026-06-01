@@ -27,7 +27,7 @@ CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 # Multi-config manager directory: scan this for dx_*.json files
 _MGR_DIR    = os.path.join(_WORKFLOWS_DIR, "_mgr")
 
-CURRENT_SCHEMA = 4
+CURRENT_SCHEMA = 5
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -206,6 +206,18 @@ def _get_float(val, default: float = 0.0) -> float:
     except (ValueError, TypeError):
         return default
 
+def _get_flag_label(val, default: str = "") -> str:
+    """Read the label string from a {"label": "…", "value": bool} flag object."""
+    if isinstance(val, dict):
+        return str(val.get("label") or default)
+    return default
+
+def _get_flag_value(val) -> bool:
+    """Read the boolean value from a {"label": "…", "value": bool} flag object."""
+    if isinstance(val, dict):
+        return bool(val.get("value", False))
+    return False
+
 def _get_seed_randomize(val) -> bool:
     """Read the randomize flag from a {"value": N, "randomize": bool} seed object."""
     if isinstance(val, dict):
@@ -310,6 +322,18 @@ def _normalize_entry(entry: dict) -> dict:
     for key in _LORA_FIELDS:
         result.pop(key, None)
 
+    # Ensure flags exist with correct shape
+    flags = result.get("flags")
+    if not isinstance(flags, dict):
+        result["flags"] = {
+            "flag_1": {"label": "flag 1", "value": False},
+            "flag_2": {"label": "flag 2", "value": False},
+        }
+    else:
+        for key, default_label in (("flag_1", "flag 1"), ("flag_2", "flag 2")):
+            if not isinstance(flags.get(key), dict):
+                flags[key] = {"label": default_label, "value": False}
+
     return result
 
 
@@ -358,6 +382,12 @@ def _migrate(configs: dict, from_version: int) -> dict:
                 seed = entry.get("seed")
                 if isinstance(seed, dict) and "randomize" not in seed:
                     seed["randomize"] = False
+            if version == 5:
+                if not isinstance(entry.get("flags"), dict):
+                    entry["flags"] = {
+                        "flag_1": {"label": "flag 1", "value": False},
+                        "flag_2": {"label": "flag 2", "value": False},
+                    }
     return configs
 
 
@@ -591,6 +621,13 @@ try:
             for key in _LORA_FIELDS:
                 entry.pop(key, None)
 
+        if "flags" in data and isinstance(data["flags"], dict):
+            if not isinstance(entry.get("flags"), dict):
+                entry["flags"] = {}
+            for flag_key in ("flag_1", "flag_2"):
+                if flag_key in data["flags"] and isinstance(data["flags"][flag_key], dict):
+                    entry["flags"][flag_key] = data["flags"][flag_key]
+
         new_name = data.get("new_name", "").strip()
         if new_name and new_name != name:
             if new_name == _META_KEY:
@@ -680,6 +717,14 @@ try:
 
         loras_data = data.get("loras") if isinstance(data.get("loras"), dict) else {}
         entry["loras"] = {key: _coerce_lora(loras_data.get(key, "")) for key in _LORA_FIELDS}
+
+        flags_data = data.get("flags") if isinstance(data.get("flags"), dict) else {}
+        entry["flags"] = {
+            "flag_1": flags_data.get("flag_1") if isinstance(flags_data.get("flag_1"), dict)
+                      else {"label": "flag 1", "value": False},
+            "flag_2": flags_data.get("flag_2") if isinstance(flags_data.get("flag_2"), dict)
+                      else {"label": "flag 2", "value": False},
+        }
 
         configs[name] = entry
 
