@@ -124,12 +124,26 @@ class WorkflowConfigLtx23:
     def INPUT_TYPES(cls):
         files       = scan_config_files(_CLASS)
         file_labels = [f["file"] for f in files] if files else [_FILE_DEFAULT]
-        first_file  = file_labels[0] if file_labels[0] != _FILE_DEFAULT else None
-        labels      = labels_for_class(_CLASS, file=first_file)
+        # Always include "(default)" so old saved workflows still pass validation
+        if files and _FILE_DEFAULT not in file_labels:
+            file_labels = file_labels + [_FILE_DEFAULT]
+
+        # Collect labels from ALL sources (every _mgr/ file + legacy) so any
+        # valid selection — including from a renamed or relocated config — passes
+        # ComfyUI's combo validation at execution time.
+        seen, all_labels = set(), []
+        for f in files:
+            for lbl in labels_for_class(_CLASS, file=f["file"]):
+                if lbl not in seen:
+                    seen.add(lbl); all_labels.append(lbl)
+        for lbl in labels_for_class(_CLASS, file=None):
+            if lbl not in seen:
+                seen.add(lbl); all_labels.append(lbl)
+
         return {
             "required": {
                 "config_file": (file_labels,),
-                "config":      (labels if labels else [_NO_CONFIGS],),
+                "config":      (all_labels if all_labels else [_NO_CONFIGS],),
             }
         }
 
