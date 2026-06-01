@@ -27,14 +27,16 @@ CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 # Multi-config manager directory: scan this for dx_*.json files
 _MGR_DIR    = os.path.join(_WORKFLOWS_DIR, "_mgr")
 
-CURRENT_SCHEMA = 5
+CURRENT_SCHEMA = 6
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
 
 # Purely additive field defaults per schema version (setdefault only — no structural changes).
 # For structural changes (field renames, type changes, grouping), add a branch in _migrate.
-_SCHEMA_DEFAULTS: dict[int, dict] = {}
+_SCHEMA_DEFAULTS: dict[int, dict] = {
+    6: {'note': {'value': ''}},
+}
 
 _warned_missing: set = set()  # paths already logged as missing, to avoid log spam
 
@@ -334,6 +336,10 @@ def _normalize_entry(entry: dict) -> dict:
             if not isinstance(flags.get(key), dict):
                 flags[key] = {"label": default_label, "value": False}
 
+    v = result.get("note")
+    if not isinstance(v, dict):
+        result["note"] = {"value": str(v or "")}
+
     return result
 
 
@@ -628,6 +634,10 @@ try:
                 if flag_key in data["flags"] and isinstance(data["flags"][flag_key], dict):
                     entry["flags"][flag_key] = data["flags"][flag_key]
 
+        if "note" in data:
+            v = data["note"]
+            entry["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
+
         new_name = data.get("new_name", "").strip()
         if new_name and new_name != name:
             if new_name == _META_KEY:
@@ -725,6 +735,9 @@ try:
             "flag_2": flags_data.get("flag_2") if isinstance(flags_data.get("flag_2"), dict)
                       else {"label": "flag 2", "value": False},
         }
+
+        v = data.get("note")
+        entry["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
 
         configs[name] = entry
 

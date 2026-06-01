@@ -1,11 +1,11 @@
 import { app } from '../../scripts/app.js'
 import { api } from '../../scripts/api.js'
 
-const PANEL_H      = 506
-const EDIT_PANEL_H = 960
+const PANEL_H      = 578
+const EDIT_PANEL_H = 1070
 const NODE_W       = 460
-const NODE_H       = 686
-const NODE_H_EDIT  = 1150
+const NODE_H       = 758
+const NODE_H_EDIT  = 1260
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
@@ -124,6 +124,22 @@ app.registerExtension({
     function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
     function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
     function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
+    function fNote(val)                { return (val && typeof val === 'object') ? (val.value ?? '')    : ''    }
+
+    function rowNote(text) {
+      if (!text) return `<tr>
+        <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Note</td>
+        <td colspan="3" style="padding:3px 10px"><span style="color:#555">—</span></td>
+      </tr>`
+      const lines   = text.split('\n')
+      const display = lines.length > 4 ? lines.slice(0, 4).join('\n') + '…' : text.trimEnd()
+      return `<tr>
+        <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Note</td>
+        <td colspan="3" style="padding:3px 10px">
+          <span style="color:#ddd;white-space:pre-wrap;word-break:break-word">${esc(display)}</span>
+        </td>
+      </tr>`
+    }
 
     function row(label, value) {
       const v = value !== undefined && value !== '' && value !== 0
@@ -208,6 +224,7 @@ app.registerExtension({
       return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
         ${row('Group',      fName(data.group))}
         ${row('Type',       typeLabel)}
+        ${rowNote(fNote(data.note))}
         ${row('UNet High',  disp(fName(data.unet_high)))}
         ${row('UNet Low',   disp(fName(data.unet_low)))}
         ${row('VAE',        disp(fName(data.vae)))}
@@ -572,6 +589,17 @@ app.registerExtension({
                <option value="T2V"${data.type === 'T2V' ? ' selected' : ''}>T2V</option>
                <option value="MULTI"${data.type === 'MULTI' ? ' selected' : ''}>MULTI</option>
              </select></td>
+           </tr>
+           <tr>
+             <td ${tdLTop}>Note</td>
+             <td ${tdR}>
+               <textarea id="daz-note" maxlength="900"
+                 style="width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:4px 6px;box-sizing:border-box;resize:none;height:72px;overflow-y:auto">${esc(fNote(data.note))}</textarea>
+               <div style="display:flex;justify-content:flex-end;margin-top:2px">
+                 <button id="daz-note-clear"
+                   style="font-family:monospace;font-size:11px;padding:1px 8px;background:#000;color:#999;border:1px solid #555;border-radius:3px;cursor:pointer">clear</button>
+               </div>
+             </td>
            </tr>`
 
       const footer = isNew
@@ -755,6 +783,11 @@ app.registerExtension({
         if (idx >= 0 && idx < focusable.length - 1) focusable[idx + 1].focus()
       }
       wrap.addEventListener('keydown', node._dazEditKeydownHandler)
+
+      wrap.querySelector('#daz-note-clear')?.addEventListener('click', () => {
+        const ta = wrap.querySelector('#daz-note')
+        if (ta) ta.value = ''
+      })
 
       wrap.querySelector('#daz-preview-btn')?.addEventListener('click', () => {
         const filename = wrap.querySelector('#daz-image-path')?.value
@@ -952,6 +985,7 @@ app.registerExtension({
           flag_1: { label: wrap.querySelector('#daz-flag-1-label')?.value ?? 'flag 1', value: wrap.querySelector('#daz-flag-1-value')?.checked ?? false },
           flag_2: { label: wrap.querySelector('#daz-flag-2-label')?.value ?? 'flag 2', value: wrap.querySelector('#daz-flag-2-value')?.checked ?? false },
         },
+        note:         { value: (wrap.querySelector('#daz-note')?.value ?? '').substring(0, 900) },
         cfg_high:     { value: parseFloat(wrap.querySelector('#daz-cfg-high')?.value   ?? '0') },
         cfg_low:      { value: parseFloat(wrap.querySelector('#daz-cfg-low')?.value    ?? '0') },
         total_frames: { value: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) },
@@ -1125,6 +1159,7 @@ app.registerExtension({
           flag_1: { label: 'flag 1', value: false },
           flag_2: { label: 'flag 2', value: false },
         },
+        note:            data.note            ?? { value: '' },
       }
 
       try {
