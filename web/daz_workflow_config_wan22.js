@@ -1097,6 +1097,12 @@ app.registerExtension({
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(payload),
         })
+        if (r.status === 409) {
+          saveBtn.textContent = 'Save'
+          saveBtn.disabled    = false
+          showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap))
+          return
+        }
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
