@@ -108,6 +108,7 @@ These attributes are common to both nodes:
 | `filename` | string | Relative path and filename for Save Video nodes (e.g. `subfolder/my_clip`), resolved against ComfyUI's output directory |
 | `type` | string | Workflow type: `I2V`, `T2V`, `MULTI`, or blank |
 | `group` | string | Custom group label for filtering |
+| `note` | string | Free-form text note for this config. Editable in the edit panel; displayed (up to 4 lines) below the Type row in the use panel. Max 900 characters. |
 | `flag_1` / `flag_2` | bool | Two general-purpose boolean flags with configurable labels. Labels are set in edit mode; values can be toggled directly from the use-mode panel without entering edit mode. |
 
 #### WAN2.2-specific attributes
@@ -154,8 +155,15 @@ Checkpoint outputs (`checkpoint_model`, `checkpoint_vae`, `checkpoint_clip`) are
 
 The node panel has two modes:
 
-**Use mode** — shows a summary of the selected configuration's values. A **New** button creates a fresh config; an **Edit** button switches to the form. Each LoRA row shows a checkbox — clicking it toggles the LoRA on or off and auto-saves immediately. The two flag checkboxes work the same way: click to flip the value and it saves instantly, no edit mode needed.
+**Use mode** — shows a summary of the selected configuration's values. A **New** button creates a fresh config; an **Edit** button switches to the form. The note (if set) is displayed below the Type row, truncated to four lines. Each LoRA row shows a checkbox — clicking it toggles the LoRA on or off and auto-saves immediately. The two flag checkboxes work the same way: click to flip the value and it saves instantly, no edit mode needed.
 
-**Edit mode** — an inline form with dropdowns for all model files and LoRAs (populated live from your ComfyUI model folders), a strength number input and an enabled checkbox per LoRA slot, an image picker with Upload and Preview buttons, number inputs for every numeric parameter, a **Randomize** checkbox on the seed field, text areas for the three prompts, and label text inputs plus value checkboxes for the two flags. **Save** writes back to the JSON file and returns to use mode. **Cancel** discards changes. **Delete** removes the configuration after a confirmation prompt.
+**Edit mode** — an inline form with dropdowns for all model files and LoRAs (populated live from your ComfyUI model folders), a strength number input and an enabled checkbox per LoRA slot, an image picker with Upload and Preview buttons, number inputs for every numeric parameter, a **Randomize** checkbox on the seed field, a **Note** textarea (max 900 characters, with a **clear** button) for free-form notes, text areas for the three prompts, and label text inputs plus value checkboxes for the two flags. **Save** writes back to the JSON file and returns to use mode. **Cancel** discards changes. **Duplicate** creates a copy named `Copy of <original name>`. **Delete** removes the configuration after a confirmation prompt.
 
 When no configurations exist yet (first launch or empty file), the node opens directly in edit mode with a **Create** button so you can add your first preset without leaving the canvas.
+
+#### Naming and name conflicts
+
+Config names must be unique within a file. If you try to **Save** (rename) or **Create** a config using a name that already exists, a popup appears with two options:
+
+- **Cancel** — closes the popup and returns to the form with no changes made.
+- **Auto name** — appends `_alt` followed by a random four-digit number to the name you typed (e.g. `my config_alt3742`), then retries automatically. If the auto-generated name still clashes (rare), click **Auto name** again for a new random suffix.
