@@ -23,7 +23,7 @@ except Exception:
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 
-CURRENT_SCHEMA = 2
+CURRENT_SCHEMA = 3
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -36,6 +36,8 @@ _missing_warned   = False
 # Tracks the highest schema version seen on disk so an older node installation
 # never downgrades the file version written by a newer one.
 _effective_schema = CURRENT_SCHEMA
+# Stores non-version _meta fields (name, version, created_at, updated_at) read from disk.
+_meta_extra: dict = {}
 
 
 # ── Schema v1 typed-object accessors ─────────────────────────────────────────
@@ -241,19 +243,28 @@ def _migrate(configs: dict, from_version: int) -> dict:
                         entry["positive_prompt"] = {**v, "type": "smart"}
                 else:
                     entry["positive_prompt"] = {"text": str(v or ""), "type": "smart"}
+            # v3: _meta gains name/version/created_at/updated_at — no per-entry changes.
     return configs
 
 
 def _save_configs(configs: dict) -> None:
     """Write configs to disk prefixed with the schema meta block."""
-    data: dict = {_META_KEY: {"schema_version": _effective_schema}}
+    now = datetime.now().isoformat()
+    meta: dict = {
+        "schema_version": _effective_schema,
+        "name":           _meta_extra.get("name",       "dx_workflow_configs"),
+        "version":        _meta_extra.get("version",    "1.0"),
+        "created_at":     _meta_extra.get("created_at", now),
+        "updated_at":     now,
+    }
+    data: dict = {_META_KEY: meta}
     data.update(configs)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
 def load_configs() -> dict:
-    global _missing_warned, _effective_schema
+    global _missing_warned, _effective_schema, _meta_extra
     if not os.path.exists(CONFIG_FILE):
         if not _missing_warned:
             print(f"[DAZ TOOLS] WorkflowConfig: config file not found at {CONFIG_FILE}")
@@ -272,9 +283,12 @@ def load_configs() -> dict:
 
     # v1 is the base schema. Files without a _meta block are treated as v1 — the
     # _get_*() helpers handle both flat and typed-object values at read time.
-    file_version = raw.get(_META_KEY, {}).get("schema_version", 1)
-    # Never downgrade the on-disk version: if a newer node wrote v2, preserve that.
+    file_meta    = raw.get(_META_KEY, {})
+    file_version = file_meta.get("schema_version", 1)
+    # Never downgrade the on-disk version: if a newer node wrote v3, preserve that.
     _effective_schema = max(file_version, CURRENT_SCHEMA)
+    # Preserve non-version _meta fields so _save_configs can round-trip them.
+    _meta_extra = {k: v for k, v in file_meta.items() if k != "schema_version"}
     configs = {k: v for k, v in raw.items() if k != _META_KEY}
 
     if file_version > CURRENT_SCHEMA:
