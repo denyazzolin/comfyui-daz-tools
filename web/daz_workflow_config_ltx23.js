@@ -14,10 +14,24 @@ app.registerExtension({
 
     const CLASS = 'ltx2.3'
 
-    let allConfigs = []
+    // Available config files in _mgr/ for this class
+    let _configFiles = []  // [{file, name}]
     try {
-      const resp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-      if (resp.ok) allConfigs = await resp.json()
+      const r = await fetch(`/daz/config-files?class=${encodeURIComponent(CLASS)}`)
+      if (r.ok) _configFiles = await r.json()
+    } catch (e) {
+      console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not load config files', e)
+    }
+
+    // Initial configs for the default/first file
+    let _initialConfigs = []
+    try {
+      const firstFile = _configFiles[0]?.file ?? null
+      const url = firstFile
+        ? `/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}&file=${encodeURIComponent(firstFile)}`
+        : `/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`
+      const resp = await fetch(url)
+      if (resp.ok) _initialConfigs = await resp.json()
     } catch (e) {
       console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not load configs', e)
     }
@@ -34,6 +48,28 @@ app.registerExtension({
       return folderFiles[folder]
     }
 
+    // ── Per-node config file helpers ──────────────────────────────────────────
+
+    function currentFile(node) {
+      return node._dazConfigFile || null
+    }
+
+    function configsUrl(node, base) {
+      const f = currentFile(node)
+      return f ? `${base}&file=${encodeURIComponent(f)}` : base
+    }
+
+    async function reloadNodeConfigs(node) {
+      const url = configsUrl(node,
+        `/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
+      try {
+        const r = await fetch(url)
+        if (r.ok) node._dazAllConfigs = await r.json()
+      } catch (e) {
+        console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not reload configs', e)
+      }
+    }
+
     // ── Typed-object accessors (backward-compatible) ───────────────────────
 
     function fName(val)  { return (val && typeof val === 'object') ? (val.name  ?? '') : (val ?? '') }
@@ -45,8 +81,8 @@ app.registerExtension({
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    function filteredLabels(typeFilter, groupFilter) {
-      let filtered = allConfigs
+    function filteredLabels(configs, typeFilter, groupFilter) {
+      let filtered = configs
       if (typeFilter && typeFilter !== 'All') filtered = filtered.filter(c => c.type === typeFilter)
       if (groupFilter && groupFilter !== 'All') filtered = filtered.filter(c => c.group === groupFilter)
       return filtered.map(c => c.label)
@@ -54,9 +90,10 @@ app.registerExtension({
 
     function updateGroupFilterWidget(node) {
       if (!node._dazGroupFilterWidget) return
+      const configs    = node._dazAllConfigs || []
       const typeFilter = node._dazTypeFilter || 'All'
-      const base = typeFilter === 'All' ? allConfigs : allConfigs.filter(c => c.type === typeFilter)
-      const groups = ['All', ...Array.from(new Set(base.map(c => c.group).filter(Boolean))).sort()]
+      const base       = typeFilter === 'All' ? configs : configs.filter(c => c.type === typeFilter)
+      const groups     = ['All', ...Array.from(new Set(base.map(c => c.group).filter(Boolean))).sort()]
       node._dazGroupFilterWidget.options.values = groups
       if (!groups.includes(node._dazGroupFilter)) {
         node._dazGroupFilter = 'All'
@@ -65,7 +102,8 @@ app.registerExtension({
     }
 
     function syncWidget(node) {
-      const labels = filteredLabels(node._dazTypeFilter || 'All', node._dazGroupFilter || 'All')
+      const configs = node._dazAllConfigs || []
+      const labels  = filteredLabels(configs, node._dazTypeFilter || 'All', node._dazGroupFilter || 'All')
       const w = node.widgets?.find(w => w.name === 'config')
       if (!w) return
       w.options.values = labels.length ? labels : ['(no configs)']
@@ -291,12 +329,17 @@ app.registerExtension({
             const r = await fetch('/daz/workflow-config-save', {
               method:  'POST',
               headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', loras: { [key]: detail.loras[key] } }),
+              body:    JSON.stringify({
+                label,
+                class:    CLASS,
+                file:     currentFile(node),
+                new_name: detail.name || '',
+                loras:    { [key]: detail.loras[key] },
+              }),
             })
             const result = await r.json()
             if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-            const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-            if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+            await reloadNodeConfigs(node)
             syncWidget(node)
             if (cw) cw.value = result.label
           } catch (err) {
@@ -320,9 +363,9 @@ app.registerExtension({
       node._dazLtx23Wrap.innerHTML =
         '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Loading…</p>'
       try {
-        const resp = await fetch(
-          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(label)}`
-        )
+        const url = configsUrl(node,
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(label)}`)
+        const resp = await fetch(url)
         if (!resp.ok) throw new Error(resp.statusText)
         const data = await resp.json()
         node._dazLtx23Detail = data
@@ -415,7 +458,7 @@ app.registerExtension({
         ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
                        justify-content:flex-end;border-top:1px solid #3a3a3a;margin-top:4px">
              <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
-             ${allConfigs.length > 0 ? `<button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>` : ''}
+             ${(node._dazAllConfigs || []).length > 0 ? `<button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>` : ''}
              <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>
            </div>`
         : `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
@@ -643,6 +686,7 @@ app.registerExtension({
               body:    JSON.stringify({
                 label,
                 class:           CLASS,
+                file:            currentFile(node),
                 new_name:        detail.name || '',
                 master_prompt:   updates.master_prompt,
                 positive_prompt: updates.positive_prompt,
@@ -653,13 +697,12 @@ app.registerExtension({
             })
             const result = await r.json()
             if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-            const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-            if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+            await reloadNodeConfigs(node)
             if (cw) cw.value = result.label
             syncWidget(node)
-            const detailResp = await fetch(
-              `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
-            )
+            const detailUrl = configsUrl(node,
+              `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`)
+            const detailResp = await fetch(detailUrl)
             if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
             renderUseMode(node, node._dazLtx23Detail, false)
           } catch (err) {
@@ -758,6 +801,7 @@ app.registerExtension({
       const payload = {
         name,
         class: CLASS,
+        file:  currentFile(node),
         group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
         type:  wrap.querySelector('#daz-type')?.value ?? '',
         ...buildPayload(wrap),
@@ -772,8 +816,7 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-        const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-        if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        await reloadNodeConfigs(node)
         if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
         node._dazTypeFilter = 'All'
         updateGroupFilterWidget(node)
@@ -783,9 +826,9 @@ app.registerExtension({
         const configWidget = node.widgets?.find(w => w.name === 'config')
         if (configWidget) configWidget.value = result.label
 
-        const detailResp = await fetch(
-          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
-        )
+        const detailUrl = configsUrl(node,
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`)
+        const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
         renderUseMode(node, node._dazLtx23Detail || {}, true)
@@ -820,6 +863,7 @@ app.registerExtension({
       const payload = {
         label,
         class:    CLASS,
+        file:     currentFile(node),
         new_name: newName,
         group:    { name: wrap.querySelector('#daz-group')?.value ?? '' },
         type:     wrap.querySelector('#daz-type')?.value ?? '',
@@ -835,8 +879,7 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-        const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-        if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        await reloadNodeConfigs(node)
         if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
         node._dazTypeFilter = 'All'
         updateGroupFilterWidget(node)
@@ -846,9 +889,9 @@ app.registerExtension({
         const configWidget = node.widgets?.find(w => w.name === 'config')
         if (configWidget) configWidget.value = result.label
 
-        const detailResp = await fetch(
-          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
-        )
+        const detailUrl = configsUrl(node,
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`)
+        const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
         renderUseMode(node, node._dazLtx23Detail || {}, true)
@@ -875,6 +918,7 @@ app.registerExtension({
       const payload = {
         name:            newName,
         class:           CLASS,
+        file:            currentFile(node),
         group:           data.group           ?? { name: '' },
         type:            data.type            ?? '',
         checkpoint:      data.checkpoint      ?? { name: '' },
@@ -907,16 +951,15 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-        const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-        if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        await reloadNodeConfigs(node)
         syncWidget(node)
 
         const configWidget = node.widgets?.find(w => w.name === 'config')
         if (configWidget) configWidget.value = result.label
 
-        const detailResp = await fetch(
-          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`
-        )
+        const detailUrl = configsUrl(node,
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`)
+        const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
         renderUseMode(node, node._dazLtx23Detail || {}, true)
@@ -981,13 +1024,12 @@ app.registerExtension({
         const r = await fetch('/daz/workflow-config-delete', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ label, class: CLASS }),
+          body:    JSON.stringify({ label, class: CLASS, file: currentFile(node) }),
         })
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-        const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-        if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+        await reloadNodeConfigs(node)
         if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
         node._dazTypeFilter = 'All'
         updateGroupFilterWidget(node)
@@ -995,7 +1037,7 @@ app.registerExtension({
         node._dazGroupFilter = 'All'
         syncWidget(node)
         const configWidget = node.widgets?.find(w => w.name === 'config')
-        const remainingLabels = filteredLabels('All', 'All')
+        const remainingLabels = filteredLabels(node._dazAllConfigs || [], 'All', 'All')
 
         if (remainingLabels.length > 0) {
           if (configWidget) configWidget.value = remainingLabels[0]
@@ -1055,9 +1097,42 @@ app.registerExtension({
     const onNodeCreated = nodeType.prototype.onNodeCreated
     nodeType.prototype.onNodeCreated = function () {
       onNodeCreated?.apply(this, arguments)
+
+      // Per-node state
+      this._dazAllConfigs  = _initialConfigs.slice()
+      this._dazConfigFile  = _configFiles[0]?.file ?? null
       this._dazTypeFilter  = 'All'
       this._dazGroupFilter = 'All'
 
+      // ── config_file picker widget (from INPUT_TYPES) ──────────────────────
+      const cfWidget = this.widgets?.find(w => w.name === 'config_file')
+      if (cfWidget) {
+        if (_configFiles.length > 0) {
+          cfWidget.options.values = _configFiles.map(f => f.file)
+          cfWidget.value          = _configFiles[0].file
+        }
+        cfWidget.hidden = _configFiles.length <= 1
+
+        this._dazConfigFileWidget = cfWidget
+        const origCfCb = cfWidget.callback
+        cfWidget.callback = async (value) => {
+          origCfCb?.call(this, value)
+          this._dazConfigFile = value === '(default)' ? null : value
+          await reloadNodeConfigs(this)
+          this._dazTypeFilter  = 'All'
+          this._dazGroupFilter = 'All'
+          if (this._dazTypeFilterWidget)  this._dazTypeFilterWidget.value  = 'All'
+          if (this._dazGroupFilterWidget) this._dazGroupFilterWidget.value = 'All'
+          updateGroupFilterWidget(this)
+          syncWidget(this)
+          if (!this._dazLtx23EditMode) {
+            const cw = this.widgets?.find(w => w.name === 'config')
+            if (cw) loadDetail(this, cw.value)
+          }
+        }
+      }
+
+      // ── Type / Group filter widgets ───────────────────────────────────────
       const typeFilterWidget = this.addWidget('combo', 'Type', 'All', (value) => {
         this._dazTypeFilter = value
         updateGroupFilterWidget(this)
@@ -1069,7 +1144,7 @@ app.registerExtension({
       }, { values: ['All', 'I2V', 'T2V'] })
       this._dazTypeFilterWidget = typeFilterWidget
 
-      const initialGroups = ['All', ...Array.from(new Set(allConfigs.map(c => c.group).filter(Boolean))).sort()]
+      const initialGroups = ['All', ...Array.from(new Set(_initialConfigs.map(c => c.group).filter(Boolean))).sort()]
       const groupFilterWidget = this.addWidget('combo', 'Group', 'All', (value) => {
         this._dazGroupFilter = value
         syncWidget(this)
@@ -1080,6 +1155,7 @@ app.registerExtension({
       }, { values: initialGroups })
       this._dazGroupFilterWidget = groupFilterWidget
 
+      // Reposition Type/Group filters before the config widget
       const ci = this.widgets.findIndex(w => w.name === 'config')
       if (ci >= 0) {
         [typeFilterWidget, groupFilterWidget].forEach(fw => {
@@ -1094,23 +1170,36 @@ app.registerExtension({
 
       syncWidget(this)
 
-      this.addWidget('button', '↺  Reload Configs', null, () => {
-        fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-          .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
-          .then(data => {
-            allConfigs = data
-            updateGroupFilterWidget(this)
-            syncWidget(this)
-            if (this._dazLtx23EditMode) return
-            const labels = filteredLabels(this._dazTypeFilter || 'All', this._dazGroupFilter || 'All')
-            if (!labels.length) {
-              enterEditForm(this, true)
-              return
+      this.addWidget('button', '↺  Reload Configs', null, async () => {
+        try {
+          const fr = await fetch(`/daz/config-files?class=${encodeURIComponent(CLASS)}`)
+          if (fr.ok) {
+            _configFiles = await fr.json()
+            if (cfWidget) {
+              cfWidget.options.values = _configFiles.length > 0
+                ? _configFiles.map(f => f.file)
+                : ['(default)']
+              cfWidget.hidden = _configFiles.length <= 1
+              if (_configFiles.length > 0 && !_configFiles.find(f => f.file === cfWidget.value)) {
+                cfWidget.value      = _configFiles[0].file
+                this._dazConfigFile = _configFiles[0].file
+              }
             }
-            const cw = this.widgets?.find(w => w.name === 'config')
-            if (cw) loadDetail(this, cw.value)
-          })
-          .catch(e => console.warn('[DAZ TOOLS] WorkflowConfigLtx23: reload failed', e))
+          }
+          await reloadNodeConfigs(this)
+          updateGroupFilterWidget(this)
+          syncWidget(this)
+          if (this._dazLtx23EditMode) return
+          const labels = filteredLabels(this._dazAllConfigs || [], this._dazTypeFilter || 'All', this._dazGroupFilter || 'All')
+          if (!labels.length) {
+            enterEditForm(this, true)
+            return
+          }
+          const cw = this.widgets?.find(w => w.name === 'config')
+          if (cw) loadDetail(this, cw.value)
+        } catch (e) {
+          console.warn('[DAZ TOOLS] WorkflowConfigLtx23: reload failed', e)
+        }
       })
 
       const wrap = document.createElement('div')
@@ -1137,7 +1226,7 @@ app.registerExtension({
           origCb?.call(this, value)
           if (!this._dazLtx23EditMode) loadDetail(this, value)
         }
-        if (allConfigs.length === 0) {
+        if ((this._dazAllConfigs || []).length === 0) {
           enterEditForm(this, true)
         } else {
           loadDetail(this, w.value)
@@ -1149,16 +1238,22 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (config) {
       onConfigure?.apply(this, arguments)
       const self = this
-      queueMicrotask(() => {
+      queueMicrotask(async () => {
+        // Restore the selected config file from the saved widget value, then reload its configs
+        if (self._dazConfigFileWidget) {
+          const savedFile = self._dazConfigFileWidget.value
+          self._dazConfigFile = (!savedFile || savedFile === '(default)') ? null : savedFile
+          if (self._dazConfigFile !== null) reloadNodeConfigs(self)
+        }
         if (self._dazTypeFilterWidget)  self._dazTypeFilter  = self._dazTypeFilterWidget.value  || 'All'
         if (self._dazGroupFilterWidget) self._dazGroupFilter = self._dazGroupFilterWidget.value || 'All'
         updateGroupFilterWidget(self)
-        if (!allConfigs.length) {
+        if (!(self._dazAllConfigs || []).length) {
           if (!self._dazLtx23EditMode) enterEditForm(self, true)
           return
         }
         const w = self.widgets?.find(w => w.name === 'config')
-        const labels = filteredLabels(self._dazTypeFilter, self._dazGroupFilter)
+        const labels = filteredLabels(self._dazAllConfigs || [], self._dazTypeFilter, self._dazGroupFilter)
         if (w && !labels.includes(w.value)) syncWidget(self)
         if (!self._dazLtx23EditMode) loadDetail(self, w?.value)
       })

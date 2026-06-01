@@ -2,7 +2,7 @@ import os
 
 import folder_paths
 from .workflow_config_base import (
-    load_configs, labels_for_class, make_label, CONFIG_FILE,
+    load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_prompt_type_int,
 )
@@ -20,8 +20,9 @@ try:
 except Exception:
     pass
 
-_CLASS      = "Wan2.2"
-_NO_CONFIGS = "(no configs)"
+_CLASS       = "Wan2.2"
+_NO_CONFIGS  = "(no configs)"
+_FILE_DEFAULT = "(default)"
 
 
 def _load_unet(name: str):
@@ -108,10 +109,14 @@ def _apply_loras(model, lora_pairs):
 class WorkflowConfigWan22:
     @classmethod
     def INPUT_TYPES(cls):
-        labels = labels_for_class(_CLASS)
+        files       = scan_config_files(_CLASS)
+        file_labels = [f["file"] for f in files] if files else [_FILE_DEFAULT]
+        first_file  = file_labels[0] if file_labels[0] != _FILE_DEFAULT else None
+        labels      = labels_for_class(_CLASS, file=first_file)
         return {
             "required": {
-                "config": (labels if labels else [_NO_CONFIGS],),
+                "config_file": (file_labels,),
+                "config":      (labels if labels else [_NO_CONFIGS],),
             }
         }
 
@@ -150,8 +155,9 @@ class WorkflowConfigWan22:
     CATEGORY    = "utils"
     OUTPUT_NODE = False
 
-    def load_config(self, config: str):
-        configs = load_configs()
+    def load_config(self, config_file: str, config: str):
+        file    = None if config_file == _FILE_DEFAULT else config_file
+        configs = load_configs(file=file)
         name = next(
             (n for n, e in configs.items()
              if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
@@ -159,7 +165,7 @@ class WorkflowConfigWan22:
         )
         if name is None:
             raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found in {CONFIG_FILE}"
+                f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found"
             )
         entry = configs[name]
         loras = _get_loras(entry)
