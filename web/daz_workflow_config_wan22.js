@@ -2,10 +2,10 @@ import { app } from '../../scripts/app.js'
 import { api } from '../../scripts/api.js'
 
 const PANEL_H      = 506
-const EDIT_PANEL_H = 960
+const EDIT_PANEL_H = 1070
 const NODE_W       = 460
 const NODE_H       = 686
-const NODE_H_EDIT  = 1150
+const NODE_H_EDIT  = 1260
 
 app.registerExtension({
   name: 'daz.workflowConfigWan22',
