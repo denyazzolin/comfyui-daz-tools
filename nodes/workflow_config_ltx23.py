@@ -5,7 +5,8 @@ import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_prompt_type_int, _get_seed_randomize, _save_configs,
+    _get_prompt_type_int, _get_seed_randomize,
+    _resolve_path, _load_file, _write_file,
 )
 
 try:
@@ -185,8 +186,9 @@ class WorkflowConfigLtx23:
     OUTPUT_NODE = False
 
     def load_config(self, config_file: str, config: str):
-        file    = None if config_file == _FILE_DEFAULT else config_file
-        configs = load_configs(file=file)
+        file = None if config_file == _FILE_DEFAULT else config_file
+        path = _resolve_path(file)
+        configs, meta_extra, effective = _load_file(path)
         name = next(
             (n for n, e in configs.items()
              if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
@@ -205,7 +207,7 @@ class WorkflowConfigLtx23:
             seed_val = random.randint(1, 2**31 - 1)
             entry["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
             try:
-                _save_configs(configs)
+                _write_file(path, configs, meta_extra, effective)
             except Exception as e:
                 print(f"[DAZ TOOLS] WorkflowConfigLtx23: could not save random seed — {e}")
 
