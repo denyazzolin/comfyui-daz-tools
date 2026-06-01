@@ -185,6 +185,23 @@ class WorkflowConfigLtx23:
     CATEGORY    = "utils"
     OUTPUT_NODE = False
 
+    @classmethod
+    def IS_CHANGED(cls, config_file: str, config: str):
+        file = None if config_file == _FILE_DEFAULT else config_file
+        try:
+            path = _resolve_path(file)
+            configs, _, _ = _load_file(path)
+            name = next(
+                (n for n, e in configs.items()
+                 if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
+                None,
+            )
+            if name is not None and _get_seed_randomize(configs[name].get("seed", {})):
+                return float("NaN")
+        except Exception:
+            pass
+        return config
+
     def load_config(self, config_file: str, config: str):
         file = None if config_file == _FILE_DEFAULT else config_file
         path = _resolve_path(file)
