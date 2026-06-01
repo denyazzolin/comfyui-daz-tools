@@ -1029,6 +1029,12 @@ app.registerExtension({
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(payload),
         })
+        if (r.status === 409) {
+          createBtn.textContent = 'Create'
+          createBtn.disabled    = false
+          showNameClashModal(wrap.querySelector('#daz-config-name'), () => createConfig(node, wrap))
+          return
+        }
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
@@ -1121,12 +1127,12 @@ app.registerExtension({
 
     // ── Duplicate config ──────────────────────────────────────────────────────
 
-    async function duplicateConfig(node, wrap) {
+    async function duplicateConfig(node, wrap, nameOverride = null) {
       const data = node._dazLtx23Detail || {}
       const originalName = data.name || ''
       if (!originalName) return
 
-      const newName = `Copy-${originalName}`
+      const newName = nameOverride ?? `Copy of ${originalName}`
       const errDiv = wrap.querySelector('#daz-save-error')
       const dupBtn = wrap.querySelector('#daz-duplicate-btn')
       if (dupBtn) { dupBtn.textContent = 'Duplicating…'; dupBtn.disabled = true }
@@ -1170,6 +1176,12 @@ app.registerExtension({
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(payload),
         })
+        if (r.status === 409) {
+          if (dupBtn) { dupBtn.textContent = 'Duplicate'; dupBtn.disabled = false }
+          const fakeInput = { value: newName }
+          showNameClashModal(fakeInput, () => duplicateConfig(node, wrap, fakeInput.value))
+          return
+        }
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
@@ -1192,6 +1204,50 @@ app.registerExtension({
     }
 
     // ── Delete config ─────────────────────────────────────────────────────────
+
+    // ── Name clash modal ──────────────────────────────────────────────────────
+
+    function showNameClashModal(nameInput, onRetry) {
+      const name = nameInput?.value.trim() ?? ''
+
+      const overlay = document.createElement('div')
+      overlay.style.cssText = [
+        'position:fixed;top:0;left:0;right:0;bottom:0',
+        'background:rgba(0,0,0,0.75);z-index:10000',
+        'display:flex;align-items:center;justify-content:center',
+      ].join(';')
+
+      const box = document.createElement('div')
+      box.style.cssText = [
+        'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+        'padding:20px 24px;width:360px;font-family:monospace',
+      ].join(';')
+      box.innerHTML = `
+        <p style="font-size:13px;color:#ddd;margin:0 0 6px">
+          A config named &ldquo;${esc(name)}&rdquo; already exists.
+        </p>
+        <p style="font-size:11px;color:#888;margin:0 0 18px">Cancel to go back, or auto-generate a unique name.</p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button id="nc-cancel"
+            style="font-family:monospace;font-size:11px;padding:4px 14px;
+                   background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
+          <button id="nc-autoname"
+            style="font-family:monospace;font-size:11px;padding:4px 14px;
+                   background:#1a5c35;color:#cde;border:1px solid #2a8050;border-radius:3px;cursor:pointer">Auto name</button>
+        </div>
+      `
+
+      overlay.appendChild(box)
+      document.body.appendChild(overlay)
+
+      box.querySelector('#nc-cancel')?.addEventListener('click', () => overlay.remove())
+      box.querySelector('#nc-autoname')?.addEventListener('click', () => {
+        overlay.remove()
+        const suffix = '_alt' + (Math.floor(Math.random() * 9000) + 1000)
+        if (nameInput) nameInput.value = name + suffix
+        onRetry()
+      })
+    }
 
     function showDeleteConfirm(node, wrap) {
       const name  = node._dazLtx23Detail?.name || '?'
