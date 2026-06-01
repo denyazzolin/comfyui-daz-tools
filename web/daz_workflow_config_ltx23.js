@@ -310,7 +310,9 @@ app.registerExtension({
 
       wrap.style.height = PANEL_H + 'px'
       if (wasEditing) {
-        node.size    = [NODE_W, NODE_H]
+        const w = Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W)
+        const h = Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)
+        node.size    = [w, h]
         node.minSize = [NODE_W, NODE_H]
       }
 
@@ -349,6 +351,7 @@ app.registerExtension({
           if (!detail) return
           if (!detail.loras) detail.loras = {}
           const val = detail.loras[key]
+          const oldVal = val && typeof val === 'object' ? { ...val } : val
           if (val && typeof val === 'object') {
             val.enabled = e.target.checked
           } else {
@@ -379,6 +382,11 @@ app.registerExtension({
             syncWidget(node)
             if (cw) cw.value = result.label
           } catch (err) {
+            detail.loras[key] = oldVal
+            e.target.checked = loraEnabled(oldVal)
+            if (span) span.style.color = loraEnabled(oldVal) ? '#ddd' : '#666'
+            updateOutputLabels(node, detail)
+            node.setDirtyCanvas(true, true)
             console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not save lora enabled state', err)
           }
         })
@@ -387,7 +395,8 @@ app.registerExtension({
       wrap.querySelector('#daz-use-seed-randomize')?.addEventListener('change', async (e) => {
         const detail = node._dazLtx23Detail
         if (!detail) return
-        const seed = detail.seed && typeof detail.seed === 'object' ? detail.seed : { value: 0 }
+        const oldDetailSeed = detail.seed
+        const seed = oldDetailSeed && typeof oldDetailSeed === 'object' ? oldDetailSeed : { value: 0 }
         detail.seed = { ...seed, randomize: e.target.checked }
         updateOutputLabels(node, detail)
         node.setDirtyCanvas(true, true)
@@ -406,6 +415,10 @@ app.registerExtension({
           syncWidget(node)
           if (cw) cw.value = result.label
         } catch (err) {
+          detail.seed = oldDetailSeed
+          e.target.checked = fRandomize(oldDetailSeed)
+          updateOutputLabels(node, detail)
+          node.setDirtyCanvas(true, true)
           console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not save seed randomize', err)
         }
       })
@@ -415,6 +428,7 @@ app.registerExtension({
           const detail = node._dazLtx23Detail
           if (!detail) return
           if (!detail.flags) detail.flags = {}
+          const oldFlagEntry = detail.flags[flagKey] ? { ...detail.flags[flagKey] } : null
           if (!detail.flags[flagKey]) detail.flags[flagKey] = { label: flagKey.replace('_', ' '), value: false }
           detail.flags[flagKey].value = e.target.checked
           updateOutputLabels(node, detail)
@@ -434,6 +448,11 @@ app.registerExtension({
             syncWidget(node)
             if (cw) cw.value = result.label
           } catch (err) {
+            if (oldFlagEntry !== null) detail.flags[flagKey] = oldFlagEntry
+            else delete detail.flags[flagKey]
+            e.target.checked = oldFlagEntry !== null ? oldFlagEntry.value : false
+            updateOutputLabels(node, detail)
+            node.setDirtyCanvas(true, true)
             console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not save flag', err)
           }
         })
@@ -482,13 +501,14 @@ app.registerExtension({
     // ── Edit / New-config form ────────────────────────────────────────────────
 
     async function enterEditForm(node, isNew = false) {
+      if (!node._dazLtx23EditMode) node._dazPreEditSize = node.size ? [...node.size] : null
       node._dazLtx23EditMode = true
       const wrap = node._dazLtx23Wrap
       if (!wrap) return
 
       wrap.style.height = EDIT_PANEL_H + 'px'
       wrap.innerHTML = '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Loading…</p>'
-      node.size    = [NODE_W, NODE_H_EDIT]
+      node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), NODE_H_EDIT]
       node.minSize = [NODE_W, NODE_H_EDIT]
       node.setDirtyCanvas(true, true)
 
@@ -723,7 +743,8 @@ app.registerExtension({
 
       // ── Shared handlers ───────────────────────────────────────────────────
 
-      wrap.addEventListener('keydown', (e) => {
+      if (node._dazEditKeydownHandler) wrap.removeEventListener('keydown', node._dazEditKeydownHandler)
+      node._dazEditKeydownHandler = (e) => {
         if (e.key !== 'Enter') return
         if (e.target.tagName !== 'INPUT') return
         if (e.target.type === 'file' || e.target.type === 'hidden') return
@@ -733,7 +754,8 @@ app.registerExtension({
         )
         const idx = focusable.indexOf(e.target)
         if (idx >= 0 && idx < focusable.length - 1) focusable[idx + 1].focus()
-      })
+      }
+      wrap.addEventListener('keydown', node._dazEditKeydownHandler)
 
       wrap.querySelector('#daz-preview-btn')?.addEventListener('click', () => {
         const filename = wrap.querySelector('#daz-image-path')?.value
@@ -749,9 +771,10 @@ app.registerExtension({
         if (!file) return
         const btn    = wrap.querySelector('#daz-upload-btn')
         const errDiv = wrap.querySelector('#daz-save-error')
+        if (!btn) return
         btn.textContent = 'Uploading…'
         btn.disabled    = true
-        errDiv.textContent = ''
+        if (errDiv) errDiv.textContent = ''
         try {
           const fd = new FormData()
           fd.append('image', file)
@@ -764,7 +787,7 @@ app.registerExtension({
           const sel = wrap.querySelector('#daz-image-path')
           if (sel) sel.innerHTML = selectOptsImage(fresh, result.name)
         } catch (err) {
-          errDiv.textContent = `Upload failed: ${esc(err.message)}`
+          if (errDiv) errDiv.textContent = `Upload failed: ${esc(err.message)}`
         }
         btn.textContent = 'Upload…'
         btn.disabled    = false
@@ -952,6 +975,7 @@ app.registerExtension({
       }
 
       const createBtn = wrap.querySelector('#daz-create-btn')
+      if (!createBtn || !errDiv) return
       createBtn.textContent = 'Creating…'
       createBtn.disabled    = true
       errDiv.textContent    = ''
@@ -1006,6 +1030,7 @@ app.registerExtension({
 
       const saveBtn  = wrap.querySelector('#daz-save-btn')
       const errorDiv = wrap.querySelector('#daz-save-error')
+      if (!saveBtn || !errorDiv) return
 
       const newName = wrap.querySelector('#daz-config-name')?.value.trim() ?? ''
       if (!newName) {
@@ -1204,14 +1229,15 @@ app.registerExtension({
         if (remainingLabels.length > 0) {
           if (configWidget) configWidget.value = remainingLabels[0]
           node._dazLtx23EditMode = false
+          node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)]
+          node.minSize = [NODE_W, NODE_H]
           loadDetail(node, remainingLabels[0])
         } else {
           if (configWidget) {
             configWidget.options.values = ['(no configs)']
             configWidget.value = '(no configs)'
           }
-          node._dazLtx23Detail   = {}
-          node._dazLtx23EditMode = false
+          node._dazLtx23Detail = {}
           enterEditForm(node, true)
         }
       } catch (e) {
@@ -1226,7 +1252,6 @@ app.registerExtension({
                        border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
             </div>`
           wrap.querySelector('#daz-back-edit')?.addEventListener('click', () => {
-            node._dazLtx23EditMode = false
             enterEditForm(node, false)
           })
         }
@@ -1428,7 +1453,7 @@ app.registerExtension({
             savedFile.startsWith('dx_') && savedFile.endsWith('.json')
           self._dazConfigFile = isValidFile ? savedFile : null
           if (!isValidFile) self._dazConfigFileWidget.value = '(default)'
-          if (self._dazConfigFile !== null) reloadNodeConfigs(self)
+          if (self._dazConfigFile !== null) await reloadNodeConfigs(self)
         }
         if (self._dazTypeFilterWidget)  self._dazTypeFilter  = self._dazTypeFilterWidget.value  || 'All'
         if (self._dazGroupFilterWidget) self._dazGroupFilter = self._dazGroupFilterWidget.value || 'All'
