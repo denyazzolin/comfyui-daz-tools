@@ -154,8 +154,7 @@
 
     _overlay.appendChild(panel)
     document.body.appendChild(_overlay)
-    panel.addEventListener('click',    e => e.stopPropagation())
-    _overlay.addEventListener('click', () => doCancel())
+    panel.addEventListener('click', e => e.stopPropagation())
 
     // ── State helpers ─────────────────────────────────────────────────────
 
@@ -426,9 +425,14 @@
 
     // ── Actions ───────────────────────────────────────────────────────────
 
-    function doCancel() { _overlay.remove(); _overlay = null }
+    function doCancel() {
+      if (!_overlay) return
+      _overlay.remove()
+      _overlay = null
+    }
 
     function doSave() {
+      if (!_overlay) return
       saveDomState()
       const fpsEl = panel.querySelector('#pe-fps')
       if (fpsEl) fps = parseFloat(fpsEl.value) || fps
