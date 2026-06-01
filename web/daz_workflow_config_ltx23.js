@@ -204,7 +204,7 @@ app.registerExtension({
                       border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
            </div>`
         : `<span style="color:#555">—</span>`
-      const typeLabel = data.type === 'I2V' ? 'I2V' : data.type === 'T2V' ? 'T2V' : 'No type'
+      const typeLabel = data.type === 'I2V' ? 'I2V' : data.type === 'T2V' ? 'T2V' : data.type === 'MULTI' ? 'MULTI' : 'No type'
       const loras = data.loras ?? {}
       return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
         ${row('Group',       fName(data.group))}
@@ -553,6 +553,7 @@ app.registerExtension({
                <option value=""${!data.type ? ' selected' : ''}>— no type —</option>
                <option value="I2V"${data.type === 'I2V' ? ' selected' : ''}>I2V</option>
                <option value="T2V"${data.type === 'T2V' ? ' selected' : ''}>T2V</option>
+               <option value="MULTI"${data.type === 'MULTI' ? ' selected' : ''}>MULTI</option>
              </select></td>
            </tr>`
 
@@ -1302,7 +1303,7 @@ app.registerExtension({
           const cw = this.widgets?.find(w => w.name === 'config')
           if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value)
         }
-      }, { values: ['All', 'I2V', 'T2V'] })
+      }, { values: ['All', 'I2V', 'T2V', 'MULTI'] })
       this._dazTypeFilterWidget = typeFilterWidget
 
       const initialGroups = ['All', ...Array.from(new Set(_initialConfigs.map(c => c.group).filter(Boolean))).sort()]
