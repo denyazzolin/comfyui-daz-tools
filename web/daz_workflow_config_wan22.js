@@ -375,12 +375,11 @@ app.registerExtension({
           const r = await fetch('/daz/workflow-config-save', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', seed: detail.seed }),
+            body:    JSON.stringify({ label, class: CLASS, file: currentFile(node), new_name: detail.name || '', seed: detail.seed }),
           })
           const result = await r.json()
           if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-          const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-          if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+          await reloadNodeConfigs(node)
           syncWidget(node)
           if (cw) cw.value = result.label
         } catch (err) {
@@ -715,13 +714,12 @@ app.registerExtension({
           const r = await fetch('/daz/workflow-config-save', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ label, class: CLASS, new_name: detail.name || '', seed: newSeed }),
+            body:    JSON.stringify({ label, class: CLASS, file: currentFile(node), new_name: detail.name || '', seed: newSeed }),
           })
           const result = await r.json()
           if (!r.ok || result.error) throw new Error(result.error || r.statusText)
           if (node._dazWan22Detail) node._dazWan22Detail.seed = newSeed
-          const newConfigsResp = await fetch(`/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
-          if (newConfigsResp.ok) allConfigs = await newConfigsResp.json()
+          await reloadNodeConfigs(node)
           syncWidget(node)
           if (cw) cw.value = result.label
         } catch (err) {
