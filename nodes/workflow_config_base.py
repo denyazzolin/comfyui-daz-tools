@@ -437,8 +437,12 @@ try:
             )
             return n, cfgs
 
-        # Try the requested file first
-        requested_path = _resolve_path(file)
+        # Try the requested file first (guard against invalid file values from old workflows)
+        try:
+            requested_path = _resolve_path(file)
+        except ValueError:
+            requested_path = CONFIG_FILE
+            file = None
         name, configs = _find(requested_path)
         source_file = file  # tracks which file actually had the config
 

@@ -1254,10 +1254,15 @@ app.registerExtension({
       onConfigure?.apply(this, arguments)
       const self = this
       queueMicrotask(async () => {
-        // Restore the selected config file from the saved widget value, then reload its configs
+        // Restore the selected config file from the saved widget value, then reload its configs.
+        // Validate the value: old workflows may have applied a wrong value (e.g. "All", "I2V")
+        // via positional mismatch — only accept proper dx_*.json filenames.
         if (self._dazConfigFileWidget) {
           const savedFile = self._dazConfigFileWidget.value
-          self._dazConfigFile = (!savedFile || savedFile === '(default)') ? null : savedFile
+          const isValidFile = savedFile && savedFile !== '(default)' &&
+            savedFile.startsWith('dx_') && savedFile.endsWith('.json')
+          self._dazConfigFile = isValidFile ? savedFile : null
+          if (!isValidFile) self._dazConfigFileWidget.value = '(default)'
           if (self._dazConfigFile !== null) reloadNodeConfigs(self)
         }
         if (self._dazTypeFilterWidget)  self._dazTypeFilter  = self._dazTypeFilterWidget.value  || 'All'
