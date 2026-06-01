@@ -427,20 +427,47 @@ try:
         label = request.rel_url.query.get("label", "")
         cls   = request.rel_url.query.get("class", "")
         file  = request.rel_url.query.get("file") or None
-        path  = _resolve_path(file)
-        configs, _, _ = _load_file(path)
-        name = next(
-            (n for n, e in configs.items()
-             if e.get("class") == cls and make_label(n, e.get("created_at", "")) == label),
-            None,
-        )
+
+        def _find(path: str):
+            cfgs, _, _ = _load_file(path)
+            n = next(
+                (k for k, e in cfgs.items()
+                 if e.get("class") == cls and make_label(k, e.get("created_at", "")) == label),
+                None,
+            )
+            return n, cfgs
+
+        # Try the requested file first
+        requested_path = _resolve_path(file)
+        name, configs = _find(requested_path)
+        source_file = file  # tracks which file actually had the config
+
+        if name is None:
+            # Fallback: search all other _mgr/ files, then the legacy file
+            fallbacks = [
+                (s["file"], s["path"]) for s in scan_config_files(cls)
+                if s["path"] != requested_path
+            ]
+            if requested_path != CONFIG_FILE:
+                fallbacks.append((None, CONFIG_FILE))
+            for fb_file, fb_path in fallbacks:
+                name, configs = _find(fb_path)
+                if name is not None:
+                    source_file = fb_file
+                    break
+
         if name is None:
             return web.json_response({"error": f"Config '{label}' not found."})
+
         # Normalize to v1 typed-object format; strip internal fields; add name
         result = _normalize_entry(configs[name])
         result.pop("class",      None)
         result.pop("created_at", None)
         result["name"] = name
+        # Tell the JS client which file the config was actually found in, so it
+        # can correct its file selection when the saved workflow pointed elsewhere.
+        if source_file != file:
+            result["_source_file"] = source_file
         return web.json_response(result)
 
     @PromptServer.instance.routes.get("/daz/folder-files")

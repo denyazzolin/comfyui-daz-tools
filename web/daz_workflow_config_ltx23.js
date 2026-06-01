@@ -368,6 +368,17 @@ app.registerExtension({
         const resp = await fetch(url)
         if (!resp.ok) throw new Error(resp.statusText)
         const data = await resp.json()
+        // If the backend found the config in a different file (fallback), sync our selection
+        if ('_source_file' in data) {
+          const correctFile = data._source_file || null
+          node._dazConfigFile = correctFile
+          if (node._dazConfigFileWidget) {
+            node._dazConfigFileWidget.value = correctFile || '(default)'
+          }
+          delete data._source_file
+          await reloadNodeConfigs(node)
+          syncWidget(node)
+        }
         node._dazLtx23Detail = data
         renderUseMode(node, data)
       } catch (e) {
