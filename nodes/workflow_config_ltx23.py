@@ -4,8 +4,10 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
+    all_versions_for_class,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_prompt_type_int, _get_seed_randomize, _get_flag_value,
+    _get_active_set,
     _resolve_path, _load_file, _write_file,
 )
 
@@ -97,7 +99,6 @@ def _load_lora(name: str):
 
 
 def _process_lora(val):
-    """Return (state_dict_or_None, strength) from a lora config value (string or object)."""
     if isinstance(val, dict):
         if not val.get("enabled", True):
             return None, 1.0
@@ -120,19 +121,14 @@ def _apply_loras(model, lora_pairs):
     return result
 
 
-
 class WorkflowConfigLtx23:
     @classmethod
     def INPUT_TYPES(cls):
         files       = scan_config_files(_CLASS)
         file_labels = [f["file"] for f in files] if files else [_FILE_DEFAULT]
-        # Always include "(default)" so old saved workflows still pass validation
         if files and _FILE_DEFAULT not in file_labels:
             file_labels = file_labels + [_FILE_DEFAULT]
 
-        # Collect labels from ALL sources (every _mgr/ file + legacy) so any
-        # valid selection — including from a renamed or relocated config — passes
-        # ComfyUI's combo validation at execution time.
         seen, all_labels = set(), []
         for f in files:
             for lbl in labels_for_class(_CLASS, file=f["file"]):
@@ -142,10 +138,13 @@ class WorkflowConfigLtx23:
             if lbl not in seen:
                 seen.add(lbl); all_labels.append(lbl)
 
+        all_versions = all_versions_for_class(_CLASS)
+
         return {
             "required": {
                 "config_file": (file_labels,),
                 "config":      (all_labels if all_labels else [_NO_CONFIGS],),
+                "version":     (all_versions,),
             }
         }
 
@@ -188,7 +187,7 @@ class WorkflowConfigLtx23:
     OUTPUT_NODE = False
 
     @classmethod
-    def IS_CHANGED(cls, config_file: str, config: str):
+    def IS_CHANGED(cls, config_file: str, config: str, version: str):
         file = None if config_file == _FILE_DEFAULT else config_file
         try:
             path = _resolve_path(file)
@@ -198,13 +197,15 @@ class WorkflowConfigLtx23:
                  if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
                 None,
             )
-            if name is not None and _get_seed_randomize(configs[name].get("seed", {})):
-                return float("NaN")
+            if name is not None:
+                active_set = _get_active_set(configs[name], version)
+                if _get_seed_randomize(active_set.get("seed", {})):
+                    return float("NaN")
         except Exception:
             pass
         return config
 
-    def load_config(self, config_file: str, config: str):
+    def load_config(self, config_file: str, config: str, version: str):
         file = None if config_file == _FILE_DEFAULT else config_file
         path = _resolve_path(file)
         configs, meta_extra, effective = _load_file(path)
@@ -217,23 +218,31 @@ class WorkflowConfigLtx23:
             raise ValueError(
                 f"[DAZ TOOLS] WorkflowConfigLtx23: '{config}' not found"
             )
-        entry = configs[name]
-        loras = _get_loras(entry)
+        entry      = configs[name]
+        active_set = _get_active_set(entry, version)
+        loras      = _get_loras(active_set)
 
-        seed_obj = entry.get("seed", {"value": 0})
+        seed_obj = active_set.get("seed", {"value": 0})
         seed_val = _get_int(seed_obj)
         if _get_seed_randomize(seed_obj):
             seed_val = random.randint(1, 2**31 - 1)
-            entry["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
+            sets = entry.get("sets", [])
+            for i, s in enumerate(sets):
+                if str(s.get("version", "")) == str(version):
+                    sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
+                    break
+            else:
+                if sets:
+                    sets[-1]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
             try:
                 _write_file(path, configs, meta_extra, effective)
             except Exception as e:
                 print(f"[DAZ TOOLS] WorkflowConfigLtx23: could not save random seed — {e}")
 
-        ckpt_name = _get_name(entry.get("checkpoint"))
-        unet_name = _get_name(entry.get("unet_high"))
-        vae_name  = _get_name(entry.get("vae"))
-        avae_name = _get_name(entry.get("audio_vae"))
+        ckpt_name = _get_name(active_set.get("checkpoint"))
+        unet_name = _get_name(active_set.get("unet_high"))
+        vae_name  = _get_name(active_set.get("vae"))
+        avae_name = _get_name(active_set.get("audio_vae"))
 
         try:
             ckpt_model, ckpt_clip, ckpt_vae = load_checkpoint(ckpt_name)
@@ -272,23 +281,23 @@ class WorkflowConfigLtx23:
             unet,
             video_vae,
             audio_vae,
-            _load_dual_clip(_get_name(entry.get("clip_2")), _get_name(entry.get("clip"))),
-            _load_image(_get_path(entry.get("image_path"))),
-            _get_int(entry.get("width")),
-            _get_int(entry.get("height")),
-            _get_int(entry.get("steps")),
+            _load_dual_clip(_get_name(active_set.get("clip_2")), _get_name(active_set.get("clip"))),
+            _load_image(_get_path(active_set.get("image_path"))),
+            _get_int(active_set.get("width")),
+            _get_int(active_set.get("height")),
+            _get_int(active_set.get("steps")),
             seed_val,
-            _get_text(entry.get("master_prompt")),
-            _get_text(entry.get("positive_prompt")),
-            _get_text(entry.get("negative_prompt")),
-            _get_prompt_type_int(entry.get("positive_prompt")),
-            _get_float(entry.get("cfg_high")),
-            _get_int(entry.get("total_frames")),
-            _get_float(entry.get("fps")),
+            _get_text(active_set.get("master_prompt")),
+            _get_text(active_set.get("positive_prompt")),
+            _get_text(active_set.get("negative_prompt")),
+            _get_prompt_type_int(active_set.get("positive_prompt")),
+            _get_float(active_set.get("cfg_high")),
+            _get_int(active_set.get("total_frames")),
+            _get_float(active_set.get("fps")),
             lora_1_sd, lora_2_sd, lora_3_sd, lora_4_sd, lora_5_sd, lora_6_sd,
-            _get_file(entry.get("filename")),
+            _get_file(active_set.get("filename")),
             _apply_loras(unet,       lora_pairs),
             _apply_loras(ckpt_model, lora_pairs),
-            _get_flag_value(entry.get("flags", {}).get("flag_1")),
-            _get_flag_value(entry.get("flags", {}).get("flag_2")),
+            _get_flag_value(active_set.get("flags", {}).get("flag_1")),
+            _get_flag_value(active_set.get("flags", {}).get("flag_2")),
         )

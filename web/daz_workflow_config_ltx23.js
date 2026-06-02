@@ -2,10 +2,10 @@ import { app } from '../../scripts/app.js'
 import { api } from '../../scripts/api.js'
 
 const PANEL_H      = 600
-const EDIT_PANEL_H = 1070
+const EDIT_PANEL_H = 1100
 const NODE_W       = 460
-const NODE_H       = 780
-const NODE_H_EDIT  = 1260
+const NODE_H       = 812
+const NODE_H_EDIT  = 1290
 
 app.registerExtension({
   name: 'daz.workflowConfigLtx23',
@@ -15,8 +15,7 @@ app.registerExtension({
 
     const CLASS = 'ltx2.3'
 
-    // Available config files in _mgr/ for this class
-    let _configFiles = []  // [{file, name}]
+    let _configFiles = []
     try {
       const r = await fetch(`/daz/config-files?class=${encodeURIComponent(CLASS)}`)
       if (r.ok) _configFiles = await r.json()
@@ -24,7 +23,6 @@ app.registerExtension({
       console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not load config files', e)
     }
 
-    // Initial configs for the default/first file
     let _initialConfigs = []
     try {
       const firstFile = _configFiles[0]?.file ?? null
@@ -71,18 +69,34 @@ app.registerExtension({
       }
     }
 
-    // ── Typed-object accessors (backward-compatible) ───────────────────────
-
-    function fName(val)  { return (val && typeof val === 'object') ? (val.name  ?? '') : (val ?? '') }
-    function fValue(val) { return (val && typeof val === 'object') ? (val.value ?? 0)  : (val ?? 0)  }
-    function fText(val)  { return (val && typeof val === 'object') ? (val.text  ?? '') : (val ?? '') }
-    function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
-    function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
-    function fType(val)       { return (val && typeof val === 'object') ? (val.type      ?? 'smart') : 'smart'  }
-    function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
-    function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
-    function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
-    function fNote(val)                { return (val && typeof val === 'object') ? (val.value ?? '')    : ''    }
+    async function reloadVersionWidget(node, configLabel, selectVersion = null) {
+      const vw = node._dazVersionWidget
+      if (!vw) return
+      if (!configLabel || configLabel === '(no configs)') {
+        vw.options.values = ['1']
+        vw.value = '1'
+        node._dazCurrentVersion = '1'
+        return
+      }
+      try {
+        const url = configsUrl(node,
+          `/daz/workflow-config-versions?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(configLabel)}`)
+        const r = await fetch(url)
+        if (!r.ok) return
+        const versions = await r.json()
+        if (versions.error) return
+        const vList = versions.map(v => v.version).filter(Boolean)
+        vw.options.values = vList.length ? vList : ['1']
+        if (selectVersion && vList.includes(selectVersion)) {
+          vw.value = selectVersion
+        } else if (!vList.includes(vw.value)) {
+          vw.value = vList[vList.length - 1] ?? '1'
+        }
+        node._dazCurrentVersion = vw.value
+      } catch (e) {
+        console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not reload versions', e)
+      }
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -124,6 +138,18 @@ app.registerExtension({
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
     }
+
+    // ── Typed-object accessors ────────────────────────────────────────────────
+    function fName(val)  { return (val && typeof val === 'object') ? (val.name  ?? '') : (val ?? '') }
+    function fValue(val) { return (val && typeof val === 'object') ? (val.value ?? 0)  : (val ?? 0)  }
+    function fText(val)  { return (val && typeof val === 'object') ? (val.text  ?? '') : (val ?? '') }
+    function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
+    function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
+    function fType(val)       { return (val && typeof val === 'object') ? (val.type      ?? 'smart') : 'smart'  }
+    function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
+    function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
+    function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
+    function fNote(val)                { return (val && typeof val === 'object') ? (val.value ?? '')    : ''    }
 
     function rowNote(text) {
       if (!text) return `<tr>
@@ -367,7 +393,7 @@ app.registerExtension({
           const detail = node._dazLtx23Detail
           if (!detail) return
           if (!detail.loras) detail.loras = {}
-          const val = detail.loras[key]
+          const val    = detail.loras[key]
           const oldVal = val && typeof val === 'object' ? { ...val } : val
           if (val && typeof val === 'object') {
             val.enabled = e.target.checked
@@ -386,11 +412,9 @@ app.registerExtension({
               method:  'POST',
               headers: { 'Content-Type': 'application/json' },
               body:    JSON.stringify({
-                label,
-                class:    CLASS,
-                file:     currentFile(node),
-                new_name: detail.name || '',
-                loras:    { [key]: detail.loras[key] },
+                label, class: CLASS, file: currentFile(node), new_name: detail.name || '',
+                version: node._dazCurrentVersion || '1', save_mode: 'current',
+                loras: { [key]: detail.loras[key] },
               }),
             })
             const result = await r.json()
@@ -424,7 +448,11 @@ app.registerExtension({
           const r = await fetch('/daz/workflow-config-save', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ label, class: CLASS, file: currentFile(node), new_name: detail.name || '', seed: detail.seed }),
+            body:    JSON.stringify({
+              label, class: CLASS, file: currentFile(node), new_name: detail.name || '',
+              version: node._dazCurrentVersion || '1', save_mode: 'current',
+              seed: detail.seed,
+            }),
           })
           const result = await r.json()
           if (!r.ok || result.error) throw new Error(result.error || r.statusText)
@@ -457,7 +485,11 @@ app.registerExtension({
             const r = await fetch('/daz/workflow-config-save', {
               method:  'POST',
               headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ label, class: CLASS, file: currentFile(node), new_name: detail.name || '', flags: { [flagKey]: detail.flags[flagKey] } }),
+              body:    JSON.stringify({
+                label, class: CLASS, file: currentFile(node), new_name: detail.name || '',
+                version: node._dazCurrentVersion || '1', save_mode: 'current',
+                flags: { [flagKey]: detail.flags[flagKey] },
+              }),
             })
             const result = await r.json()
             if (!r.ok || result.error) throw new Error(result.error || r.statusText)
@@ -479,7 +511,7 @@ app.registerExtension({
       node.setDirtyCanvas(true, true)
     }
 
-    async function loadDetail(node, label) {
+    async function loadDetail(node, label, version = null) {
       if (!node._dazLtx23Wrap) return
       if (node._dazLtx23EditMode) return
       if (!label || label === '(no configs)') {
@@ -490,12 +522,12 @@ app.registerExtension({
       node._dazLtx23Wrap.innerHTML =
         '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Loading…</p>'
       try {
+        const ver = version ?? node._dazCurrentVersion ?? node._dazVersionWidget?.value ?? '1'
         const url = configsUrl(node,
-          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(label)}`)
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(label)}&version=${encodeURIComponent(ver)}`)
         const resp = await fetch(url)
         if (!resp.ok) throw new Error(resp.statusText)
         const data = await resp.json()
-        // If the backend found the config in a different file (fallback), sync our selection
         if ('_source_file' in data) {
           const correctFile = data._source_file || null
           node._dazConfigFile = correctFile
@@ -505,6 +537,13 @@ app.registerExtension({
           delete data._source_file
           await reloadNodeConfigs(node)
           syncWidget(node)
+        }
+        if (data.version && node._dazVersionWidget) {
+          if (!node._dazVersionWidget.options.values.includes(data.version)) {
+            node._dazVersionWidget.options.values = [...node._dazVersionWidget.options.values, data.version]
+          }
+          node._dazVersionWidget.value = data.version
+          node._dazCurrentVersion = data.version
         }
         node._dazLtx23Detail = data
         renderUseMode(node, data)
@@ -565,9 +604,11 @@ app.registerExtension({
       const divider    = `<tr><td colspan="4" style="padding:2px 0"><div style="border-top:1px solid #ffffff;margin:0 8px"></div></td></tr>`
       const btnBase    = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
 
+      const currentVersion = isNew ? '1' : (node._dazCurrentVersion || data.version || '1')
+
       const header = `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
                        color:#aaa;border-bottom:1px solid #3a3a3a;margin-bottom:4px">
-             ${isNew ? 'New Configuration' : 'Edit Configuration'}
+             ${isNew ? 'New Configuration' : `Edit Configuration — version ${esc(currentVersion)}`}
            </div>`
 
       const nameRow = `<tr>
@@ -612,13 +653,15 @@ app.registerExtension({
              ${(node._dazAllConfigs || []).length > 0 ? `<button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>` : ''}
              <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>
            </div>`
-        : `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
-                       border-top:1px solid #3a3a3a;margin-top:4px">
-             <button id="daz-duplicate-btn" style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
-             <button id="daz-delete-btn"    style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete</button>
-             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px"></span>
-             <button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
-             <button id="daz-save-btn"   style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
+        : `<div style="display:flex;align-items:center;gap:4px;padding:6px 8px;
+                       border-top:1px solid #3a3a3a;margin-top:4px;flex-wrap:wrap">
+             <button id="daz-duplicate-btn"  style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
+             <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Del Version</button>
+             <button id="daz-del-config-btn"  style="${btnBase} #803030;background:#5c1a1a;color:#f99">Del Config</button>
+             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px;min-width:0"></span>
+             <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
+             <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
+             <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
            </div>`
 
       function loraRow(label, key) {
@@ -826,7 +869,6 @@ app.registerExtension({
         btn.disabled    = false
       })
 
-      // ── Seed randomize immediate save ─────────────────────────────────────
       wrap.querySelector('#daz-seed-randomize')?.addEventListener('change', async (e) => {
         if (isNew) return
         const cw = node.widgets?.find(w => w.name === 'config')
@@ -839,7 +881,11 @@ app.registerExtension({
           const r = await fetch('/daz/workflow-config-save', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ label, class: CLASS, file: currentFile(node), new_name: detail.name || '', seed: newSeed }),
+            body:    JSON.stringify({
+              label, class: CLASS, file: currentFile(node), new_name: detail.name || '',
+              version: node._dazCurrentVersion || '1', save_mode: 'current',
+              seed: newSeed,
+            }),
           })
           const result = await r.json()
           if (!r.ok || result.error) throw new Error(result.error || r.statusText)
@@ -864,10 +910,14 @@ app.registerExtension({
         wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
           renderUseMode(node, node._dazLtx23Detail || {}, true)
         })
-        wrap.querySelector('#daz-delete-btn')?.addEventListener('click', () => {
-          showDeleteConfirm(node, wrap)
+        wrap.querySelector('#daz-del-version-btn')?.addEventListener('click', () => {
+          showDeleteVersionConfirm(node, wrap)
         })
-        wrap.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, wrap))
+        wrap.querySelector('#daz-del-config-btn')?.addEventListener('click', () => {
+          showDeleteConfigConfirm(node, wrap)
+        })
+        wrap.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, wrap, 'current'))
+        wrap.querySelector('#daz-new-version-btn')?.addEventListener('click', () => saveConfig(node, wrap, 'new_version'))
       }
 
       wrap.querySelector('#daz-prompt-editor-btn')?.addEventListener('click', () => {
@@ -893,10 +943,8 @@ app.registerExtension({
               method:  'POST',
               headers: { 'Content-Type': 'application/json' },
               body:    JSON.stringify({
-                label,
-                class:           CLASS,
-                file:            currentFile(node),
-                new_name:        detail.name || '',
+                label, class: CLASS, file: currentFile(node), new_name: detail.name || '',
+                version: node._dazCurrentVersion || '1', save_mode: 'current',
                 master_prompt:   updates.master_prompt,
                 positive_prompt: updates.positive_prompt,
                 negative_prompt: updates.negative_prompt,
@@ -910,7 +958,7 @@ app.registerExtension({
             if (cw) cw.value = result.label
             syncWidget(node)
             const detailUrl = configsUrl(node,
-              `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`)
+              `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}&version=${encodeURIComponent(node._dazCurrentVersion || '1')}`)
             const detailResp = await fetch(detailUrl)
             if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
             renderUseMode(node, node._dazLtx23Detail, false)
@@ -945,7 +993,7 @@ app.registerExtension({
           if (framesInput) framesInput.value = updates.total_frames.value
           const fpsInput = wrap.querySelector('#daz-fps')
           if (fpsInput) fpsInput.value = updates.fps.value
-          if (!isNewConfig) saveConfig(node, wrap)
+          if (!isNewConfig) saveConfig(node, wrap, 'current')
         },
       })
     }
@@ -991,7 +1039,7 @@ app.registerExtension({
           flag_1: { label: wrap.querySelector('#daz-flag-1-label')?.value ?? 'flag 1', value: wrap.querySelector('#daz-flag-1-value')?.checked ?? false },
           flag_2: { label: wrap.querySelector('#daz-flag-2-label')?.value ?? 'flag 2', value: wrap.querySelector('#daz-flag-2-value')?.checked ?? false },
         },
-        note:         { value: (wrap.querySelector('#daz-note')?.value ?? '').substring(0, 900) },
+        note: { value: (wrap.querySelector('#daz-note')?.value ?? '').substring(0, 900) },
       }
     }
 
@@ -1001,13 +1049,11 @@ app.registerExtension({
       const nameInput = wrap.querySelector('#daz-config-name')
       const name      = nameInput?.value.trim() ?? ''
       const errDiv    = wrap.querySelector('#daz-save-error')
-
       if (!name) {
         if (errDiv) errDiv.textContent = 'Config name is required.'
         nameInput?.focus()
         return
       }
-
       const createBtn = wrap.querySelector('#daz-create-btn')
       if (!createBtn || !errDiv) return
       createBtn.textContent = 'Creating…'
@@ -1015,9 +1061,7 @@ app.registerExtension({
       errDiv.textContent    = ''
 
       const payload = {
-        name,
-        class: CLASS,
-        file:  currentFile(node),
+        name, class: CLASS, file: currentFile(node),
         group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
         type:  wrap.querySelector('#daz-type')?.value ?? '',
         ...buildPayload(wrap),
@@ -1025,9 +1069,8 @@ app.registerExtension({
 
       try {
         const r = await fetch('/daz/workflow-config-create', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(payload),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         })
         if (r.status === 409) {
           createBtn.textContent = 'Create'
@@ -1048,8 +1091,10 @@ app.registerExtension({
         const configWidget = node.widgets?.find(w => w.name === 'config')
         if (configWidget) configWidget.value = result.label
 
+        await reloadVersionWidget(node, result.label, result.version || '1')
+
         const detailUrl = configsUrl(node,
-          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`)
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}&version=${encodeURIComponent(result.version || '1')}`)
         const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
@@ -1063,14 +1108,16 @@ app.registerExtension({
 
     // ── Save existing config ──────────────────────────────────────────────────
 
-    async function saveConfig(node, wrap) {
+    async function saveConfig(node, wrap, saveMode = 'current') {
       const cw = node.widgets?.find(w => w.name === 'config')
       const label = cw?.value
       if (!label || label === '(no configs)') return
 
       const saveBtn  = wrap.querySelector('#daz-save-btn')
+      const nvBtn    = wrap.querySelector('#daz-new-version-btn')
       const errorDiv = wrap.querySelector('#daz-save-error')
-      if (!saveBtn || !errorDiv) return
+      const activeBtn = saveMode === 'new_version' ? nvBtn : saveBtn
+      if (!activeBtn || !errorDiv) return
 
       const newName = wrap.querySelector('#daz-config-name')?.value.trim() ?? ''
       if (!newName) {
@@ -1079,30 +1126,27 @@ app.registerExtension({
         return
       }
 
-      saveBtn.textContent = 'Saving…'
-      saveBtn.disabled    = true
-      errorDiv.textContent = ''
+      activeBtn.textContent = saveMode === 'new_version' ? 'Adding…' : 'Saving…'
+      activeBtn.disabled    = true
+      errorDiv.textContent  = ''
 
       const payload = {
-        label,
-        class:    CLASS,
-        file:     currentFile(node),
-        new_name: newName,
-        group:    { name: wrap.querySelector('#daz-group')?.value ?? '' },
-        type:     wrap.querySelector('#daz-type')?.value ?? '',
+        label, class: CLASS, file: currentFile(node), new_name: newName,
+        version: node._dazCurrentVersion || '1', save_mode: saveMode,
+        group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
+        type:  wrap.querySelector('#daz-type')?.value ?? '',
         ...buildPayload(wrap),
       }
 
       try {
         const r = await fetch('/daz/workflow-config-save', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(payload),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         })
         if (r.status === 409) {
-          saveBtn.textContent = 'Save'
-          saveBtn.disabled    = false
-          showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap))
+          activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+          activeBtn.disabled    = false
+          showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode))
           return
         }
         const result = await r.json()
@@ -1118,16 +1162,19 @@ app.registerExtension({
         const configWidget = node.widgets?.find(w => w.name === 'config')
         if (configWidget) configWidget.value = result.label
 
+        await reloadVersionWidget(node, result.label, result.version)
+        node._dazCurrentVersion = result.version
+
         const detailUrl = configsUrl(node,
-          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`)
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}&version=${encodeURIComponent(result.version)}`)
         const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
         renderUseMode(node, node._dazLtx23Detail || {}, true)
       } catch (e) {
-        saveBtn.textContent = 'Save'
-        saveBtn.disabled    = false
-        errorDiv.textContent = `Error: ${e.message}`
+        activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+        activeBtn.disabled    = false
+        errorDiv.textContent  = `Error: ${e.message}`
       }
     }
 
@@ -1139,15 +1186,13 @@ app.registerExtension({
       if (!originalName) return
 
       const newName = nameOverride ?? `Copy of ${originalName}`
-      const errDiv = wrap.querySelector('#daz-save-error')
-      const dupBtn = wrap.querySelector('#daz-duplicate-btn')
+      const errDiv  = wrap.querySelector('#daz-save-error')
+      const dupBtn  = wrap.querySelector('#daz-duplicate-btn')
       if (dupBtn) { dupBtn.textContent = 'Duplicating…'; dupBtn.disabled = true }
       if (errDiv) errDiv.textContent = ''
 
       const payload = {
-        name:            newName,
-        class:           CLASS,
-        file:            currentFile(node),
+        name: newName, class: CLASS, file: currentFile(node),
         group:           data.group           ?? { name: '' },
         type:            data.type            ?? '',
         checkpoint:      data.checkpoint      ?? { name: '' },
@@ -1169,18 +1214,14 @@ app.registerExtension({
         cfg_high:        data.cfg_high        ?? { value: 0 },
         total_frames:    data.total_frames    ?? { value: 0 },
         fps:             data.fps             ?? { value: 0 },
-        flags: data.flags ?? {
-          flag_1: { label: 'flag 1', value: false },
-          flag_2: { label: 'flag 2', value: false },
-        },
-        note:            data.note            ?? { value: '' },
+        flags: data.flags ?? { flag_1: { label: 'flag 1', value: false }, flag_2: { label: 'flag 2', value: false } },
+        note: data.note ?? { value: '' },
       }
 
       try {
         const r = await fetch('/daz/workflow-config-create', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(payload),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         })
         if (r.status === 409) {
           if (dupBtn) { dupBtn.textContent = 'Duplicate'; dupBtn.disabled = false }
@@ -1193,12 +1234,14 @@ app.registerExtension({
 
         await reloadNodeConfigs(node)
         syncWidget(node)
-
         const configWidget = node.widgets?.find(w => w.name === 'config')
         if (configWidget) configWidget.value = result.label
 
+        await reloadVersionWidget(node, result.label, result.version || '1')
+        node._dazCurrentVersion = result.version || '1'
+
         const detailUrl = configsUrl(node,
-          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}`)
+          `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}&version=${encodeURIComponent(result.version || '1')}`)
         const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
@@ -1209,20 +1252,16 @@ app.registerExtension({
       }
     }
 
-    // ── Delete config ─────────────────────────────────────────────────────────
-
     // ── Name clash modal ──────────────────────────────────────────────────────
 
     function showNameClashModal(nameInput, onRetry) {
       const name = nameInput?.value.trim() ?? ''
-
       const overlay = document.createElement('div')
       overlay.style.cssText = [
         'position:fixed;top:0;left:0;right:0;bottom:0',
         'background:rgba(0,0,0,0.75);z-index:10000',
         'display:flex;align-items:center;justify-content:center',
       ].join(';')
-
       const box = document.createElement('div')
       box.style.cssText = [
         'background:#2a2a2a;border:1px solid #555;border-radius:6px',
@@ -1234,18 +1273,12 @@ app.registerExtension({
         </p>
         <p style="font-size:11px;color:#888;margin:0 0 18px">Cancel to go back, or auto-generate a unique name.</p>
         <div style="display:flex;justify-content:flex-end;gap:8px">
-          <button id="nc-cancel"
-            style="font-family:monospace;font-size:11px;padding:4px 14px;
-                   background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
-          <button id="nc-autoname"
-            style="font-family:monospace;font-size:11px;padding:4px 14px;
-                   background:#1a5c35;color:#cde;border:1px solid #2a8050;border-radius:3px;cursor:pointer">Auto name</button>
+          <button id="nc-cancel" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
+          <button id="nc-autoname" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#1a5c35;color:#cde;border:1px solid #2a8050;border-radius:3px;cursor:pointer">Auto name</button>
         </div>
       `
-
       overlay.appendChild(box)
       document.body.appendChild(overlay)
-
       box.querySelector('#nc-cancel')?.addEventListener('click', () => overlay.remove())
       box.querySelector('#nc-autoname')?.addEventListener('click', () => {
         overlay.remove()
@@ -1255,7 +1288,105 @@ app.registerExtension({
       })
     }
 
-    function showDeleteConfirm(node, wrap) {
+    // ── Delete version confirm ────────────────────────────────────────────────
+
+    function showDeleteVersionConfirm(node, wrap) {
+      const name    = node._dazLtx23Detail?.name || '?'
+      const version = node._dazCurrentVersion || '1'
+      const cw      = node.widgets?.find(w => w.name === 'config')
+      const label   = cw?.value || ''
+
+      const overlay = document.createElement('div')
+      overlay.style.cssText = [
+        'position:fixed;top:0;left:0;right:0;bottom:0',
+        'background:rgba(0,0,0,0.75);z-index:10000',
+        'display:flex;align-items:center;justify-content:center',
+      ].join(';')
+      const box = document.createElement('div')
+      box.style.cssText = [
+        'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+        'padding:20px 24px;width:360px;font-family:monospace',
+      ].join(';')
+      box.innerHTML = `
+        <p style="font-size:13px;color:#ddd;margin:0 0 6px">
+          Delete version <strong>${esc(version)}</strong> of &ldquo;${esc(name)}&rdquo;?
+        </p>
+        <p style="font-size:11px;color:#888;margin:0 0 18px">This cannot be undone. If this is the last version, the entire config will be removed.</p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button id="dv-keep" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Keep</button>
+          <button id="dv-confirm" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">Delete Version</button>
+        </div>
+      `
+      overlay.appendChild(box)
+      document.body.appendChild(overlay)
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+      box.querySelector('#dv-keep')?.addEventListener('click', () => overlay.remove())
+      box.querySelector('#dv-confirm')?.addEventListener('click', () => {
+        overlay.remove()
+        deleteVersion(node, label, version)
+      })
+    }
+
+    async function deleteVersion(node, label, version) {
+      const wrap = node._dazLtx23Wrap
+      if (wrap) wrap.innerHTML = '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Deleting…</p>'
+      try {
+        const r = await fetch('/daz/workflow-config-delete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label, class: CLASS, file: currentFile(node), version, delete_mode: 'version' }),
+        })
+        const result = await r.json()
+        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+
+        await reloadNodeConfigs(node)
+        updateGroupFilterWidget(node)
+
+        if (result.config_deleted) {
+          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+          node._dazTypeFilter = 'All'
+          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
+          node._dazGroupFilter = 'All'
+          syncWidget(node)
+          const configWidget = node.widgets?.find(w => w.name === 'config')
+          const remainingLabels = filteredLabels(node._dazAllConfigs || [], 'All', 'All')
+          if (remainingLabels.length > 0) {
+            if (configWidget) configWidget.value = remainingLabels[0]
+            node._dazLtx23EditMode = false
+            node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)]
+            node.minSize = [NODE_W, NODE_H]
+            await reloadVersionWidget(node, remainingLabels[0])
+            loadDetail(node, remainingLabels[0], node._dazVersionWidget?.value)
+          } else {
+            if (configWidget) { configWidget.options.values = ['(no configs)']; configWidget.value = '(no configs)' }
+            node._dazLtx23Detail = {}
+            enterEditForm(node, true)
+          }
+        } else {
+          syncWidget(node)
+          const configWidget = node.widgets?.find(w => w.name === 'config')
+          if (configWidget && configWidget.value !== '(no configs)') {
+            await reloadVersionWidget(node, configWidget.value)
+            node._dazLtx23EditMode = false
+            node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)]
+            node.minSize = [NODE_W, NODE_H]
+            loadDetail(node, configWidget.value, node._dazVersionWidget?.value)
+          }
+        }
+      } catch (e) {
+        if (wrap) {
+          wrap.innerHTML = `
+            <p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">Delete failed: ${esc(e.message)}</p>
+            <div style="padding:0 8px 8px;display:flex;justify-content:flex-end">
+              <button id="daz-back-edit" style="font-family:monospace;font-size:11px;padding:3px 10px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
+            </div>`
+          wrap.querySelector('#daz-back-edit')?.addEventListener('click', () => enterEditForm(node, false))
+        }
+      }
+    }
+
+    // ── Delete config confirm ─────────────────────────────────────────────────
+
+    function showDeleteConfigConfirm(node, wrap) {
       const name  = node._dazLtx23Detail?.name || '?'
       const cw    = node.widgets?.find(w => w.name === 'config')
       const label = cw?.value || ''
@@ -1266,31 +1397,25 @@ app.registerExtension({
         'background:rgba(0,0,0,0.75);z-index:10000',
         'display:flex;align-items:center;justify-content:center',
       ].join(';')
-
       const box = document.createElement('div')
       box.style.cssText = [
         'background:#2a2a2a;border:1px solid #555;border-radius:6px',
-        'padding:20px 24px;width:340px;font-family:monospace',
+        'padding:20px 24px;width:360px;font-family:monospace',
       ].join(';')
       box.innerHTML = `
         <p style="font-size:13px;color:#ddd;margin:0 0 6px">
-          Delete &ldquo;${esc(name)}&rdquo;?
+          Delete all versions of &ldquo;${esc(name)}&rdquo;?
         </p>
         <p style="font-size:11px;color:#888;margin:0 0 18px">This cannot be undone.</p>
         <div style="display:flex;justify-content:flex-end;gap:8px">
-          <button id="dc-keep"
-            style="font-family:monospace;font-size:11px;padding:4px 14px;
-                   background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Keep</button>
-          <button id="dc-confirm"
-            style="font-family:monospace;font-size:11px;padding:4px 14px;
-                   background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">Delete</button>
+          <button id="dc-keep" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Keep</button>
+          <button id="dc-confirm" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">Delete All</button>
         </div>
       `
-
       overlay.appendChild(box)
       document.body.appendChild(overlay)
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
-      box.querySelector('#dc-keep')?.addEventListener('click',    () => overlay.remove())
+      box.querySelector('#dc-keep')?.addEventListener('click', () => overlay.remove())
       box.querySelector('#dc-confirm')?.addEventListener('click', () => {
         overlay.remove()
         deleteConfig(node, label)
@@ -1299,16 +1424,11 @@ app.registerExtension({
 
     async function deleteConfig(node, label) {
       const wrap = node._dazLtx23Wrap
-      if (wrap) {
-        wrap.innerHTML =
-          '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Deleting…</p>'
-      }
-
+      if (wrap) wrap.innerHTML = '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Deleting…</p>'
       try {
         const r = await fetch('/daz/workflow-config-delete', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ label, class: CLASS, file: currentFile(node) }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label, class: CLASS, file: currentFile(node), delete_mode: 'config' }),
         })
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
@@ -1328,29 +1448,21 @@ app.registerExtension({
           node._dazLtx23EditMode = false
           node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)]
           node.minSize = [NODE_W, NODE_H]
-          loadDetail(node, remainingLabels[0])
+          await reloadVersionWidget(node, remainingLabels[0])
+          loadDetail(node, remainingLabels[0], node._dazVersionWidget?.value)
         } else {
-          if (configWidget) {
-            configWidget.options.values = ['(no configs)']
-            configWidget.value = '(no configs)'
-          }
+          if (configWidget) { configWidget.options.values = ['(no configs)']; configWidget.value = '(no configs)' }
           node._dazLtx23Detail = {}
           enterEditForm(node, true)
         }
       } catch (e) {
         if (wrap) {
           wrap.innerHTML = `
-            <p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">
-              Delete failed: ${esc(e.message)}
-            </p>
+            <p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">Delete failed: ${esc(e.message)}</p>
             <div style="padding:0 8px 8px;display:flex;justify-content:flex-end">
-              <button id="daz-back-edit"
-                style="font-family:monospace;font-size:11px;padding:3px 10px;background:#444;color:#ccc;
-                       border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
+              <button id="daz-back-edit" style="font-family:monospace;font-size:11px;padding:3px 10px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
             </div>`
-          wrap.querySelector('#daz-back-edit')?.addEventListener('click', () => {
-            enterEditForm(node, false)
-          })
+          wrap.querySelector('#daz-back-edit')?.addEventListener('click', () => enterEditForm(node, false))
         }
       }
     }
@@ -1364,13 +1476,11 @@ app.registerExtension({
         'background:rgba(0,0,0,0.88);z-index:10000',
         'display:flex;align-items:center;justify-content:center;cursor:pointer',
       ].join(';')
-
       const img = document.createElement('img')
       img.src = `/view?filename=${encodeURIComponent(filename)}&type=input`
       img.style.cssText =
         'max-width:90vw;max-height:90vh;border-radius:4px;box-shadow:0 4px 32px rgba(0,0,0,0.9);cursor:default'
       img.addEventListener('click', e => e.stopPropagation())
-
       overlay.appendChild(img)
       document.body.appendChild(overlay)
       overlay.addEventListener('click', () => overlay.remove())
@@ -1382,13 +1492,13 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       onNodeCreated?.apply(this, arguments)
 
-      // Per-node state
-      this._dazAllConfigs  = _initialConfigs.slice()
-      this._dazConfigFile  = _configFiles[0]?.file ?? null
-      this._dazTypeFilter  = 'All'
-      this._dazGroupFilter = 'All'
+      this._dazAllConfigs     = _initialConfigs.slice()
+      this._dazConfigFile     = _configFiles[0]?.file ?? null
+      this._dazTypeFilter     = 'All'
+      this._dazGroupFilter    = 'All'
+      this._dazCurrentVersion = '1'
 
-      // ── config_file picker widget (from INPUT_TYPES) ──────────────────────
+      // ── config_file picker widget ─────────────────────────────────────────
       const cfWidget = this.widgets?.find(w => w.name === 'config_file')
       if (cfWidget) {
         if (_configFiles.length > 0) {
@@ -1396,7 +1506,6 @@ app.registerExtension({
           cfWidget.value          = _configFiles[0].file
         }
         cfWidget.hidden = _configFiles.length <= 1
-
         this._dazConfigFileWidget = cfWidget
         const origCfCb = cfWidget.callback
         cfWidget.callback = async (value) => {
@@ -1411,7 +1520,25 @@ app.registerExtension({
           syncWidget(this)
           if (!this._dazLtx23EditMode) {
             const cw = this.widgets?.find(w => w.name === 'config')
-            if (cw) loadDetail(this, cw.value)
+            if (cw) {
+              await reloadVersionWidget(this, cw.value)
+              loadDetail(this, cw.value, this._dazVersionWidget?.value)
+            }
+          }
+        }
+      }
+
+      // ── version widget (from INPUT_TYPES) ─────────────────────────────────
+      const versionWidget = this.widgets?.find(w => w.name === 'version')
+      if (versionWidget) {
+        this._dazVersionWidget = versionWidget
+        const origVwCb = versionWidget.callback
+        versionWidget.callback = (value) => {
+          origVwCb?.call(this, value)
+          this._dazCurrentVersion = value
+          if (!this._dazLtx23EditMode) {
+            const cw = this.widgets?.find(w => w.name === 'config')
+            if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, value)
           }
         }
       }
@@ -1423,7 +1550,7 @@ app.registerExtension({
         syncWidget(this)
         if (!this._dazLtx23EditMode) {
           const cw = this.widgets?.find(w => w.name === 'config')
-          if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value)
+          if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
         }
       }, { values: ['All', 'I2V', 'T2V', 'MULTI'] })
       this._dazTypeFilterWidget = typeFilterWidget
@@ -1434,7 +1561,7 @@ app.registerExtension({
         syncWidget(this)
         if (!this._dazLtx23EditMode) {
           const cw = this.widgets?.find(w => w.name === 'config')
-          if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value)
+          if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
         }
       }, { values: initialGroups })
       this._dazGroupFilterWidget = groupFilterWidget
@@ -1480,7 +1607,10 @@ app.registerExtension({
             return
           }
           const cw = this.widgets?.find(w => w.name === 'config')
-          if (cw) loadDetail(this, cw.value)
+          if (cw) {
+            await reloadVersionWidget(this, cw.value)
+            loadDetail(this, cw.value, this._dazVersionWidget?.value)
+          }
         } catch (e) {
           console.warn('[DAZ TOOLS] WorkflowConfigLtx23: reload failed', e)
         }
@@ -1506,23 +1636,27 @@ app.registerExtension({
       const w = this.widgets?.find(w => w.name === 'config')
       if (w) {
         const origCb = w.callback
-        w.callback = (value) => {
+        w.callback = async (value) => {
           origCb?.call(this, value)
-          if (!this._dazLtx23EditMode) loadDetail(this, value)
+          if (!this._dazLtx23EditMode) {
+            await reloadVersionWidget(this, value)
+            loadDetail(this, value, this._dazVersionWidget?.value)
+          }
         }
         if ((this._dazAllConfigs || []).length === 0) {
           enterEditForm(this, true)
         } else {
-          loadDetail(this, w.value)
+          reloadVersionWidget(this, w.value).then(() => {
+            loadDetail(this, w.value, this._dazVersionWidget?.value)
+          })
         }
       }
 
-      // Refresh panel after this node executes (picks up the new random seed value)
       const executedHandler = ({ detail }) => {
         if (String(detail.node) !== String(this.id)) return
         if (this._dazLtx23EditMode) return
         const cw = this.widgets?.find(w => w.name === 'config')
-        if (cw && cw.value && cw.value !== '(no configs)') loadDetail(this, cw.value)
+        if (cw && cw.value && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
       }
       api.addEventListener('executed', executedHandler)
       this._dazLtx23ExecutedHandler = executedHandler
@@ -1541,9 +1675,6 @@ app.registerExtension({
       onConfigure?.apply(this, arguments)
       const self = this
       queueMicrotask(async () => {
-        // Restore the selected config file from the saved widget value, then reload its configs.
-        // Validate the value: old workflows may have applied a wrong value (e.g. "All", "I2V")
-        // via positional mismatch — only accept proper dx_*.json filenames.
         if (self._dazConfigFileWidget) {
           const savedFile = self._dazConfigFileWidget.value
           const isValidFile = savedFile && savedFile !== '(default)' &&
@@ -1562,7 +1693,10 @@ app.registerExtension({
         const w = self.widgets?.find(w => w.name === 'config')
         const labels = filteredLabels(self._dazAllConfigs || [], self._dazTypeFilter, self._dazGroupFilter)
         if (w && !labels.includes(w.value)) syncWidget(self)
-        if (!self._dazLtx23EditMode) loadDetail(self, w?.value)
+        const savedVersion = self._dazVersionWidget?.value || '1'
+        await reloadVersionWidget(self, w?.value, savedVersion)
+        self._dazCurrentVersion = self._dazVersionWidget?.value || '1'
+        if (!self._dazLtx23EditMode) loadDetail(self, w?.value, self._dazCurrentVersion)
       })
     }
   },

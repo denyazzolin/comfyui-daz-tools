@@ -4,8 +4,10 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
+    all_versions_for_class,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_prompt_type_int, _get_seed_randomize, _get_flag_value,
+    _get_active_set,
     _resolve_path, _load_file, _write_file,
 )
 
@@ -65,13 +67,12 @@ def _load_image(path: str):
     if os.path.isabs(path):
         full = path
     else:
-        # Relative filename → resolve against ComfyUI input folder
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: image not found at '{full}'")
     img = Image.open(full).convert("RGB")
     arr = np.array(img).astype(np.float32) / 255.0
-    return torch.from_numpy(arr)[None,]  # [1, H, W, 3]
+    return torch.from_numpy(arr)[None,]
 
 
 def _load_lora(name: str):
@@ -84,7 +85,6 @@ def _load_lora(name: str):
 
 
 def _process_lora(val):
-    """Return (state_dict_or_None, strength) from a lora config value (string or object)."""
     if isinstance(val, dict):
         if not val.get("enabled", True):
             return None, 1.0
@@ -97,7 +97,6 @@ def _process_lora(val):
 
 
 def _apply_loras(model, lora_pairs):
-    """Apply a list of (state_dict, strength) pairs to the model. None state_dicts are skipped."""
     if model is None:
         return None
     result = model
@@ -113,13 +112,9 @@ class WorkflowConfigWan22:
     def INPUT_TYPES(cls):
         files       = scan_config_files(_CLASS)
         file_labels = [f["file"] for f in files] if files else [_FILE_DEFAULT]
-        # Always include "(default)" so old saved workflows still pass validation
         if files and _FILE_DEFAULT not in file_labels:
             file_labels = file_labels + [_FILE_DEFAULT]
 
-        # Collect labels from ALL sources (every _mgr/ file + legacy) so any
-        # valid selection — including from a renamed or relocated config — passes
-        # ComfyUI's combo validation at execution time.
         seen, all_labels = set(), []
         for f in files:
             for lbl in labels_for_class(_CLASS, file=f["file"]):
@@ -129,10 +124,13 @@ class WorkflowConfigWan22:
             if lbl not in seen:
                 seen.add(lbl); all_labels.append(lbl)
 
+        all_versions = all_versions_for_class(_CLASS)
+
         return {
             "required": {
                 "config_file": (file_labels,),
                 "config":      (all_labels if all_labels else [_NO_CONFIGS],),
+                "version":     (all_versions,),
             }
         }
 
@@ -174,7 +172,7 @@ class WorkflowConfigWan22:
     OUTPUT_NODE = False
 
     @classmethod
-    def IS_CHANGED(cls, config_file: str, config: str):
+    def IS_CHANGED(cls, config_file: str, config: str, version: str):
         file = None if config_file == _FILE_DEFAULT else config_file
         try:
             path = _resolve_path(file)
@@ -184,13 +182,15 @@ class WorkflowConfigWan22:
                  if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
                 None,
             )
-            if name is not None and _get_seed_randomize(configs[name].get("seed", {})):
-                return float("NaN")
+            if name is not None:
+                active_set = _get_active_set(configs[name], version)
+                if _get_seed_randomize(active_set.get("seed", {})):
+                    return float("NaN")
         except Exception:
             pass
         return config
 
-    def load_config(self, config_file: str, config: str):
+    def load_config(self, config_file: str, config: str, version: str):
         file = None if config_file == _FILE_DEFAULT else config_file
         path = _resolve_path(file)
         configs, meta_extra, effective = _load_file(path)
@@ -203,21 +203,29 @@ class WorkflowConfigWan22:
             raise ValueError(
                 f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found"
             )
-        entry = configs[name]
-        loras = _get_loras(entry)
+        entry      = configs[name]
+        active_set = _get_active_set(entry, version)
+        loras      = _get_loras(active_set)
 
-        seed_obj = entry.get("seed", {"value": 0})
+        seed_obj = active_set.get("seed", {"value": 0})
         seed_val = _get_int(seed_obj)
         if _get_seed_randomize(seed_obj):
             seed_val = random.randint(1, 2**31 - 1)
-            entry["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
+            sets = entry.get("sets", [])
+            for i, s in enumerate(sets):
+                if str(s.get("version", "")) == str(version):
+                    sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
+                    break
+            else:
+                if sets:
+                    sets[-1]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
             try:
                 _write_file(path, configs, meta_extra, effective)
             except Exception as e:
                 print(f"[DAZ TOOLS] WorkflowConfigWan22: could not save random seed — {e}")
 
-        unet_high = _load_unet(_get_name(entry.get("unet_high")))
-        unet_low  = _load_unet(_get_name(entry.get("unet_low")))
+        unet_high = _load_unet(_get_name(active_set.get("unet_high")))
+        unet_low  = _load_unet(_get_name(active_set.get("unet_low")))
 
         lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
         lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
@@ -231,27 +239,27 @@ class WorkflowConfigWan22:
         return (
             unet_high,
             unet_low,
-            _load_vae( _get_name(entry.get("vae"))),
-            _load_clip(_get_name(entry.get("clip"))),
-            _load_image(_get_path(entry.get("image_path"))),
-            _get_int(entry.get("width")),
-            _get_int(entry.get("height")),
-            _get_int(entry.get("steps")),
-            _get_int(entry.get("split_step")),
+            _load_vae( _get_name(active_set.get("vae"))),
+            _load_clip(_get_name(active_set.get("clip"))),
+            _load_image(_get_path(active_set.get("image_path"))),
+            _get_int(active_set.get("width")),
+            _get_int(active_set.get("height")),
+            _get_int(active_set.get("steps")),
+            _get_int(active_set.get("split_step")),
             seed_val,
-            _get_text(entry.get("master_prompt")),
-            _get_text(entry.get("positive_prompt")),
-            _get_text(entry.get("negative_prompt")),
-            _get_prompt_type_int(entry.get("positive_prompt")),
-            _get_float(entry.get("cfg_high")),
-            _get_float(entry.get("cfg_low")),
-            _get_int(entry.get("total_frames")),
-            _get_float(entry.get("fps")),
+            _get_text(active_set.get("master_prompt")),
+            _get_text(active_set.get("positive_prompt")),
+            _get_text(active_set.get("negative_prompt")),
+            _get_prompt_type_int(active_set.get("positive_prompt")),
+            _get_float(active_set.get("cfg_high")),
+            _get_float(active_set.get("cfg_low")),
+            _get_int(active_set.get("total_frames")),
+            _get_float(active_set.get("fps")),
             lora_1_sd, lora_2_sd,
             lora_3_sd, lora_4_sd,
             lora_5_sd, lora_6_sd,
             lora_7_sd, lora_8_sd,
-            _get_file(entry.get("filename")),
+            _get_file(active_set.get("filename")),
             _apply_loras(unet_high, [
                 (lora_1_sd, lora_1_w), (lora_3_sd, lora_3_w),
                 (lora_5_sd, lora_5_w), (lora_7_sd, lora_7_w),
@@ -260,6 +268,6 @@ class WorkflowConfigWan22:
                 (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
                 (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
             ]),
-            _get_flag_value(entry.get("flags", {}).get("flag_1")),
-            _get_flag_value(entry.get("flags", {}).get("flag_2")),
+            _get_flag_value(active_set.get("flags", {}).get("flag_1")),
+            _get_flag_value(active_set.get("flags", {}).get("flag_2")),
         )
