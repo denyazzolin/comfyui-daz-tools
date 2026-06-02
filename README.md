@@ -151,19 +151,47 @@ Checkpoint outputs (`checkpoint_model`, `checkpoint_vae`, `checkpoint_clip`) are
 
 `transformer_stack` and `checkpoint_stack` are convenience outputs — the `transformer_only` and `checkpoint_model` with all enabled LoRAs already applied at their configured strengths. Wire these directly into your sampler to skip the separate LoRA loader nodes.
 
+#### Versioned sets
+
+Every named config is a container that holds one or more **versions** — independent snapshots of all model and parameter values. Versions are numbered automatically starting at `1`; you can accumulate as many as you like under a single config name without cluttering the config list.
+
+A **Version** dropdown sits directly below the **Config** selector. Changing it reloads the detail panel with that snapshot's values without affecting any other version. The selected version is serialised into the workflow file, so the node always wakes up with the exact version that was active when you saved.
+
+At execution time the node reads the selected version's values from disk. If the version no longer exists (e.g. you deleted it from the JSON directly) it falls back to the last version in the array.
+
 #### Managing configurations
 
 The node panel has two modes:
 
-**Use mode** — shows a summary of the selected configuration's values. A **New** button creates a fresh config; an **Edit** button switches to the form. The note (if set) is displayed below the Type row, truncated to four lines. Each LoRA row shows a checkbox — clicking it toggles the LoRA on or off and auto-saves immediately. The two flag checkboxes work the same way: click to flip the value and it saves instantly, no edit mode needed.
+**Use mode** — shows a summary of the active version's values. A **New** button creates a fresh config; an **Edit** button opens the edit form for the current version. The note (if set) is shown below the Type row, truncated to four lines. Each LoRA checkbox and both flag checkboxes can be toggled directly from use mode — the change saves to the current version immediately, no edit mode needed.
 
-**Edit mode** — an inline form with dropdowns for all model files and LoRAs (populated live from your ComfyUI model folders), a strength number input and an enabled checkbox per LoRA slot, an image picker with Upload and Preview buttons, number inputs for every numeric parameter, a **Randomize** checkbox on the seed field, a **Note** textarea (max 900 characters, with a **clear** button) for free-form notes, text areas for the three prompts, and label text inputs plus value checkboxes for the two flags. **Save** writes back to the JSON file and returns to use mode. **Cancel** discards changes. **Duplicate** creates a copy named `Copy of <original name>`. **Delete** removes the configuration after a confirmation prompt.
+**Edit mode** — an inline form with dropdowns for all model files and LoRAs (populated live from your ComfyUI model folders), a strength input and enabled checkbox per LoRA slot, an image picker with Upload and Preview buttons, number inputs for every numeric parameter, a **Randomize** checkbox on the seed field, a **Note** textarea (max 900 characters with a **clear** button), text areas for the three prompts, and label/value inputs for the two flags. The header shows which version you are editing.
 
-When no configurations exist yet (first launch or empty file), the node opens directly in edit mode with a **Create** button so you can add your first preset without leaving the canvas.
+The bottom bar contains two groups of buttons:
+
+| Button | Action |
+|---|---|
+| **Duplicate** | Opens a four-option modal (see below) |
+| **Del All** | Deletes the entire config and all its versions after confirmation |
+| **Del Version** | Deletes only the currently viewed version. If it is the last version, the whole config is removed |
+| **Cancel** | Discards unsaved edits and returns to use mode |
+| **+ Version** | Saves the current form as a new version with an auto-incremented number and returns to use mode |
+| **Save** | Overwrites the current version with the form values and returns to use mode |
+
+When no configurations exist (first launch or empty file), the node opens directly in edit mode with a **Create** button so you can add your first preset without leaving the canvas.
+
+#### Duplicate options
+
+Clicking **Duplicate** opens a modal with a name field (pre-filled with `Copy of <config name>`) and four choices:
+
+- **Duplicate as a new config with all versions** — copies the entire config, preserving every version, under the name you provide.
+- **Duplicate as a new config with the current version** — creates a new config containing only the version currently in view, reset to version `1`.
+- **Duplicate as a new version in this config** — saves the current form as a new auto-incremented version inside the same config (equivalent to **+ Version**).
+- **Cancel** — closes the modal with no changes.
 
 #### Naming and name conflicts
 
-Config names must be unique within a file. If you try to **Save** (rename) or **Create** a config using a name that already exists, a popup appears with two options:
+Config names must be unique within a file. If a **Save** (rename), **Create**, or **Duplicate** operation would produce a name clash, a popup appears with two options:
 
 - **Cancel** — closes the popup and returns to the form with no changes made.
-- **Auto name** — appends `_alt` followed by a random four-digit number to the name you typed (e.g. `my config_alt3742`), then retries automatically. If the auto-generated name still clashes (rare), click **Auto name** again for a new random suffix.
+- **Auto name** — appends `_alt` followed by a random four-digit number to the name you typed (e.g. `my config_alt3742`), then retries automatically. If the auto-generated name still clashes (rare), click **Auto name** again.
