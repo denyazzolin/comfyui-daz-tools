@@ -1,134 +1,109 @@
 {
   "_meta": {
-    "schema_version": 5,
-    "name":"dx_workflow_configs",
+    "schema_version": 1,
+    "name": "dx_workflow_configs",
     "version": "1.0",
-    "created_at": "2026-05-25T22:53:21.439584",
-    "updated_at": "2026-05-29T18:32:40.728334"
+    "created_at": "2026-06-02T00:00:00",
+    "updated_at": "2026-06-02T00:00:00"
   },
   "My WAN2.2 Config": {
     "class": "Wan2.2",
-    "created_at": "2026-05-23T12:00:00",
-    "unet_high": {
-      "name": "wan2.2_14B_vace_highpass.safetensors"
-    },
-    "unet_low": {
-      "name": "wan2.2_14B_vace_lowpass.safetensors"
-    },
-    "vae": {
-      "name": "wan2.2_vae.safetensors"
-    },
-    "clip": {
-      "name": "umt5xxl_fp8_e4m3fn.safetensors"
-    },
-    "image_path": {
-      "path": "C:/path/to/input_image.png"
-    },
-    "width": {
-      "value": 1280
-    },
-    "height": {
-      "value": 720
-    },
-    "steps": {
-      "value": 30
-    },
-    "split_step": {
-      "value": 15
-    },
-    "cfg_high": {
-      "value": 6.0
-    },
-    "cfg_low": {
-      "value": 3.5
-    },
-    "total_frames": {
-      "value": 81
-    },
-    "fps": {
-      "value": 16.0
-    },
-    "master_prompt": {
-      "text": ""
-    },
-    "positive_prompt": {
-      "text": "A cinematic shot of ..."
-    },
-    "negative_prompt": {
-      "text": ""
-    },
-    "loras": {
-      "lora_1": {
-        "name": "",
-        "strength": 1.0,
-        "enabled": true
-      },
-      "lora_2": {
-        "name": "",
-        "strength": 1.0,
-        "enabled": true
-      },
-      "lora_3": {
-        "name": "",
-        "strength": 1.0,
-        "enabled": true
-      },
-      "lora_4": {
-        "name": "",
-        "strength": 1.0,
-        "enabled": true
-      },
-      "lora_5": {
-        "name": "",
-        "strength": 1.0,
-        "enabled": true
-      },
-      "lora_6": {
-        "name": "",
-        "strength": 1.0,
-        "enabled": true
-      },
-      "lora_7": {
-        "name": "",
-        "strength": 1.0,
-        "enabled": true
-      },
-      "lora_8": {
-        "name": "",
-        "strength": 1.0,
-        "enabled": true
+    "created_at": "2026-06-02T00:00:00",
+    "updated_at": "2026-06-02T00:00:00",
+    "sets": [
+      {
+        "version": "1",
+        "created_at": "2026-06-02T00:00:00",
+        "updated_at": "2026-06-02T00:00:00",
+        "type": "I2V",
+        "group": { "name": "" },
+        "note": { "value": "" },
+        "unet_high": { "name": "wan2.2_14B_vace_highpass.safetensors" },
+        "unet_low": { "name": "wan2.2_14B_vace_lowpass.safetensors" },
+        "vae": { "name": "wan2.2_vae.safetensors" },
+        "clip": { "name": "umt5xxl_fp8_e4m3fn.safetensors" },
+        "audio_vae": { "name": "" },
+        "checkpoint": { "name": "" },
+        "clip_2": { "name": "" },
+        "image_path": { "path": "C:/path/to/input_image.png" },
+        "width": { "value": 1280 },
+        "height": { "value": 720 },
+        "steps": { "value": 30 },
+        "split_step": { "value": 15 },
+        "seed": { "value": 0, "randomize": false },
+        "cfg_high": { "value": 6.0 },
+        "cfg_low": { "value": 3.5 },
+        "total_frames": { "value": 81 },
+        "fps": { "value": 16.0 },
+        "master_prompt": { "text": "" },
+        "positive_prompt": { "text": "A cinematic shot of ...", "type": "smart" },
+        "negative_prompt": { "text": "" },
+        "loras": {
+          "lora_1": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_2": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_3": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_4": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_5": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_6": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_7": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_8": { "name": "", "strength": 1.0, "enabled": true }
+        },
+        "filename": { "file": "" },
+        "flags": {
+          "flag_1": { "label": "flag 1", "value": false },
+          "flag_2": { "label": "flag 2", "value": false }
+        }
       }
-    },
-    "audio_vae": {
-      "name": ""
-    },
-    "type": "",
-    "group": {
-      "name": ""
-    },
-    "filename": {
-      "file": ""
-    },
-    "checkpoint": {
-      "name": ""
-    },
-    "clip_2": {
-      "name": ""
-    },
-    "seed": {
-      "value": 0,
-      "randomize": false
-    },
-    "flags":{
-      "flag_1":{
-        "label":"flag 1",
-        "value": false
-      },
-      "flag_2":{
-        "label":"flag 2",
-        "value": false
+    ]
+  },
+  "My LTX2.3 Config": {
+    "class": "ltx2.3",
+    "created_at": "2026-06-02T00:00:00",
+    "updated_at": "2026-06-02T00:00:00",
+    "sets": [
+      {
+        "version": "1",
+        "created_at": "2026-06-02T00:00:00",
+        "updated_at": "2026-06-02T00:00:00",
+        "type": "T2V",
+        "group": { "name": "" },
+        "note": { "value": "" },
+        "checkpoint": { "name": "ltx_video_0.9.7_distilled_fp8.safetensors" },
+        "unet_high": { "name": "" },
+        "unet_low": { "name": "" },
+        "vae": { "name": "ltx_video_0.9.7_vae.safetensors" },
+        "audio_vae": { "name": "" },
+        "clip_2": { "name": "t5xxl_fp8_e4m3fn.safetensors" },
+        "clip": { "name": "" },
+        "image_path": { "path": "" },
+        "width": { "value": 768 },
+        "height": { "value": 512 },
+        "steps": { "value": 8 },
+        "split_step": { "value": 0 },
+        "seed": { "value": 0, "randomize": false },
+        "cfg_high": { "value": 1.0 },
+        "cfg_low": { "value": 0.0 },
+        "total_frames": { "value": 121 },
+        "fps": { "value": 24.0 },
+        "master_prompt": { "text": "" },
+        "positive_prompt": { "text": "A cinematic shot of ...", "type": "smart" },
+        "negative_prompt": { "text": "" },
+        "loras": {
+          "lora_1": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_2": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_3": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_4": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_5": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_6": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_7": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_8": { "name": "", "strength": 1.0, "enabled": true }
+        },
+        "filename": { "file": "" },
+        "flags": {
+          "flag_1": { "label": "flag 1", "value": false },
+          "flag_2": { "label": "flag 2", "value": false }
+        }
       }
-    }
-
+    ]
   }
 }
