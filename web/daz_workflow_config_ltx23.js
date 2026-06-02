@@ -1262,6 +1262,11 @@ app.registerExtension({
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
         await reloadNodeConfigs(node)
+        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+        node._dazTypeFilter = 'All'
+        updateGroupFilterWidget(node)
+        if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
+        node._dazGroupFilter = 'All'
         syncWidget(node)
         if (cw) cw.value = result.label
 
