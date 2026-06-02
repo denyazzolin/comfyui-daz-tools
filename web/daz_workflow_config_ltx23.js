@@ -906,7 +906,7 @@ app.registerExtension({
           renderUseMode(node, node._dazLtx23Detail || {}, true)
         })
       } else {
-        wrap.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => duplicateConfig(node, wrap))
+        wrap.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => showDuplicateModal(node, wrap))
         wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
           renderUseMode(node, node._dazLtx23Detail || {}, true)
         })
@@ -1180,53 +1180,82 @@ app.registerExtension({
 
     // ── Duplicate config ──────────────────────────────────────────────────────
 
-    async function duplicateConfig(node, wrap, nameOverride = null) {
+    function showDuplicateModal(node, wrap) {
       const data = node._dazLtx23Detail || {}
       const originalName = data.name || ''
       if (!originalName) return
 
-      const newName = nameOverride ?? `Copy of ${originalName}`
-      const errDiv  = wrap.querySelector('#daz-save-error')
-      const dupBtn  = wrap.querySelector('#daz-duplicate-btn')
+      const overlay = document.createElement('div')
+      overlay.style.cssText = [
+        'position:fixed;top:0;left:0;right:0;bottom:0',
+        'background:rgba(0,0,0,0.75);z-index:10000',
+        'display:flex;align-items:center;justify-content:center',
+      ].join(';')
+      const box = document.createElement('div')
+      box.style.cssText = [
+        'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+        'padding:20px 24px;width:400px;font-family:monospace',
+      ].join(';')
+      const fieldStyle = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:4px;font-size:11px;font-family:monospace;padding:4px 8px;box-sizing:border-box'
+      const btnStyle   = 'font-family:monospace;font-size:11px;padding:7px 12px;border-radius:3px;cursor:pointer;border:1px solid #555;width:100%;text-align:left;margin-bottom:6px;background:#1a1a1a;color:#ddd'
+      box.innerHTML = `
+        <p style="font-size:13px;color:#ddd;margin:0 0 12px">Duplicate &ldquo;${esc(originalName)}&rdquo;</p>
+        <p style="font-size:11px;color:#888;margin:0 0 4px">New config name (options 1 &amp; 2):</p>
+        <input id="dup-name" type="text" value="${esc('Copy of ' + originalName)}"
+          style="${fieldStyle};margin-bottom:14px">
+        <button id="dup-all-sets" style="${btnStyle}">Duplicate as a new config with all versions</button>
+        <button id="dup-cur-set"  style="${btnStyle}">Duplicate as a new config with the current version</button>
+        <button id="dup-new-ver"  style="${btnStyle};border-color:#2a5080;color:#9cd">Duplicate as a new version in this config</button>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px">
+          <button id="dup-cancel" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
+        </div>
+      `
+      overlay.appendChild(box)
+      document.body.appendChild(overlay)
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+      box.querySelector('#dup-cancel')?.addEventListener('click', () => overlay.remove())
+      box.querySelector('#dup-all-sets')?.addEventListener('click', () => {
+        const n = box.querySelector('#dup-name')?.value.trim() || `Copy of ${originalName}`
+        overlay.remove()
+        duplicateConfigToNew(node, wrap, n, 'all_sets')
+      })
+      box.querySelector('#dup-cur-set')?.addEventListener('click', () => {
+        const n = box.querySelector('#dup-name')?.value.trim() || `Copy of ${originalName}`
+        overlay.remove()
+        duplicateConfigToNew(node, wrap, n, 'current_set')
+      })
+      box.querySelector('#dup-new-ver')?.addEventListener('click', () => {
+        overlay.remove()
+        saveConfig(node, wrap, 'new_version')
+      })
+    }
+
+    async function duplicateConfigToNew(node, wrap, newName, duplicateMode) {
+      const cw = node.widgets?.find(w => w.name === 'config')
+      const label = cw?.value
+      if (!label || label === '(no configs)') return
+      const errDiv = wrap.querySelector('#daz-save-error')
+      const dupBtn = wrap.querySelector('#daz-duplicate-btn')
       if (dupBtn) { dupBtn.textContent = 'Duplicating…'; dupBtn.disabled = true }
       if (errDiv) errDiv.textContent = ''
 
-      const payload = {
-        name: newName, class: CLASS, file: currentFile(node),
-        group:           data.group           ?? { name: '' },
-        type:            data.type            ?? '',
-        checkpoint:      data.checkpoint      ?? { name: '' },
-        unet_high:       data.unet_high       ?? { name: '' },
-        vae:             data.vae             ?? { name: '' },
-        audio_vae:       data.audio_vae       ?? { name: '' },
-        clip_2:          data.clip_2          ?? { name: '' },
-        clip:            data.clip            ?? { name: '' },
-        image_path:      data.image_path      ?? { path: '' },
-        loras:           data.loras           ?? {},
-        master_prompt:   data.master_prompt   ?? { text: '' },
-        positive_prompt: data.positive_prompt ?? { text: '' },
-        negative_prompt: data.negative_prompt ?? { text: '' },
-        filename:        data.filename        ?? { file: '' },
-        width:           data.width           ?? { value: 0 },
-        height:          data.height          ?? { value: 0 },
-        steps:           data.steps           ?? { value: 0 },
-        seed:            data.seed            ?? { value: 0 },
-        cfg_high:        data.cfg_high        ?? { value: 0 },
-        total_frames:    data.total_frames    ?? { value: 0 },
-        fps:             data.fps             ?? { value: 0 },
-        flags: data.flags ?? { flag_1: { label: 'flag 1', value: false }, flag_2: { label: 'flag 2', value: false } },
-        note: data.note ?? { value: '' },
-      }
-
       try {
-        const r = await fetch('/daz/workflow-config-create', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+        const r = await fetch('/daz/workflow-config-duplicate-config', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            label,
+            class:          CLASS,
+            file:           currentFile(node),
+            new_name:       newName,
+            version:        node._dazCurrentVersion || '1',
+            duplicate_mode: duplicateMode,
+          }),
         })
         if (r.status === 409) {
           if (dupBtn) { dupBtn.textContent = 'Duplicate'; dupBtn.disabled = false }
           const fakeInput = { value: newName }
-          showNameClashModal(fakeInput, () => duplicateConfig(node, wrap, fakeInput.value))
+          showNameClashModal(fakeInput, () => duplicateConfigToNew(node, wrap, fakeInput.value, duplicateMode))
           return
         }
         const result = await r.json()
@@ -1234,8 +1263,7 @@ app.registerExtension({
 
         await reloadNodeConfigs(node)
         syncWidget(node)
-        const configWidget = node.widgets?.find(w => w.name === 'config')
-        if (configWidget) configWidget.value = result.label
+        if (cw) cw.value = result.label
 
         await reloadVersionWidget(node, result.label, result.version || '1')
         node._dazCurrentVersion = result.version || '1'

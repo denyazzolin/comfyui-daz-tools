@@ -843,5 +843,78 @@ try:
 
         return web.json_response({"ok": True})
 
+    @PromptServer.instance.routes.post("/daz/workflow-config-duplicate-config")
+    async def _daz_workflow_config_duplicate_config(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        label    = data.get("label", "")
+        cls      = data.get("class", "")
+        file     = data.get("file") or None
+        new_name = data.get("new_name", "").strip()
+        dup_mode = data.get("duplicate_mode", "current_set")  # "all_sets" or "current_set"
+        _v       = data.get("version")
+        version  = (str(_v).strip() or None) if _v is not None else None
+
+        if not new_name:
+            return web.json_response({"error": "Config name is required."}, status=400)
+        if new_name == _META_KEY:
+            return web.json_response({"error": f"'{_META_KEY}' is a reserved name."}, status=400)
+
+        path = _resolve_path(file)
+        configs, meta_extra, effective = _load_file(path)
+
+        if new_name in configs:
+            return web.json_response({"error": f"A config named '{new_name}' already exists."}, status=409)
+
+        source_name = next(
+            (n for n, e in configs.items()
+             if e.get("class") == cls and make_label(n, e.get("created_at", "")) == label),
+            None,
+        )
+        if source_name is None:
+            return web.json_response({"error": f"Config '{label}' not found."}, status=404)
+
+        source_entry = configs[source_name]
+        now = datetime.now().isoformat()
+
+        if dup_mode == "all_sets":
+            new_sets = json.loads(json.dumps(source_entry.get("sets", [])))
+            for s in new_sets:
+                s["created_at"] = now
+                s["updated_at"] = now
+            new_entry = {
+                "class":      cls,
+                "created_at": now,
+                "updated_at": now,
+                "sets":       new_sets,
+            }
+        else:
+            active_set = _get_active_set(source_entry, version)
+            new_set = json.loads(json.dumps(active_set))
+            new_set["version"]    = "1"
+            new_set["created_at"] = now
+            new_set["updated_at"] = now
+            new_entry = {
+                "class":      cls,
+                "created_at": now,
+                "updated_at": now,
+                "sets":       [new_set],
+            }
+
+        configs[new_name] = new_entry
+
+        try:
+            _write_file(path, configs, meta_extra, effective)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
+
+        result_sets = new_entry["sets"]
+        result_ver  = str(result_sets[0].get("version", "1")) if result_sets else "1"
+        new_label   = make_label(new_name, new_entry["created_at"])
+        return web.json_response({"ok": True, "label": new_label, "version": result_ver})
+
 except Exception:
     pass
