@@ -1331,7 +1331,7 @@ app.registerExtension({
         if (r.status === 409) {
           activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
           activeBtn.disabled    = false
-          showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode, true))
+          showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode, true, true))
           return
         }
         const result = await r.json()
