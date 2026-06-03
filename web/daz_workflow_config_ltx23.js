@@ -1,11 +1,9 @@
 import { app } from '../../scripts/app.js'
 import { api } from '../../scripts/api.js'
 
-const PANEL_H      = 600
-const EDIT_PANEL_H = 1100
-const NODE_W       = 460
-const NODE_H       = 812
-const NODE_H_EDIT  = 1290
+const PANEL_H = 600
+const NODE_W  = 460
+const NODE_H  = 812
 
 app.registerExtension({
   name: 'daz.workflowConfigLtx23',
@@ -264,9 +262,9 @@ app.registerExtension({
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
           <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
         </tr>
-        ${rowPairLora('Distill LoRA', loras.lora_1, 'LoRA 2', loras.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
-        ${rowPairLora('LoRA 3',      loras.lora_3, 'LoRA 4', loras.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
-        ${rowPairLora('LoRA 5',      loras.lora_5, 'LoRA 6', loras.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
+        ${rowPairLora('LoRA 1', loras.lora_1, 'LoRA 2', loras.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
+        ${rowPairLora('LoRA 3', loras.lora_3, 'LoRA 4', loras.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
+        ${rowPairLora('LoRA 5', loras.lora_5, 'LoRA 6', loras.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
         ${row('Resolution',  fValue(data.width) && fValue(data.height) ? `${fValue(data.width)} × ${fValue(data.height)}` : '')}
         <tr>
           <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Steps</td>
@@ -348,17 +346,26 @@ app.registerExtension({
 
     // ── Use mode ──────────────────────────────────────────────────────────────
 
-    function renderUseMode(node, data, wasEditing = false) {
+    function renderUseMode(node, data) {
       node._dazLtx23EditMode = false
       const wrap = node._dazLtx23Wrap
       if (!wrap) return
-
       wrap.style.height = PANEL_H + 'px'
-      if (wasEditing) {
-        const w = Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W)
-        const h = Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)
-        node.size    = [w, h]
-        node.minSize = [NODE_W, NODE_H]
+
+      if (!(node._dazAllConfigs || []).length) {
+        wrap.innerHTML = `
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                      height:100%;gap:14px;font-family:monospace">
+            <p style="font-size:13px;color:#888;margin:0;text-align:center">
+              No configuration available.<br>Create one.
+            </p>
+            <button id="daz-create-first-btn"
+              style="font-size:12px;padding:4px 18px;background:#000;color:#cde;
+                     border:1px solid #2a8050;border-radius:3px;cursor:pointer">Create</button>
+          </div>`
+        wrap.querySelector('#daz-create-first-btn')?.addEventListener('click', () => enterEditForm(node, true))
+        node.setDirtyCanvas(true, true)
+        return
       }
 
       wrap.innerHTML = `
@@ -556,299 +563,405 @@ app.registerExtension({
       node.setDirtyCanvas(true, true)
     }
 
-    // ── Edit / New-config form ────────────────────────────────────────────────
+    // ── Floating edit panel ───────────────────────────────────────────────────
 
     async function enterEditForm(node, isNew = false) {
-      if (!node._dazLtx23EditMode) node._dazPreEditSize = node.size ? [...node.size] : null
+      if (node._dazLtx23EditMode) return
       node._dazLtx23EditMode = true
-      const wrap = node._dazLtx23Wrap
-      if (!wrap) return
 
-      wrap.style.height = EDIT_PANEL_H + 'px'
-      wrap.innerHTML = '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Loading…</p>'
-      node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), NODE_H_EDIT]
-      node.minSize = [NODE_W, NODE_H_EDIT]
-      node.setDirtyCanvas(true, true)
-
-      const [checkpointFiles, unetFiles, vaeFiles, clipFiles, inputFiles, loraFiles] = await Promise.all([
-        getFolderFiles('checkpoints'),
-        getFolderFiles('diffusion_models'),
-        getFolderFiles('vae'),
-        getFolderFiles('text_encoders'),
-        getFolderFiles('input'),
-        getFolderFiles('loras'),
-      ])
-
-      const data  = isNew ? {} : (node._dazLtx23Detail || {})
-      const loras = data.loras ?? {}
-      const rawImagePath = fPath(data.image_path)
-      const imageName    = rawImagePath.split(/[\\/]/).pop() || ''
-
-      function selectOptsOpt(files, current) {
-        return `<option value="">— none —</option>` + files.map(f =>
-          `<option value="${esc(f)}"${f === current ? ' selected' : ''}>${esc(f)}</option>`
-        ).join('')
+      let checkpointFiles, unetFiles, vaeFiles, clipFiles, inputFiles, loraFiles
+      try {
+        ;[checkpointFiles, unetFiles, vaeFiles, clipFiles, inputFiles, loraFiles] = await Promise.all([
+          getFolderFiles('checkpoints'),
+          getFolderFiles('diffusion_models'),
+          getFolderFiles('vae'),
+          getFolderFiles('text_encoders'),
+          getFolderFiles('input'),
+          getFolderFiles('loras'),
+        ])
+      } catch (e) {
+        node._dazLtx23EditMode = false
+        console.warn('[DAZ TOOLS] WorkflowConfigLtx23: could not load folder files for edit panel', e)
+        return
       }
 
-      function selectOptsImage(files, current) {
-        return `<option value="">— no image —</option>` + files.map(f =>
-          `<option value="${esc(f)}"${f === current ? ' selected' : ''}>${esc(f)}</option>`
-        ).join('')
+      const data      = isNew ? {} : (node._dazLtx23Detail || {})
+      const loras     = data.loras ?? {}
+      const imageName = fPath(data.image_path).split(/[\\/]/).pop() || ''
+      const posType   = fType(data.positive_prompt)
+      const curVer    = isNew ? '1' : (node._dazCurrentVersion || data.version || '1')
+      const uid       = `l${node.id || Math.random().toString(36).slice(2, 7)}`
+
+      // ── DOM skeleton ──────────────────────────────────────────────────────
+      const overlay = document.createElement('div')
+      overlay.style.cssText =
+        'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9999;' +
+        'display:flex;align-items:flex-start;justify-content:center;padding:16px 8px;overflow-y:auto'
+
+      const panel = document.createElement('div')
+      panel.style.cssText =
+        'background:#1a1a1a;border:1px solid #444;border-radius:6px;display:flex;' +
+        'flex-direction:column;width:980px;min-width:600px;font-family:monospace;' +
+        'flex-shrink:0;max-height:calc(100vh - 32px)'
+
+      const panelHeader = document.createElement('div')
+      panelHeader.style.cssText =
+        'padding:7px 14px;border-bottom:1px solid #333;color:#aaa;font-size:12px;flex-shrink:0'
+      panelHeader.textContent = isNew
+        ? 'New Configuration'
+        : `Edit Configuration — version ${curVer}`
+
+      const panelBody = document.createElement('div')
+      panelBody.setAttribute('data-daz-panel-body', '1')
+      panelBody.style.cssText =
+        'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px;overflow-y:auto;flex:1'
+
+      const panelFooter = document.createElement('div')
+      panelFooter.style.cssText =
+        'display:flex;align-items:center;gap:4px;padding:7px 12px;border-top:1px solid #333;' +
+        'flex-shrink:0;flex-wrap:wrap'
+
+      panel.appendChild(panelHeader)
+      panel.appendChild(panelBody)
+      panel.appendChild(panelFooter)
+      overlay.appendChild(panel)
+      document.body.appendChild(overlay)
+      node._dazLtx23EditOverlay = overlay
+
+      // ── Style helpers ─────────────────────────────────────────────────────
+      const fs  = 'width:100%;background:#111;color:#ddd;border:1px solid #555;border-radius:4px;' +
+                  'font-size:11px;font-family:monospace;padding:2px 5px;box-sizing:border-box'
+      const ns  = 'background:#111;color:#ddd;border:1px solid #555;border-radius:4px;' +
+                  'font-size:11px;font-family:monospace;padding:2px 5px'
+      const tas = 'width:100%;background:#111;color:#ddd;border:1px solid #555;border-radius:4px;' +
+                  'font-size:11px;font-family:monospace;padding:4px 5px;box-sizing:border-box;resize:vertical'
+      const lbl = 'color:#888;font-size:10px;display:block;margin-bottom:2px'
+      const rw  = 'margin-bottom:5px'
+      const cb  = 'font-family:monospace;font-size:10px;padding:1px 7px;background:#111;color:#666;' +
+                  'border:1px solid #444;border-radius:3px;cursor:pointer'
+
+      function box(title, html) {
+        return `<fieldset style="border:1px solid #444;border-radius:4px;padding:7px 8px;margin:0">
+          <legend style="color:#888;font-size:11px;padding:0 5px;font-family:monospace">${title}</legend>
+          ${html}
+        </fieldset>`
       }
 
-      const fieldStyle = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px;box-sizing:border-box'
-      const numStyle   = 'width:80px;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px'
-      const taStyle    = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:4px 6px;box-sizing:border-box;resize:vertical;min-height:58px'
-      const tdL        = 'style="color:#999;padding:3px 8px;white-space:nowrap;vertical-align:middle;font-size:11px;font-family:monospace"'
-      const tdLTop     = 'style="color:#999;padding:6px 8px 0;white-space:nowrap;vertical-align:top;font-size:11px;font-family:monospace"'
-      const tdR        = 'colspan="3" style="padding:3px 8px"'
-      const tdRNum     = 'style="padding:3px 8px"'
-      const divider    = `<tr><td colspan="4" style="padding:2px 0"><div style="border-top:1px solid #ffffff;margin:0 8px"></div></td></tr>`
-      const btnBase    = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
-
-      const currentVersion = isNew ? '1' : (node._dazCurrentVersion || data.version || '1')
-
-      const header = `<div style="font-family:monospace;font-size:12px;padding:5px 8px 6px;
-                       color:#aaa;border-bottom:1px solid #3a3a3a;margin-bottom:4px">
-             ${isNew ? 'New Configuration' : `Edit Configuration — version ${esc(currentVersion)}`}
-           </div>`
-
-      const nameRow = `<tr>
-             <td ${tdL}>Name</td>
-             <td ${tdR}><input id="daz-config-name" type="text"
-               value="${esc(isNew ? '' : (data.name || ''))}"
-               placeholder="Config name…"
-               style="${fieldStyle}"></td>
-           </tr>
-           <tr>
-             <td ${tdL}>Group</td>
-             <td ${tdR}><input id="daz-group" type="text"
-               value="${esc(fName(data.group))}"
-               placeholder="Optional group…"
-               style="${fieldStyle}"></td>
-           </tr>
-           <tr>
-             <td ${tdL}>Type</td>
-             <td ${tdR}><select id="daz-type" style="${fieldStyle}">
-               <option value=""${!data.type ? ' selected' : ''}>— no type —</option>
-               <option value="I2V"${data.type === 'I2V' ? ' selected' : ''}>I2V</option>
-               <option value="T2V"${data.type === 'T2V' ? ' selected' : ''}>T2V</option>
-               <option value="MULTI"${data.type === 'MULTI' ? ' selected' : ''}>MULTI</option>
-             </select></td>
-           </tr>
-           <tr>
-             <td ${tdLTop}>Note</td>
-             <td ${tdR}>
-               <textarea id="daz-note" maxlength="900"
-                 style="width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:4px 6px;box-sizing:border-box;resize:none;height:72px;overflow-y:auto">${esc(fNote(data.note))}</textarea>
-               <div style="display:flex;justify-content:flex-end;margin-top:2px">
-                 <button id="daz-note-clear"
-                   style="font-family:monospace;font-size:11px;padding:1px 8px;background:#000;color:#999;border:1px solid #555;border-radius:3px;cursor:pointer">clear</button>
-               </div>
-             </td>
-           </tr>`
-
-      const footer = isNew
-        ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;
-                       justify-content:flex-end;border-top:1px solid #3a3a3a;margin-top:4px">
-             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
-             ${(node._dazAllConfigs || []).length > 0 ? `<button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>` : ''}
-             <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>
-           </div>`
-        : `<div style="display:flex;align-items:center;gap:4px;padding:6px 8px;
-                       border-top:1px solid #3a3a3a;margin-top:4px;flex-wrap:wrap">
-             <button id="daz-duplicate-btn"  style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
-             <button id="daz-del-config-btn"  style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Del All</button>
-             <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Del Version</button>
-             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px;min-width:0"></span>
-             <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
-             <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
-             <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
-           </div>`
-
-      function loraRow(label, key) {
-        const lora = loras[key] ?? {}
-        const n    = key.replace('lora_', '')
-        return `<tr>
-          <td ${tdL}>${label}</td>
-          <td ${tdR}><div style="display:flex;align-items:center;gap:6px">
-            <select id="daz-lora-${n}" style="${fieldStyle}">${selectOptsOpt(loraFiles, fName(lora))}</select>
-            <input type="number" id="daz-lora-${n}-strength" step="0.01" min="0" value="${lora.strength ?? 1.0}" title="Strength" style="width:52px;flex-shrink:0;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:3px;padding:2px 4px">
-            <input type="checkbox" id="daz-lora-${n}-enabled"${loraEnabled(lora) ? ' checked' : ''} title="Enabled" style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
-          </div></td>
-        </tr>`
+      function selOpt(files, cur) {
+        return `<option value="">— none —</option>` +
+          files.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
       }
 
-      wrap.innerHTML = `
-        ${header}
-        <table style="border-collapse:collapse;width:100%">
-          ${nameRow}
-          ${divider}
-          <tr>
-            <td ${tdL}>Checkpoint</td>
-            <td ${tdR}><select id="daz-checkpoint" style="${fieldStyle}">${selectOptsOpt(checkpointFiles, fName(data.checkpoint))}</select></td>
-          </tr>
-          <tr>
-            <td ${tdL}>Transformer</td>
-            <td ${tdR}><select id="daz-unet-high" style="${fieldStyle}">${selectOptsOpt(unetFiles, fName(data.unet_high))}</select></td>
-          </tr>
-          <tr>
-            <td ${tdL}>Video VAE</td>
-            <td ${tdR}><select id="daz-vae" style="${fieldStyle}">${selectOptsOpt(vaeFiles, fName(data.vae))}</select></td>
-          </tr>
-          <tr>
-            <td ${tdL}>Audio VAE</td>
-            <td ${tdR}><select id="daz-audio-vae" style="${fieldStyle}">${selectOptsOpt(vaeFiles, fName(data.audio_vae))}</select></td>
-          </tr>
-          <tr>
-            <td ${tdL}>CLIP 2</td>
-            <td ${tdR}><select id="daz-clip-2" style="${fieldStyle}">${selectOptsOpt(clipFiles, fName(data.clip_2))}</select></td>
-          </tr>
-          <tr>
-            <td ${tdL}>CLIP</td>
-            <td ${tdR}><select id="daz-clip" style="${fieldStyle}">${selectOptsOpt(clipFiles, fName(data.clip))}</select></td>
-          </tr>
-          <tr>
-            <td ${tdL}>Image</td>
-            <td ${tdR}>
-              <div style="display:flex;gap:4px;align-items:center">
-                <select id="daz-image-path" style="${fieldStyle}">${selectOptsImage(inputFiles, imageName)}</select>
-                <button id="daz-preview-btn"
-                  style="font-family:monospace;font-size:12px;padding:2px 7px;background:#000000;color:#ffffff;
-                         border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Preview</button>
-                <button id="daz-upload-btn"
-                  style="font-family:monospace;font-size:12px;padding:2px 7px;background:#000000;color:#ffffff;
-                         border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
-                <input id="daz-upload-input" type="file" accept="image/*" style="display:none">
+      function selOptImg(files, cur) {
+        return `<option value="">— no image —</option>` +
+          files.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
+      }
+
+      function loraRow(label, n) {
+        const key  = `lora_${n}`
+        const lora = loras[key]
+        return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <span style="color:#888;font-size:10px;width:44px;flex-shrink:0">${label}</span>
+          <select id="daz-lora-${n}" style="flex:1;background:#111;color:#ddd;border:1px solid #555;
+            border-radius:4px;font-size:11px;font-family:monospace;padding:1px 3px;min-width:0">
+            ${selOpt(loraFiles, fName(lora))}
+          </select>
+          <input type="number" id="daz-lora-${n}-strength" step="0.01" min="0"
+            value="${lora?.strength ?? 1.0}"
+            style="width:44px;flex-shrink:0;${ns};padding:1px 3px">
+          <input type="checkbox" id="daz-lora-${n}-enabled"${loraEnabled(lora) ? ' checked' : ''}
+            style="flex-shrink:0;width:13px;height:13px;cursor:pointer;accent-color:#54af7b">
+        </div>`
+      }
+
+      // ── Left column ───────────────────────────────────────────────────────
+      const colLeft = `
+        ${box('Name and Filters', `
+          <div style="${rw}"><label style="${lbl}">Name</label>
+            <input id="daz-config-name" type="text"
+              value="${esc(isNew ? '' : (data.name || ''))}"
+              placeholder="Config name…" style="${fs}">
+          </div>
+          <div style="${rw}"><label style="${lbl}">Group</label>
+            <input id="daz-group" type="text" value="${esc(fName(data.group))}"
+              placeholder="Optional group…" style="${fs}">
+          </div>
+          <div style="${rw}"><label style="${lbl}">Type</label>
+            <select id="daz-type" style="${fs}">
+              <option value=""${!data.type ? ' selected' : ''}>— no type —</option>
+              <option value="I2V"${data.type === 'I2V' ? ' selected' : ''}>I2V</option>
+              <option value="T2V"${data.type === 'T2V' ? ' selected' : ''}>T2V</option>
+              <option value="MULTI"${data.type === 'MULTI' ? ' selected' : ''}>MULTI</option>
+            </select>
+          </div>
+          <div style="${rw}"><label style="${lbl}">Note</label>
+            <textarea id="daz-note" maxlength="900"
+              style="${tas};height:60px;resize:none">${esc(fNote(data.note))}</textarea>
+          </div>
+          <div style="display:flex;justify-content:flex-end">
+            <button id="daz-name-clear" style="${cb}">clear</button>
+          </div>
+        `)}
+        ${box('Reference Image', `
+          <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+            <select id="daz-image-path" style="flex:1;background:#111;color:#ddd;border:1px solid #555;
+              border-radius:4px;font-size:11px;font-family:monospace;padding:1px 3px;min-width:0">
+              ${selOptImg(inputFiles, imageName)}
+            </select>
+            <button id="daz-upload-btn"
+              style="font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;
+                     border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
+            <input id="daz-upload-input" type="file" accept="image/*" style="display:none">
+            <button id="daz-img-clear" style="${cb}">clear</button>
+          </div>
+          <div id="daz-img-preview-box"
+            style="width:100%;height:170px;background:#2a2a2a;border:1px solid #444;border-radius:3px;
+                   display:flex;align-items:center;justify-content:center;overflow:hidden">
+            <img id="daz-img-preview-el"
+              style="${imageName ? '' : 'display:none;'}width:100%;height:100%;object-fit:contain">
+            <span id="daz-img-preview-ph"
+              style="color:#555;font-size:11px${imageName ? ';display:none' : ''}">Image preview here</span>
+          </div>
+        `)}
+        ${box('Dimensions and More', `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <div><label style="${lbl}">Width</label>
+              <input id="daz-width" type="number" value="${fValue(data.width) || 0}"
+                style="width:100%;${ns}"></div>
+            <div><label style="${lbl}">Height</label>
+              <input id="daz-height" type="number" value="${fValue(data.height) || 0}"
+                style="width:100%;${ns}"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <div><label style="${lbl}">Steps</label>
+              <input id="daz-steps" type="number" value="${fValue(data.steps) || 0}"
+                style="width:100%;${ns}"></div>
+            <div>
+              <div style="display:flex;align-items:flex-end;gap:4px;height:100%">
+                <div style="flex:1"><label style="${lbl}">Seed</label>
+                  <input id="daz-seed" type="number" value="${fValue(data.seed) ?? 0}"
+                    style="width:100%;${ns}"></div>
+                <div style="display:flex;align-items:center;gap:3px;padding-bottom:3px">
+                  <input type="checkbox" id="daz-seed-randomize"${fRandomize(data.seed) ? ' checked' : ''}
+                    title="Randomize seed"
+                    style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+                  <span style="color:#888;font-size:10px">Rnd</span>
+                </div>
               </div>
-            </td>
-          </tr>
-          ${divider}
-          ${loraRow('Distill LoRA', 'lora_1')}
-          ${loraRow('LoRA 2',       'lora_2')}
-          ${loraRow('LoRA 3',       'lora_3')}
-          ${loraRow('LoRA 4',       'lora_4')}
-          ${loraRow('LoRA 5',       'lora_5')}
-          ${loraRow('LoRA 6',       'lora_6')}
-          ${divider}
-          <tr>
-            <td ${tdL}>Width</td>
-            <td ${tdRNum}><input id="daz-width" type="number" value="${fValue(data.width)}" style="${numStyle}"></td>
-            <td ${tdL}>Height</td>
-            <td ${tdRNum}><input id="daz-height" type="number" value="${fValue(data.height)}" style="${numStyle}"></td>
-          </tr>
-          <tr>
-            <td ${tdL}>Steps</td>
-            <td ${tdRNum}><input id="daz-steps" type="number" value="${fValue(data.steps)}" style="${numStyle}"></td>
-            <td ${tdL}>Seed</td>
-            <td ${tdRNum}>
-              <div style="display:flex;align-items:center;gap:6px">
-                <input id="daz-seed" type="number" value="${fValue(data.seed)}" style="${numStyle}">
-                <input type="checkbox" id="daz-seed-randomize"${fRandomize(data.seed) ? ' checked' : ''}
-                  title="Randomize seed on every run"
-                  style="flex-shrink:0;width:14px;height:14px;cursor:pointer;accent-color:#54af7b">
-                <span style="color:#999;font-size:11px;font-family:monospace">rnd</span>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td ${tdL}>CFG</td>
-            <td ${tdRNum}><input id="daz-cfg" type="number" step="0.1" value="${fValue(data.cfg_high)}" style="${numStyle}"></td>
-            <td colspan="2"></td>
-          </tr>
-          <tr>
-            <td ${tdL}>Frames</td>
-            <td ${tdRNum}><input id="daz-total-frames" type="number" value="${fValue(data.total_frames)}" style="${numStyle}"></td>
-            <td ${tdL}>FPS</td>
-            <td ${tdRNum}><input id="daz-fps" type="number" step="0.01" value="${fValue(data.fps)}" style="${numStyle}"></td>
-          </tr>
-          ${divider}
-          <tr>
-            <td ${tdL}>Flags</td>
-            <td colspan="3" style="padding:3px 8px">
-              <div style="display:flex;align-items:center;gap:10px">
-                <input id="daz-flag-1-label" type="text" value="${esc(fFlagLabel(data.flags?.flag_1, 'flag 1'))}"
-                  placeholder="flag 1" style="width:110px;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px">
-                <input type="checkbox" id="daz-flag-1-value"${fFlagValue(data.flags?.flag_1) ? ' checked' : ''}
-                  title="Flag 1 value" style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
-                <input id="daz-flag-2-label" type="text" value="${esc(fFlagLabel(data.flags?.flag_2, 'flag 2'))}"
-                  placeholder="flag 2" style="width:110px;background:#000;color:#ddd;border:1px solid #555;border-radius:7px;font-size:11px;font-family:monospace;padding:2px 6px">
-                <input type="checkbox" id="daz-flag-2-value"${fFlagValue(data.flags?.flag_2) ? ' checked' : ''}
-                  title="Flag 2 value" style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
-              </div>
-            </td>
-          </tr>
-          ${divider}
-          <tr>
-            <td ${tdLTop}>Master Prompt</td>
-            <td ${tdR}><textarea id="daz-master-prompt" style="${taStyle}">${esc(fText(data.master_prompt))}</textarea></td>
-          </tr>
-          <tr>
-            <td ${tdLTop}>Positive Prompt</td>
-            <td ${tdR}>
-              <textarea id="daz-positive-prompt" style="${taStyle}">${esc(fText(data.positive_prompt))}</textarea>
-              <input type="hidden" id="daz-positive-prompt-type" value="${esc(fType(data.positive_prompt))}">
-            </td>
-          </tr>
-          <tr>
-            <td ${tdLTop}>Negative Prompt</td>
-            <td ${tdR}><textarea id="daz-negative-prompt" style="${taStyle}">${esc(fText(data.negative_prompt))}</textarea></td>
-          </tr>
-          <tr>
-            <td colspan="4" style="padding:4px 8px 6px">
-              <button id="daz-prompt-editor-btn"
-                style="font-family:monospace;font-size:11px;padding:3px 10px;width:100%;
-                       background:#000000;color:#ddd;border:1px solid #54af7b;
-                       border-radius:3px;cursor:pointer">Prompt Editor</button>
-            </td>
-          </tr>
-          ${divider}
-          <tr>
-            <td ${tdL}>Filename</td>
-            <td ${tdR}><input id="daz-filename" type="text"
-              value="${esc(fFile(data.filename))}"
-              placeholder="subdir/output_name"
-              style="${fieldStyle}"></td>
-          </tr>
-        </table>
-        ${footer}
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <div><label style="${lbl}">CFG</label>
+              <input id="daz-cfg" type="number" step="0.1" value="${fValue(data.cfg_high) || 0}"
+                style="width:100%;${ns}"></div>
+            <div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">
+            <div><label style="${lbl}">Frames</label>
+              <input id="daz-total-frames" type="number" value="${fValue(data.total_frames) || 0}"
+                style="width:100%;${ns}"></div>
+            <div><label style="${lbl}">FPS</label>
+              <input id="daz-fps" type="number" step="0.01" value="${fValue(data.fps) || 0}"
+                style="width:100%;${ns}"></div>
+          </div>
+          <div style="display:flex;justify-content:flex-end">
+            <button id="daz-dims-clear" style="${cb}">clear</button>
+          </div>
+        `)}
       `
 
-      // ── Shared handlers ───────────────────────────────────────────────────
+      // ── Center column ─────────────────────────────────────────────────────
+      const colCenter = `
+        ${box('Prompt', `
+          <div style="display:flex;gap:16px;margin-bottom:7px">
+            <label style="display:flex;align-items:center;gap:4px;color:#ccc;font-size:11px;cursor:pointer">
+              <input type="radio" name="daz-pos-type-${uid}" value="smart"
+                ${posType === 'smart' ? 'checked' : ''}>Smart
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;color:#ccc;font-size:11px;cursor:pointer">
+              <input type="radio" name="daz-pos-type-${uid}" value="beats"
+                ${posType === 'beats' ? 'checked' : ''}>Beat
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;color:#ccc;font-size:11px;cursor:pointer">
+              <input type="radio" name="daz-pos-type-${uid}" value="simple"
+                ${posType === 'simple' ? 'checked' : ''}>Simple
+            </label>
+          </div>
+          <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
+          <label style="${lbl}">Master</label>
+          <textarea id="daz-master-prompt"
+            style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.master_prompt))}</textarea>
+          <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+            <button id="daz-master-clear" style="${cb}">clear</button>
+          </div>
+          <label style="${lbl}">Positive</label>
+          <textarea id="daz-positive-prompt"
+            style="${tas};height:150px;margin-bottom:2px">${esc(fText(data.positive_prompt))}</textarea>
+          <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+            <button id="daz-positive-clear" style="${cb}">clear</button>
+          </div>
+          <label style="${lbl}">Negative</label>
+          <textarea id="daz-negative-prompt"
+            style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.negative_prompt))}</textarea>
+          <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+            <button id="daz-negative-clear" style="${cb}">clear</button>
+          </div>
+          <button id="daz-prompt-editor-btn"
+            style="font-family:monospace;font-size:11px;padding:4px 10px;width:100%;
+                   background:#1a3a1a;color:#9dc;border:1px solid #54af7b;
+                   border-radius:3px;cursor:pointer">Prompt Editor</button>
+        `)}
+      `
 
-      if (node._dazEditKeydownHandler) wrap.removeEventListener('keydown', node._dazEditKeydownHandler)
+      // ── Right column ──────────────────────────────────────────────────────
+      const colRight = `
+        ${box('Models', `
+          <div style="${rw}"><label style="${lbl}">Checkpoint</label>
+            <select id="daz-checkpoint" style="${fs}">${selOpt(checkpointFiles, fName(data.checkpoint))}</select>
+          </div>
+          <div style="${rw}"><label style="${lbl}">Transformer</label>
+            <select id="daz-unet-high" style="${fs}">${selOpt(unetFiles, fName(data.unet_high))}</select>
+          </div>
+          <div style="${rw}"><label style="${lbl}">Video VAE</label>
+            <select id="daz-vae" style="${fs}">${selOpt(vaeFiles, fName(data.vae))}</select>
+          </div>
+          <div style="${rw}"><label style="${lbl}">Audio VAE</label>
+            <select id="daz-audio-vae" style="${fs}">${selOpt(vaeFiles, fName(data.audio_vae))}</select>
+          </div>
+          <div style="${rw}"><label style="${lbl}">CLIP</label>
+            <select id="daz-clip" style="${fs}">${selOpt(clipFiles, fName(data.clip))}</select>
+          </div>
+          <div style="${rw}"><label style="${lbl}">CLIP 2</label>
+            <select id="daz-clip-2" style="${fs}">${selOpt(clipFiles, fName(data.clip_2))}</select>
+          </div>
+          <div style="display:flex;justify-content:flex-end">
+            <button id="daz-models-clear" style="${cb}">clear</button>
+          </div>
+        `)}
+        ${box('LoRAs', `
+          ${loraRow('Lora 1', 1)}
+          ${loraRow('Lora 2', 2)}
+          ${loraRow('Lora 3', 3)}
+          ${loraRow('Lora 4', 4)}
+          ${loraRow('Lora 5', 5)}
+          ${loraRow('Lora 6', 6)}
+          ${loraRow('Lora 7', 7)}
+          ${loraRow('Lora 8', 8)}
+          <div style="display:flex;justify-content:flex-end;margin-top:3px">
+            <button id="daz-loras-clear" style="${cb}">clear</button>
+          </div>
+        `)}
+        ${box('Other', `
+          <div style="${rw}">
+            <div style="display:flex;align-items:flex-end;gap:4px">
+              <div style="flex:1"><label style="${lbl}">Filename</label>
+                <input id="daz-filename" type="text" value="${esc(fFile(data.filename))}"
+                  placeholder="subdir/output_name" style="${fs}"></div>
+              <button id="daz-filename-clear" style="${cb};margin-bottom:1px">clear</button>
+            </div>
+          </div>
+          <div style="margin-bottom:4px"><label style="${lbl}">Flag 1</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input id="daz-flag-1-label" type="text"
+                value="${esc(fFlagLabel(data.flags?.flag_1, 'flag 1'))}"
+                placeholder="flag 1" style="flex:1;${fs}">
+              <input type="checkbox" id="daz-flag-1-value"${fFlagValue(data.flags?.flag_1) ? ' checked' : ''}
+                style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+            </div>
+          </div>
+          <div style="margin-bottom:5px"><label style="${lbl}">Flag 2</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input id="daz-flag-2-label" type="text"
+                value="${esc(fFlagLabel(data.flags?.flag_2, 'flag 2'))}"
+                placeholder="flag 2" style="flex:1;${fs}">
+              <input type="checkbox" id="daz-flag-2-value"${fFlagValue(data.flags?.flag_2) ? ' checked' : ''}
+                style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end">
+            <button id="daz-other-clear" style="${cb}">clear</button>
+          </div>
+        `)}
+      `
+
+      panelBody.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:6px">${colLeft}</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${colCenter}</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${colRight}</div>
+      `
+
+      const btnBase = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
+      panelFooter.innerHTML = isNew
+        ? `<span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
+           ${(node._dazAllConfigs || []).length > 0
+             ? `<button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>`
+             : ''}
+           <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>`
+        : `<button id="daz-duplicate-btn"  style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
+           <button id="daz-del-config-btn"  style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Del All</button>
+           <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Del Version</button>
+           <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px;min-width:0"></span>
+           <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
+           <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
+           <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>`
+
+      // Initial image preview
+      if (imageName) {
+        const el = panel.querySelector('#daz-img-preview-el')
+        if (el) el.src = `/view?filename=${encodeURIComponent(imageName)}&type=input`
+      }
+
+      // ── Event handlers ────────────────────────────────────────────────────
+
+      if (node._dazEditKeydownPanel && node._dazEditKeydownHandler) {
+        node._dazEditKeydownPanel.removeEventListener('keydown', node._dazEditKeydownHandler)
+      }
       node._dazEditKeydownHandler = (e) => {
         if (e.key !== 'Enter') return
         if (e.target.tagName !== 'INPUT') return
-        if (e.target.type === 'file' || e.target.type === 'hidden') return
+        if (['file','hidden','checkbox','radio'].includes(e.target.type)) return
         e.preventDefault()
-        const focusable = Array.from(
-          wrap.querySelectorAll('input:not([type=file]):not([type=hidden]), select, textarea')
-        )
-        const idx = focusable.indexOf(e.target)
-        if (idx >= 0 && idx < focusable.length - 1) focusable[idx + 1].focus()
+        const els = Array.from(panel.querySelectorAll(
+          'input:not([type=file]):not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea'
+        ))
+        const idx = els.indexOf(e.target)
+        if (idx >= 0 && idx < els.length - 1) els[idx + 1].focus()
       }
-      wrap.addEventListener('keydown', node._dazEditKeydownHandler)
+      node._dazEditKeydownPanel = panel
+      panel.addEventListener('keydown', node._dazEditKeydownHandler)
 
-      wrap.querySelector('#daz-note-clear')?.addEventListener('click', () => {
-        const ta = wrap.querySelector('#daz-note')
-        if (ta) ta.value = ''
+      panel.querySelectorAll(`input[name="daz-pos-type-${uid}"]`).forEach(r => {
+        r.addEventListener('change', () => {
+          const h = panel.querySelector('#daz-positive-prompt-type')
+          if (h) h.value = r.value
+        })
       })
 
-      wrap.querySelector('#daz-preview-btn')?.addEventListener('click', () => {
-        const filename = wrap.querySelector('#daz-image-path')?.value
-        if (filename) showImagePreview(filename)
-      })
+      const imgSel = panel.querySelector('#daz-image-path')
+      const prevEl = panel.querySelector('#daz-img-preview-el')
+      const prevPH = panel.querySelector('#daz-img-preview-ph')
+      function updatePreview(filename) {
+        if (!prevEl || !prevPH) return
+        if (filename) {
+          prevEl.src = `/view?filename=${encodeURIComponent(filename)}&type=input`
+          prevEl.style.display = 'block'
+          prevPH.style.display = 'none'
+        } else {
+          prevEl.src = ''
+          prevEl.style.display = 'none'
+          prevPH.style.display = ''
+        }
+      }
+      imgSel?.addEventListener('change', e => updatePreview(e.target.value))
 
-      wrap.querySelector('#daz-upload-btn')?.addEventListener('click', () => {
-        wrap.querySelector('#daz-upload-input')?.click()
+      panel.querySelector('#daz-upload-btn')?.addEventListener('click', () => {
+        panel.querySelector('#daz-upload-input')?.click()
       })
-
-      wrap.querySelector('#daz-upload-input')?.addEventListener('change', async (e) => {
-        const file = e.target.files?.[0]
+      panel.querySelector('#daz-upload-input')?.addEventListener('change', async (e) => {
+        const file   = e.target.files?.[0]
         if (!file) return
-        const btn    = wrap.querySelector('#daz-upload-btn')
-        const errDiv = wrap.querySelector('#daz-save-error')
+        const btn    = panel.querySelector('#daz-upload-btn')
+        const errDiv = panel.querySelector('#daz-save-error')
         if (!btn) return
         btn.textContent = 'Uploading…'
         btn.disabled    = true
@@ -862,8 +975,9 @@ app.registerExtension({
           const result = await r.json()
           delete folderFiles['input']
           const fresh = await getFolderFiles('input')
-          const sel = wrap.querySelector('#daz-image-path')
-          if (sel) sel.innerHTML = selectOptsImage(fresh, result.name)
+          const sel = panel.querySelector('#daz-image-path')
+          if (sel) sel.innerHTML = selOptImg(fresh, result.name)
+          updatePreview(result.name)
         } catch (err) {
           if (errDiv) errDiv.textContent = `Upload failed: ${esc(err.message)}`
         }
@@ -871,13 +985,13 @@ app.registerExtension({
         btn.disabled    = false
       })
 
-      wrap.querySelector('#daz-seed-randomize')?.addEventListener('change', async (e) => {
+      panel.querySelector('#daz-seed-randomize')?.addEventListener('change', async (e) => {
         if (isNew) return
-        const cw = node.widgets?.find(w => w.name === 'config')
+        const cw    = node.widgets?.find(w => w.name === 'config')
         const label = cw?.value
         if (!label || label === '(no configs)') return
-        const detail = node._dazLtx23Detail || {}
-        const seedVal = parseInt(wrap.querySelector('#daz-seed')?.value ?? '0', 10)
+        const detail  = node._dazLtx23Detail || {}
+        const seedVal = parseInt(panel.querySelector('#daz-seed')?.value ?? '0', 10)
         const newSeed = { value: seedVal, randomize: e.target.checked }
         try {
           const r = await fetch('/daz/workflow-config-save', {
@@ -885,8 +999,7 @@ app.registerExtension({
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
               label, class: CLASS, file: currentFile(node), new_name: detail.name || '',
-              version: node._dazCurrentVersion || '1', save_mode: 'current',
-              seed: newSeed,
+              version: node._dazCurrentVersion || '1', save_mode: 'current', seed: newSeed,
             }),
           })
           const result = await r.json()
@@ -900,30 +1013,83 @@ app.registerExtension({
         }
       })
 
-      // ── Mode-specific handlers ────────────────────────────────────────────
+      // Clear buttons
+      panel.querySelector('#daz-name-clear')?.addEventListener('click', () => {
+        ;['#daz-config-name','#daz-group'].forEach(id => {
+          const el = panel.querySelector(id); if (el) el.value = ''
+        })
+        const t = panel.querySelector('#daz-type'); if (t) t.value = ''
+        const n = panel.querySelector('#daz-note'); if (n) n.value = ''
+      })
+      panel.querySelector('#daz-img-clear')?.addEventListener('click', () => {
+        const sel = panel.querySelector('#daz-image-path')
+        if (sel) sel.value = ''
+        updatePreview('')
+      })
+      panel.querySelector('#daz-dims-clear')?.addEventListener('click', () => {
+        ;['#daz-width','#daz-height','#daz-steps','#daz-seed',
+          '#daz-cfg','#daz-total-frames','#daz-fps'].forEach(id => {
+          const el = panel.querySelector(id); if (el) el.value = '0'
+        })
+        const r = panel.querySelector('#daz-seed-randomize'); if (r) r.checked = false
+      })
+      panel.querySelector('#daz-master-clear')?.addEventListener('click', () => {
+        const ta = panel.querySelector('#daz-master-prompt'); if (ta) ta.value = ''
+      })
+      panel.querySelector('#daz-positive-clear')?.addEventListener('click', () => {
+        const ta = panel.querySelector('#daz-positive-prompt'); if (ta) ta.value = ''
+      })
+      panel.querySelector('#daz-negative-clear')?.addEventListener('click', () => {
+        const ta = panel.querySelector('#daz-negative-prompt'); if (ta) ta.value = ''
+      })
+      panel.querySelector('#daz-models-clear')?.addEventListener('click', () => {
+        ;['#daz-checkpoint','#daz-unet-high','#daz-vae','#daz-audio-vae','#daz-clip','#daz-clip-2'].forEach(id => {
+          const el = panel.querySelector(id); if (el) el.value = ''
+        })
+      })
+      panel.querySelector('#daz-loras-clear')?.addEventListener('click', () => {
+        for (let n = 1; n <= 8; n++) {
+          const s = panel.querySelector(`#daz-lora-${n}`);          if (s) s.value = ''
+          const w = panel.querySelector(`#daz-lora-${n}-strength`); if (w) w.value = '1'
+          const c = panel.querySelector(`#daz-lora-${n}-enabled`);  if (c) c.checked = true
+        }
+      })
+      panel.querySelector('#daz-filename-clear')?.addEventListener('click', () => {
+        const el = panel.querySelector('#daz-filename'); if (el) el.value = ''
+      })
+      panel.querySelector('#daz-other-clear')?.addEventListener('click', () => {
+        const fn = panel.querySelector('#daz-filename');    if (fn) fn.value = ''
+        const l1 = panel.querySelector('#daz-flag-1-label'); if (l1) l1.value = 'flag 1'
+        const v1 = panel.querySelector('#daz-flag-1-value'); if (v1) v1.checked = false
+        const l2 = panel.querySelector('#daz-flag-2-label'); if (l2) l2.value = 'flag 2'
+        const v2 = panel.querySelector('#daz-flag-2-value'); if (v2) v2.checked = false
+      })
 
-      if (isNew) {
-        wrap.querySelector('#daz-create-btn')?.addEventListener('click', () => createConfig(node, wrap))
-        wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
-          renderUseMode(node, node._dazLtx23Detail || {}, true)
-        })
-      } else {
-        wrap.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => showDuplicateModal(node, wrap))
-        wrap.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
-          renderUseMode(node, node._dazLtx23Detail || {}, true)
-        })
-        wrap.querySelector('#daz-del-version-btn')?.addEventListener('click', () => {
-          showDeleteVersionConfirm(node, wrap)
-        })
-        wrap.querySelector('#daz-del-config-btn')?.addEventListener('click', () => {
-          showDeleteConfigConfirm(node, wrap)
-        })
-        wrap.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, wrap, 'current'))
-        wrap.querySelector('#daz-new-version-btn')?.addEventListener('click', () => saveConfig(node, wrap, 'new_version'))
+      function closePanel() {
+        if (node._dazLtx23EditOverlay) {
+          node._dazLtx23EditOverlay.remove()
+          node._dazLtx23EditOverlay = null
+        }
+        node._dazLtx23EditMode = false
       }
 
-      wrap.querySelector('#daz-prompt-editor-btn')?.addEventListener('click', () => {
-        openPromptEditorFromEdit(node, wrap, isNew)
+      panel.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
+        closePanel()
+        renderUseMode(node, node._dazLtx23Detail || {})
+      })
+
+      if (isNew) {
+        panel.querySelector('#daz-create-btn')?.addEventListener('click', () => createConfig(node, panel))
+      } else {
+        panel.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => showDuplicateModal(node, panel))
+        panel.querySelector('#daz-del-version-btn')?.addEventListener('click', () => showDeleteVersionConfirm(node, panel))
+        panel.querySelector('#daz-del-config-btn')?.addEventListener('click', () => showDeleteConfigConfirm(node, panel))
+        panel.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, panel, 'current'))
+        panel.querySelector('#daz-new-version-btn')?.addEventListener('click', () => saveConfig(node, panel, 'new_version'))
+      }
+
+      panel.querySelector('#daz-prompt-editor-btn')?.addEventListener('click', () => {
+        openPromptEditorFromEdit(node, panel, isNew)
       })
 
       node.setDirtyCanvas(true, true)
@@ -963,7 +1129,7 @@ app.registerExtension({
               `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(result.label)}&version=${encodeURIComponent(node._dazCurrentVersion || '1')}`)
             const detailResp = await fetch(detailUrl)
             if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
-            renderUseMode(node, node._dazLtx23Detail, false)
+            renderUseMode(node, node._dazLtx23Detail)
           } catch (err) {
             console.warn('[DAZ TOOLS] WorkflowConfigLtx23: prompt editor save failed', err)
           }
@@ -1003,16 +1169,14 @@ app.registerExtension({
     // ── Build payload ─────────────────────────────────────────────────────────
 
     function buildPayload(wrap) {
-      const loraKeys = ['lora_1','lora_2','lora_3','lora_4','lora_5','lora_6']
       const loras = {}
-      loraKeys.forEach(key => {
-        const n = key.replace('lora_', '')
-        loras[key] = {
+      for (let n = 1; n <= 8; n++) {
+        loras[`lora_${n}`] = {
           name:     wrap.querySelector(`#daz-lora-${n}`)?.value          ?? '',
           enabled:  wrap.querySelector(`#daz-lora-${n}-enabled`)?.checked ?? true,
           strength: parseFloat(wrap.querySelector(`#daz-lora-${n}-strength`)?.value ?? '1') || 1.0,
         }
-      })
+      }
       return {
         checkpoint:      { name:  wrap.querySelector('#daz-checkpoint')?.value       ?? '' },
         unet_high:       { name:  wrap.querySelector('#daz-unet-high')?.value        ?? '' },
@@ -1083,6 +1247,12 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
+        if (node._dazLtx23EditOverlay) {
+          node._dazLtx23EditOverlay.remove()
+          node._dazLtx23EditOverlay = null
+        }
+        node._dazLtx23EditMode = false
+
         await reloadNodeConfigs(node)
         if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
         node._dazTypeFilter = 'All'
@@ -1100,7 +1270,7 @@ app.registerExtension({
         const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
-        renderUseMode(node, node._dazLtx23Detail || {}, true)
+        renderUseMode(node, node._dazLtx23Detail || {})
       } catch (e) {
         createBtn.textContent = 'Create'
         createBtn.disabled    = false
@@ -1111,13 +1281,13 @@ app.registerExtension({
     // ── Save existing config ──────────────────────────────────────────────────
 
     async function saveConfig(node, wrap, saveMode = 'current', skipRescale = false) {
-      const cw = node.widgets?.find(w => w.name === 'config')
+      const cw    = node.widgets?.find(w => w.name === 'config')
       const label = cw?.value
       if (!label || label === '(no configs)') return
 
-      const saveBtn  = wrap.querySelector('#daz-save-btn')
-      const nvBtn    = wrap.querySelector('#daz-new-version-btn')
-      const errorDiv = wrap.querySelector('#daz-save-error')
+      const saveBtn   = wrap.querySelector('#daz-save-btn')
+      const nvBtn     = wrap.querySelector('#daz-new-version-btn')
+      const errorDiv  = wrap.querySelector('#daz-save-error')
       const activeBtn = saveMode === 'new_version' ? nvBtn : saveBtn
       if (!activeBtn || !errorDiv) return
 
@@ -1164,6 +1334,12 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
+        if (node._dazLtx23EditOverlay) {
+          node._dazLtx23EditOverlay.remove()
+          node._dazLtx23EditOverlay = null
+        }
+        node._dazLtx23EditMode = false
+
         await reloadNodeConfigs(node)
         if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
         node._dazTypeFilter = 'All'
@@ -1182,7 +1358,7 @@ app.registerExtension({
         const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
-        renderUseMode(node, node._dazLtx23Detail || {}, true)
+        renderUseMode(node, node._dazLtx23Detail || {})
       } catch (e) {
         activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
         activeBtn.disabled    = false
@@ -1193,7 +1369,7 @@ app.registerExtension({
     // ── Duplicate config ──────────────────────────────────────────────────────
 
     function showDuplicateModal(node, wrap) {
-      const data = node._dazLtx23Detail || {}
+      const data         = node._dazLtx23Detail || {}
       const originalName = data.name || ''
       if (!originalName) return
 
@@ -1243,7 +1419,7 @@ app.registerExtension({
     }
 
     async function duplicateConfigToNew(node, wrap, newName, duplicateMode) {
-      const cw = node.widgets?.find(w => w.name === 'config')
+      const cw    = node.widgets?.find(w => w.name === 'config')
       const label = cw?.value
       if (!label || label === '(no configs)') return
       const errDiv = wrap.querySelector('#daz-save-error')
@@ -1253,15 +1429,10 @@ app.registerExtension({
 
       try {
         const r = await fetch('/daz/workflow-config-duplicate-config', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            label,
-            class:          CLASS,
-            file:           currentFile(node),
-            new_name:       newName,
-            version:        node._dazCurrentVersion || '1',
-            duplicate_mode: duplicateMode,
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            label, class: CLASS, file: currentFile(node), new_name: newName,
+            version: node._dazCurrentVersion || '1', duplicate_mode: duplicateMode,
           }),
         })
         if (r.status === 409) {
@@ -1272,6 +1443,12 @@ app.registerExtension({
         }
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+
+        if (node._dazLtx23EditOverlay) {
+          node._dazLtx23EditOverlay.remove()
+          node._dazLtx23EditOverlay = null
+        }
+        node._dazLtx23EditMode = false
 
         await reloadNodeConfigs(node)
         if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
@@ -1290,7 +1467,7 @@ app.registerExtension({
         const detailResp = await fetch(detailUrl)
         if (detailResp.ok) node._dazLtx23Detail = await detailResp.json()
 
-        renderUseMode(node, node._dazLtx23Detail || {}, true)
+        renderUseMode(node, node._dazLtx23Detail || {})
       } catch (e) {
         if (dupBtn) { dupBtn.textContent = 'Duplicate'; dupBtn.disabled = false }
         if (errDiv) errDiv.textContent = `Duplicate failed: ${e.message}`
@@ -1373,8 +1550,11 @@ app.registerExtension({
     }
 
     async function deleteVersion(node, label, version) {
-      const wrap = node._dazLtx23Wrap
-      if (wrap) wrap.innerHTML = '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Deleting…</p>'
+      const editOverlay = node._dazLtx23EditOverlay
+      const panelBody   = editOverlay?.querySelector('[data-daz-panel-body]')
+      if (panelBody) panelBody.innerHTML =
+        '<p style="font-family:monospace;font-size:12px;color:#555;padding:16px">Deleting…</p>'
+
       try {
         const r = await fetch('/daz/workflow-config-delete', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1382,6 +1562,12 @@ app.registerExtension({
         })
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+
+        if (node._dazLtx23EditOverlay) {
+          node._dazLtx23EditOverlay.remove()
+          node._dazLtx23EditOverlay = null
+        }
+        node._dazLtx23EditMode = false
 
         await reloadNodeConfigs(node)
         updateGroupFilterWidget(node)
@@ -1392,39 +1578,41 @@ app.registerExtension({
           if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
           node._dazGroupFilter = 'All'
           syncWidget(node)
-          const configWidget = node.widgets?.find(w => w.name === 'config')
+          const configWidget    = node.widgets?.find(w => w.name === 'config')
           const remainingLabels = filteredLabels(node._dazAllConfigs || [], 'All', 'All')
           if (remainingLabels.length > 0) {
             if (configWidget) configWidget.value = remainingLabels[0]
-            node._dazLtx23EditMode = false
-            node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)]
-            node.minSize = [NODE_W, NODE_H]
             await reloadVersionWidget(node, remainingLabels[0])
             loadDetail(node, remainingLabels[0], node._dazVersionWidget?.value)
           } else {
             if (configWidget) { configWidget.options.values = ['(no configs)']; configWidget.value = '(no configs)' }
             node._dazLtx23Detail = {}
-            enterEditForm(node, true)
+            renderUseMode(node, {})
           }
         } else {
           syncWidget(node)
           const configWidget = node.widgets?.find(w => w.name === 'config')
           if (configWidget && configWidget.value !== '(no configs)') {
             await reloadVersionWidget(node, configWidget.value)
-            node._dazLtx23EditMode = false
-            node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)]
-            node.minSize = [NODE_W, NODE_H]
             loadDetail(node, configWidget.value, node._dazVersionWidget?.value)
           }
         }
       } catch (e) {
-        if (wrap) {
-          wrap.innerHTML = `
-            <p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">Delete failed: ${esc(e.message)}</p>
-            <div style="padding:0 8px 8px;display:flex;justify-content:flex-end">
-              <button id="daz-back-edit" style="font-family:monospace;font-size:11px;padding:3px 10px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
+        if (panelBody) {
+          panelBody.innerHTML = `
+            <p style="font-family:monospace;font-size:12px;color:#f88;padding:12px">Delete failed: ${esc(e.message)}</p>
+            <div style="padding:0 12px 12px;display:flex;justify-content:flex-end">
+              <button id="daz-back-edit"
+                style="font-family:monospace;font-size:11px;padding:3px 10px;background:#444;
+                       color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
             </div>`
-          wrap.querySelector('#daz-back-edit')?.addEventListener('click', () => enterEditForm(node, false))
+          panelBody.querySelector('#daz-back-edit')?.addEventListener('click', () => {
+            if (node._dazLtx23EditOverlay) {
+              node._dazLtx23EditOverlay.remove()
+              node._dazLtx23EditOverlay = null
+            }
+            enterEditForm(node, false)
+          })
         }
       }
     }
@@ -1468,8 +1656,11 @@ app.registerExtension({
     }
 
     async function deleteConfig(node, label) {
-      const wrap = node._dazLtx23Wrap
-      if (wrap) wrap.innerHTML = '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Deleting…</p>'
+      const editOverlay = node._dazLtx23EditOverlay
+      const panelBody   = editOverlay?.querySelector('[data-daz-panel-body]')
+      if (panelBody) panelBody.innerHTML =
+        '<p style="font-family:monospace;font-size:12px;color:#555;padding:16px">Deleting…</p>'
+
       try {
         const r = await fetch('/daz/workflow-config-delete', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1478,6 +1669,12 @@ app.registerExtension({
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
+        if (node._dazLtx23EditOverlay) {
+          node._dazLtx23EditOverlay.remove()
+          node._dazLtx23EditOverlay = null
+        }
+        node._dazLtx23EditMode = false
+
         await reloadNodeConfigs(node)
         if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
         node._dazTypeFilter = 'All'
@@ -1485,29 +1682,34 @@ app.registerExtension({
         if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
         node._dazGroupFilter = 'All'
         syncWidget(node)
-        const configWidget = node.widgets?.find(w => w.name === 'config')
+        const configWidget    = node.widgets?.find(w => w.name === 'config')
         const remainingLabels = filteredLabels(node._dazAllConfigs || [], 'All', 'All')
 
         if (remainingLabels.length > 0) {
           if (configWidget) configWidget.value = remainingLabels[0]
-          node._dazLtx23EditMode = false
-          node.size    = [Math.max(NODE_W, node._dazPreEditSize?.[0] ?? NODE_W), Math.max(NODE_H, node._dazPreEditSize?.[1] ?? NODE_H)]
-          node.minSize = [NODE_W, NODE_H]
           await reloadVersionWidget(node, remainingLabels[0])
           loadDetail(node, remainingLabels[0], node._dazVersionWidget?.value)
         } else {
           if (configWidget) { configWidget.options.values = ['(no configs)']; configWidget.value = '(no configs)' }
           node._dazLtx23Detail = {}
-          enterEditForm(node, true)
+          renderUseMode(node, {})
         }
       } catch (e) {
-        if (wrap) {
-          wrap.innerHTML = `
-            <p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">Delete failed: ${esc(e.message)}</p>
-            <div style="padding:0 8px 8px;display:flex;justify-content:flex-end">
-              <button id="daz-back-edit" style="font-family:monospace;font-size:11px;padding:3px 10px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
+        if (panelBody) {
+          panelBody.innerHTML = `
+            <p style="font-family:monospace;font-size:12px;color:#f88;padding:12px">Delete failed: ${esc(e.message)}</p>
+            <div style="padding:0 12px 12px;display:flex;justify-content:flex-end">
+              <button id="daz-back-edit"
+                style="font-family:monospace;font-size:11px;padding:3px 10px;background:#444;
+                       color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Back</button>
             </div>`
-          wrap.querySelector('#daz-back-edit')?.addEventListener('click', () => enterEditForm(node, false))
+          panelBody.querySelector('#daz-back-edit')?.addEventListener('click', () => {
+            if (node._dazLtx23EditOverlay) {
+              node._dazLtx23EditOverlay.remove()
+              node._dazLtx23EditOverlay = null
+            }
+            enterEditForm(node, false)
+          })
         }
       }
     }
@@ -1543,7 +1745,6 @@ app.registerExtension({
       this._dazGroupFilter    = 'All'
       this._dazCurrentVersion = '1'
 
-      // ── config_file picker widget ─────────────────────────────────────────
       const cfWidget = this.widgets?.find(w => w.name === 'config_file')
       if (cfWidget) {
         if (_configFiles.length > 0) {
@@ -1573,7 +1774,6 @@ app.registerExtension({
         }
       }
 
-      // ── version widget (from INPUT_TYPES) ─────────────────────────────────
       const versionWidget = this.widgets?.find(w => w.name === 'version')
       if (versionWidget) {
         this._dazVersionWidget = versionWidget
@@ -1588,7 +1788,6 @@ app.registerExtension({
         }
       }
 
-      // ── Type / Group filter widgets ───────────────────────────────────────
       const typeFilterWidget = this.addWidget('combo', 'Type', 'All', (value) => {
         this._dazTypeFilter = value
         updateGroupFilterWidget(this)
@@ -1611,10 +1810,9 @@ app.registerExtension({
       }, { values: initialGroups })
       this._dazGroupFilterWidget = groupFilterWidget
 
-      // Reposition Type/Group filters before the config widget
       const ci = this.widgets.findIndex(w => w.name === 'config')
       if (ci >= 0) {
-        [typeFilterWidget, groupFilterWidget].forEach(fw => {
+        ;[typeFilterWidget, groupFilterWidget].forEach(fw => {
           const fi = this.widgets.indexOf(fw)
           const currentCi = this.widgets.findIndex(w => w.name === 'config')
           if (fi > currentCi) {
@@ -1648,7 +1846,7 @@ app.registerExtension({
           if (this._dazLtx23EditMode) return
           const labels = filteredLabels(this._dazAllConfigs || [], this._dazTypeFilter || 'All', this._dazGroupFilter || 'All')
           if (!labels.length) {
-            enterEditForm(this, true)
+            renderUseMode(this, {})
             return
           }
           const cw = this.widgets?.find(w => w.name === 'config')
@@ -1671,7 +1869,7 @@ app.registerExtension({
       this.addDOMWidget('daz_ltx23_detail', 'html', wrap, {
         getValue:     () => '',
         setValue:     () => {},
-        getMinHeight: () => self._dazLtx23EditMode ? EDIT_PANEL_H : PANEL_H,
+        getMinHeight: () => PANEL_H,
         hideOnZoom:   false,
       })
 
@@ -1689,7 +1887,7 @@ app.registerExtension({
           }
         }
         if ((this._dazAllConfigs || []).length === 0) {
-          enterEditForm(this, true)
+          renderUseMode(this, {})
         } else {
           reloadVersionWidget(this, w.value).then(() => {
             loadDetail(this, w.value, this._dazVersionWidget?.value)
@@ -1713,6 +1911,10 @@ app.registerExtension({
       if (this._dazLtx23ExecutedHandler) {
         api.removeEventListener('executed', this._dazLtx23ExecutedHandler)
       }
+      if (this._dazLtx23EditOverlay) {
+        this._dazLtx23EditOverlay.remove()
+        this._dazLtx23EditOverlay = null
+      }
     }
 
     const onConfigure = nodeType.prototype.onConfigure
@@ -1733,7 +1935,7 @@ app.registerExtension({
         if (self._dazGroupFilterWidget) self._dazGroupFilter = self._dazGroupFilterWidget.value || 'All'
         updateGroupFilterWidget(self)
         if (!(self._dazAllConfigs || []).length) {
-          if (!self._dazLtx23EditMode) enterEditForm(self, true)
+          if (!self._dazLtx23EditMode) renderUseMode(self, {})
           return
         }
         const w = self.widgets?.find(w => w.name === 'config')
