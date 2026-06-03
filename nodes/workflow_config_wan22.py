@@ -6,7 +6,7 @@ from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
     all_versions_for_class,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_prompt_type_int, _get_seed_randomize, _get_flag_value,
+    _get_seed_randomize, _get_flag_value,
     _get_active_set,
     _resolve_path, _load_file, _write_file,
 )
@@ -141,7 +141,7 @@ class WorkflowConfigWan22:
         "IMAGE",
         "INT", "INT", "INT", "INT", "INT",
         "STRING", "STRING", "STRING",
-        "INT",
+        "BOOLEAN",
         "FLOAT", "FLOAT", "INT",
         "FLOAT",
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
@@ -156,7 +156,7 @@ class WorkflowConfigWan22:
         "image",
         "width", "height", "steps", "split_step", "seed",
         "master_prmt", "pos_prompt", "neg_prompt",
-        "prompt_type",
+        "is_relay_prompt",
         "cfg_high", "cfg_low", "total_frames",
         "fps",
         "lora_1_high", "lora_1_low",
@@ -224,6 +224,13 @@ class WorkflowConfigWan22:
             except Exception as e:
                 print(f"[DAZ TOOLS] WorkflowConfigWan22: could not save random seed — {e}")
 
+        pos_prompt_val = active_set.get("positive_prompt")
+        prompt_type    = pos_prompt_val.get("type", "smart") if isinstance(pos_prompt_val, dict) else "smart"
+        master_text    = _get_text(active_set.get("master_prompt"))
+        pos_text       = _get_text(pos_prompt_val)
+        is_relay       = prompt_type == "smart"
+        pos_out        = pos_text if is_relay else "\n\n".join(p for p in (master_text, pos_text) if p)
+
         unet_high = _load_unet(_get_name(active_set.get("unet_high")))
         unet_low  = _load_unet(_get_name(active_set.get("unet_low")))
 
@@ -247,10 +254,10 @@ class WorkflowConfigWan22:
             _get_int(active_set.get("steps")),
             _get_int(active_set.get("split_step")),
             seed_val,
-            _get_text(active_set.get("master_prompt")),
-            _get_text(active_set.get("positive_prompt")),
+            master_text,
+            pos_out,
             _get_text(active_set.get("negative_prompt")),
-            _get_prompt_type_int(active_set.get("positive_prompt")),
+            is_relay,
             _get_float(active_set.get("cfg_high")),
             _get_float(active_set.get("cfg_low")),
             _get_int(active_set.get("total_frames")),
