@@ -1441,6 +1441,7 @@ export function buildWorkflowConfigExtension(cfg) {
               </div>`
             panelBody.querySelector('#daz-back-edit')?.addEventListener('click', () => {
               if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
+              node[keys.editMode] = false
               enterEditForm(node, false)
             })
           }
@@ -1536,6 +1537,7 @@ export function buildWorkflowConfigExtension(cfg) {
               </div>`
             panelBody.querySelector('#daz-back-edit')?.addEventListener('click', () => {
               if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
+              node[keys.editMode] = false
               enterEditForm(node, false)
             })
           }
