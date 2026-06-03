@@ -614,7 +614,7 @@ app.registerExtension({
       const panelBody = document.createElement('div')
       panelBody.setAttribute('data-daz-panel-body', '1')
       panelBody.style.cssText =
-        'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px;overflow-y:auto;flex:1'
+        'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px;overflow-y:auto;overflow-x:hidden;flex:1'
 
       const panelFooter = document.createElement('div')
       panelFooter.style.cssText =
@@ -641,7 +641,7 @@ app.registerExtension({
                   'border:1px solid #444;border-radius:3px;cursor:pointer'
 
       function box(title, html) {
-        return `<fieldset style="border:1px solid #444;border-radius:4px;padding:7px 8px;margin:0">
+        return `<fieldset style="border:1px solid #444;border-radius:4px;padding:7px 8px;margin:0;min-width:0;box-sizing:border-box;overflow:hidden">
           <legend style="color:#888;font-size:11px;padding:0 5px;font-family:monospace">${title}</legend>
           ${html}
         </fieldset>`
@@ -885,9 +885,9 @@ app.registerExtension({
       `
 
       panelBody.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:6px">${colLeft}</div>
-        <div style="display:flex;flex-direction:column;gap:6px">${colCenter}</div>
-        <div style="display:flex;flex-direction:column;gap:6px">${colRight}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden">${colLeft}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden">${colCenter}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden">${colRight}</div>
       `
 
       const btnBase = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
