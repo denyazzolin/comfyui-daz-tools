@@ -78,12 +78,14 @@ app.registerExtension({
         node._dazCurrentVersion = '1'
         return
       }
+      const gen = (node._dazVersionReloadGen = (node._dazVersionReloadGen || 0) + 1)
       try {
         const url = configsUrl(node,
           `/daz/workflow-config-versions?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(configLabel)}`)
         const r = await fetch(url)
         if (!r.ok) return
         const versions = await r.json()
+        if (gen !== node._dazVersionReloadGen) return
         if (versions.error) return
         const vList = versions.map(v => v.version).filter(Boolean)
         vw.options.values = vList.length ? vList : ['1']
@@ -1748,6 +1750,8 @@ app.registerExtension({
     const onConfigure = nodeType.prototype.onConfigure
     nodeType.prototype.onConfigure = function (config) {
       onConfigure?.apply(this, arguments)
+      // Read saved version synchronously now — LiteGraph restores widget values before calling onConfigure.
+      const savedVersion = this._dazVersionWidget?.value || '1'
       const self = this
       queueMicrotask(async () => {
         if (self._dazConfigFileWidget) {
@@ -1768,8 +1772,6 @@ app.registerExtension({
         const w = self.widgets?.find(w => w.name === 'config')
         const labels = filteredLabels(self._dazAllConfigs || [], self._dazTypeFilter, self._dazGroupFilter)
         if (w && !labels.includes(w.value)) syncWidget(self)
-        // Restore saved version, then load detail
-        const savedVersion = self._dazVersionWidget?.value || '1'
         await reloadVersionWidget(self, w?.value, savedVersion)
         self._dazCurrentVersion = self._dazVersionWidget?.value || '1'
         if (!self._dazWan22EditMode) loadDetail(self, w?.value, self._dazCurrentVersion)
