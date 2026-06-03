@@ -1278,7 +1278,7 @@ app.registerExtension({
 
     // ── Save existing config ──────────────────────────────────────────────────
 
-    async function saveConfig(node, wrap, saveMode = 'current', skipRescale = false) {
+    async function saveConfig(node, wrap, saveMode = 'current', skipRescale = false, nameChangeConfirmed = false) {
       const cw    = node.widgets?.find(w => w.name === 'config')
       const label = cw?.value
       if (!label || label === '(no configs)') return
@@ -1293,6 +1293,11 @@ app.registerExtension({
       if (!newName) {
         errorDiv.textContent = 'Config name is required.'
         wrap.querySelector('#daz-config-name')?.focus()
+        return
+      }
+
+      if (!nameChangeConfirmed && newName !== (node._dazLtx23Detail?.name || '')) {
+        showNameChangeConfirm(node, wrap, saveMode, skipRescale)
         return
       }
 
@@ -1470,6 +1475,43 @@ app.registerExtension({
         if (dupBtn) { dupBtn.textContent = 'Duplicate'; dupBtn.disabled = false }
         if (errDiv) errDiv.textContent = `Duplicate failed: ${e.message}`
       }
+    }
+
+    // ── Name change confirm ───────────────────────────────────────────────────
+
+    function showNameChangeConfirm(node, wrap, saveMode, skipRescale) {
+      const overlay = document.createElement('div')
+      overlay.style.cssText = [
+        'position:fixed;top:0;left:0;right:0;bottom:0',
+        'background:rgba(0,0,0,0.75);z-index:10000',
+        'display:flex;align-items:center;justify-content:center',
+      ].join(';')
+      const box = document.createElement('div')
+      box.style.cssText = [
+        'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+        'padding:20px 24px;width:380px;font-family:monospace',
+      ].join(';')
+      box.innerHTML = `
+        <p style="font-size:13px;color:#ddd;margin:0 0 8px">Rename all versions?</p>
+        <p style="font-size:11px;color:#888;margin:0 0 20px">
+          Changing the name will affect all versions of this config, not just the one being saved.
+        </p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button id="ncc-cancel"
+            style="font-family:monospace;font-size:11px;padding:4px 14px;
+                   background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
+          <button id="ncc-continue"
+            style="font-family:monospace;font-size:11px;padding:4px 14px;
+                   background:#1a5c35;color:#cde;border:1px solid #2a8050;border-radius:3px;cursor:pointer">Continue</button>
+        </div>
+      `
+      overlay.appendChild(box)
+      document.body.appendChild(overlay)
+      box.querySelector('#ncc-cancel')?.addEventListener('click', () => overlay.remove())
+      box.querySelector('#ncc-continue')?.addEventListener('click', () => {
+        overlay.remove()
+        saveConfig(node, wrap, saveMode, skipRescale, true)
+      })
     }
 
     // ── Name clash modal ──────────────────────────────────────────────────────
