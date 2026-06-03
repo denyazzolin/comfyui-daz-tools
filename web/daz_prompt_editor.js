@@ -195,16 +195,23 @@
         segments[mi].frames--
         sum--
       }
+      // All segments hit minimum 1 but still exceed totalFrames (more segments than frames).
+      // Trim trailing segments and re-equalize so sum == totalFrames.
+      if (sum > nv) {
+        segments = segments.slice(0, Math.max(1, nv))
+        equalize()
+      }
       render()
     }
 
     // ── Segment bar ───────────────────────────────────────────────────────
 
     function makeSegBar() {
-      const wrap  = el('div', 'padding:2px 10px;display:flex;height:22px')
-      wrap.id     = 'pe-bar'
-      const used  = segments.reduce((a, s) => a + s.frames, 0)
-      const unalloc = Math.max(0, totalFrames - used)
+      const wrap    = el('div', 'padding:2px 10px 2px')
+      wrap.id       = 'pe-bar'
+      const row     = el('div', 'display:flex;height:22px')
+      const used    = segments.reduce((a, s) => a + s.frames, 0)
+      const unalloc = totalFrames - used
 
       segments.forEach((seg, i) => {
         const d = document.createElement('div')
@@ -216,7 +223,7 @@
         ].join(';')
         d.title = `Segment ${i + 1}: ${seg.frames} frames`
         d.addEventListener('click', () => { selIdx = i; render() })
-        wrap.appendChild(d)
+        row.appendChild(d)
       })
 
       if (unalloc > 0) {
@@ -224,8 +231,17 @@
         d.style.cssText =
           `flex:${unalloc} 0 0;background:#252525;border:1px solid #333;box-sizing:border-box;min-width:4px`
         d.title = `Unallocated: ${unalloc} frames`
-        wrap.appendChild(d)
+        row.appendChild(d)
       }
+
+      wrap.appendChild(row)
+
+      if (unalloc < 0) {
+        const warn = el('div', 'color:#f88;font-size:9px;font-family:monospace;padding:2px 0 0;text-align:right')
+        warn.textContent = `segments exceed total by ${-unalloc} frames — equalize to fix`
+        wrap.appendChild(warn)
+      }
+
       return wrap
     }
 
@@ -336,8 +352,8 @@
         const nv       = Math.max(1, parseInt(e.target.value) || 1)
         const otherSum = segments.reduce((a, s, i) => i === selIdx ? a : a + s.frames, 0)
         const maxOk    = totalFrames - otherSum
-        if (nv > maxOk) {
-          segErr.textContent = `Max ${maxOk}`
+        if (nv > prevFrames && nv > maxOk) {
+          segErr.textContent = `Max ${Math.max(0, maxOk)}`
           setTimeout(() => { segErr.textContent = '' }, 2000)
           e.target.value = prevFrames
           return
@@ -452,5 +468,42 @@
     render()
   }
 
-  window.DazPromptEditor = { open }
+  function rescalePrompt(text, type, oldTotal, newTotal) {
+    if (!text || type === 'simple' || oldTotal <= 0 || newTotal <= 0 || oldTotal === newTotal) {
+      return text
+    }
+    const segs = parseSegments(text, type, oldTotal)
+    if (!segs.length) return text
+
+    const ratio  = newTotal / oldTotal
+    let scaled   = segs.map(s => ({ ...s, frames: Math.max(1, Math.round(s.frames * ratio)) }))
+    let sum      = scaled.reduce((a, s) => a + s.frames, 0)
+    let safety   = 400
+
+    while (sum > newTotal && safety-- > 0) {
+      const mi = scaled.reduce((bi, s, i) => s.frames > scaled[bi].frames ? i : bi, 0)
+      if (scaled[mi].frames <= 1) break
+      scaled[mi].frames--
+      sum--
+    }
+    while (sum < newTotal && safety-- > 0) {
+      const mi = scaled.reduce((bi, s, i) => s.frames < scaled[bi].frames ? i : bi, 0)
+      scaled[mi].frames++
+      sum++
+    }
+    // Edge case: more segments than frames — trim and redistribute
+    if (sum > newTotal) {
+      scaled       = scaled.slice(0, Math.max(1, newTotal))
+      const n      = scaled.length
+      const base   = Math.max(1, Math.floor(newTotal / n))
+      scaled       = scaled.map((s, i) => ({
+        ...s,
+        frames: i === n - 1 ? Math.max(1, newTotal - base * (n - 1)) : base,
+      }))
+    }
+
+    return writeSegments(scaled, type)
+  }
+
+  window.DazPromptEditor = { open, rescalePrompt }
 })()

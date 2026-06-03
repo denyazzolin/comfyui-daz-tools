@@ -993,7 +993,7 @@ app.registerExtension({
           if (framesInput) framesInput.value = updates.total_frames.value
           const fpsInput = wrap.querySelector('#daz-fps')
           if (fpsInput) fpsInput.value = updates.fps.value
-          if (!isNewConfig) saveConfig(node, wrap, 'current')
+          if (!isNewConfig) saveConfig(node, wrap, 'current', true)
         },
       })
     }
@@ -1108,7 +1108,7 @@ app.registerExtension({
 
     // ── Save existing config ──────────────────────────────────────────────────
 
-    async function saveConfig(node, wrap, saveMode = 'current') {
+    async function saveConfig(node, wrap, saveMode = 'current', skipRescale = false) {
       const cw = node.widgets?.find(w => w.name === 'config')
       const label = cw?.value
       if (!label || label === '(no configs)') return
@@ -1130,6 +1130,16 @@ app.registerExtension({
       activeBtn.disabled    = true
       errorDiv.textContent  = ''
 
+      if (!skipRescale && window.DazPromptEditor?.rescalePrompt) {
+        const oldTotal = fValue((node._dazLtx23Detail || {}).total_frames)
+        const newTotal = parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) || 0
+        if (oldTotal > 0 && newTotal > 0 && oldTotal !== newTotal) {
+          const posTA   = wrap.querySelector('#daz-positive-prompt')
+          const posType = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
+          if (posTA) posTA.value = window.DazPromptEditor.rescalePrompt(posTA.value, posType, oldTotal, newTotal)
+        }
+      }
+
       const payload = {
         label, class: CLASS, file: currentFile(node), new_name: newName,
         version: node._dazCurrentVersion || '1', save_mode: saveMode,
@@ -1146,7 +1156,7 @@ app.registerExtension({
         if (r.status === 409) {
           activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
           activeBtn.disabled    = false
-          showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode))
+          showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode, true))
           return
         }
         const result = await r.json()
