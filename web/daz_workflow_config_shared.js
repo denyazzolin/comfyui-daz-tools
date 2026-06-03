@@ -664,7 +664,7 @@ export function buildWorkflowConfigExtension(cfg) {
             </div>
             <label style="${lbl}">Positive</label>
             <textarea id="daz-positive-prompt"
-              style="${tas};height:150px;margin-bottom:2px">${esc(fText(data.positive_prompt))}</textarea>
+              style="${tas};height:180px;margin-bottom:2px">${esc(fText(data.positive_prompt))}</textarea>
             <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
               <button id="daz-positive-clear" style="${cb}">clear</button>
             </div>
