@@ -601,7 +601,7 @@ app.registerExtension({
       const panel = document.createElement('div')
       panel.style.cssText =
         'background:#1a1a1a;border:1px solid #444;border-radius:6px;display:flex;' +
-        'flex-direction:column;width:980px;min-width:600px;font-family:monospace;' +
+        'flex-direction:column;width:1275px;min-width:600px;font-family:monospace;' +
         'flex-shrink:0;max-height:calc(100vh - 32px)'
 
       const panelHeader = document.createElement('div')
