@@ -890,9 +890,9 @@ app.registerExtension({
            <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>`
         : `<button id="daz-duplicate-btn"  style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
            <button id="daz-del-config-btn"  style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Del All</button>
-           <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Del Version</button>
            <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px;min-width:0"></span>
            <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
+           <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Version</button>
            <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
            <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>`
 
