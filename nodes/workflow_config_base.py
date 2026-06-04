@@ -8,12 +8,37 @@ import json
 from datetime import datetime
 from typing import Optional
 
+_NODES_DIR  = os.path.dirname(os.path.abspath(__file__))
+_PLUGIN_DIR = os.path.dirname(_NODES_DIR)
+
 try:
     import folder_paths as _fp
-    _WORKFLOWS_DIR = os.path.join(_fp.base_path, "user", "default", "workflows")
 except Exception:
-    _NODES_DIR     = os.path.dirname(os.path.abspath(__file__))
-    _WORKFLOWS_DIR = os.path.dirname(os.path.dirname(_NODES_DIR))
+    _fp = None
+
+
+def _resolve_workflows_dir() -> str:
+    override_cfg = os.path.join(_PLUGIN_DIR, "dx_root_dir_config.json")
+    if os.path.exists(override_cfg):
+        try:
+            with open(override_cfg, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            custom_dir = cfg.get("workflows_root_dir", "").strip()
+            if custom_dir:
+                path = custom_dir if os.path.isabs(custom_dir) else os.path.join(_PLUGIN_DIR, custom_dir)
+                print(f"[DAZ TOOLS] WorkflowConfig: using custom workflows_root_dir from dx_root_dir_config.json: {path}")
+                return path
+        except Exception as e:
+            print(f"[DAZ TOOLS] WorkflowConfig: could not read dx_root_dir_config.json — {e}")
+    if _fp is not None:
+        default_dir = os.path.join(_fp.base_path, "user", "default", "workflows")
+    else:
+        default_dir = os.path.dirname(_PLUGIN_DIR)
+    print(f"[DAZ TOOLS] WorkflowConfig: using default workflows root dir: {default_dir}")
+    return default_dir
+
+
+_WORKFLOWS_DIR = _resolve_workflows_dir()
 
 try:
     import comfy.sd as _comfy_sd

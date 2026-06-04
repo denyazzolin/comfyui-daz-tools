@@ -1,0 +1,6 @@
+{
+  // Absolute path to the folder that contains dx_workflow_configs.json and the .dx_mgr/ directory.
+  // If omitted or empty, defaults to ComfyUI/user/default/workflows/.
+  // Rename this file to dx_root_dir_config.json to activate.
+  "workflows_root_dir": "C:/path/to/your/workflows"
+}

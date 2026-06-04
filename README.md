@@ -70,6 +70,16 @@ Store named presets (model paths, prompts, dimensions, sampling params) in a JSO
 
 **Storage:** `ComfyUI/user/default/workflows/dx_workflow_configs.json` (default). Additional `dx_*.json` files can be placed in `.dx_mgr/` inside that folder — a **Config file** dropdown appears when multiple files exist. Each node only shows configs of its own class.
 
+**Custom root directory:** To store configs in a different location, create `dx_root_dir_config.json` in the plugin folder (`custom_nodes/comfyui-daz-tools/`):
+
+```json
+{
+  "workflows_root_dir": "D:/path/to/your/workflows"
+}
+```
+
+An annotated example is included as `dx_root_dir_config.example.jsonc`. If the file is absent or the key is empty, the default location is used.
+
 #### Filters
 
 | Widget | Values | Description |
