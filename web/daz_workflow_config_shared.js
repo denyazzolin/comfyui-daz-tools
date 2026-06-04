@@ -1618,24 +1618,30 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
-        const typeFilterWidget = this.addWidget('combo', 'Type', 'All', (value) => {
+        const typeFilterWidget = this.addWidget('combo', 'Type', 'All', async (value) => {
           this._dazTypeFilter = value
           updateGroupFilterWidget(this)
           syncWidget(this)
           if (!this[keys.editMode]) {
             const cw = this.widgets?.find(w => w.name === 'config')
-            if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
+            if (cw && cw.value !== '(no configs)') {
+              await reloadVersionWidget(this, cw.value)
+              loadDetail(this, cw.value, this._dazVersionWidget?.value)
+            }
           }
         }, { values: ['All', 'I2V', 'T2V', 'MULTI'] })
         this._dazTypeFilterWidget = typeFilterWidget
 
         const initialGroups = ['All', ...Array.from(new Set(_initialConfigs.map(c => c.group).filter(Boolean))).sort()]
-        const groupFilterWidget = this.addWidget('combo', 'Group', 'All', (value) => {
+        const groupFilterWidget = this.addWidget('combo', 'Group', 'All', async (value) => {
           this._dazGroupFilter = value
           syncWidget(this)
           if (!this[keys.editMode]) {
             const cw = this.widgets?.find(w => w.name === 'config')
-            if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
+            if (cw && cw.value !== '(no configs)') {
+              await reloadVersionWidget(this, cw.value)
+              loadDetail(this, cw.value, this._dazVersionWidget?.value)
+            }
           }
         }, { values: initialGroups })
         this._dazGroupFilterWidget = groupFilterWidget
