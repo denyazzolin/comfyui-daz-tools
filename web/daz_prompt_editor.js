@@ -105,8 +105,8 @@
       const lines = text.split('\n').filter(l => l.trim())
       if (!lines.length) return [{ text: '', frames: totalFrames }]
       return lines.map(line => {
-        // New format: [xs-ys] text (seconds)
-        const ms = line.match(/^\[(\d+)s\s*[-–]\s*(\d+)s\]\s*([\s\S]*)$/)
+        // New format: [x-ys] text (seconds) — only end value carries the 's'
+        const ms = line.match(/^\[(\d+)\s*[-–]\s*(\d+)s\]\s*([\s\S]*)$/)
         if (ms) {
           const frames = fps > 0
             ? Math.max(1, Math.round((parseInt(ms[2]) - parseInt(ms[1])) * fps))
@@ -363,9 +363,16 @@
       promptHdr.querySelectorAll('input[name="pe-type"]').forEach(r => {
         r.addEventListener('change', e => {
           if (!e.target.checked) return
-          promptType = e.target.value
-          const hint = promptHdr.querySelector('#pe-type-hint')
-          if (hint) hint.textContent = TYPE_HINTS[promptType] ?? ''
+          saveDomState()
+          const oldType  = promptType
+          promptType     = e.target.value
+          if (oldType === 'beats' && promptType !== 'beats') {
+            segments = segments.map(s => ({
+              ...s,
+              text: s.text.replace(/^\[\d+s?\s*[-–]\s*\d+s?\]\s*/, '').trim(),
+            }))
+          }
+          render()
         })
       })
 
