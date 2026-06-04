@@ -297,17 +297,27 @@
       panel.appendChild(greenDiv())
 
       // ── Prompt mode radios ──────────────────────────────────────────────
+      const TYPE_HINTS = {
+        smart:  'Warning! Prompt Relays work better with CFG 1.0',
+        beats:  'Beats will coerce frame count into full seconds',
+        simple: '',
+      }
       const promptHdr = el('div', 'display:flex;align-items:center;gap:10px;padding:6px 10px 4px')
       promptHdr.innerHTML = `
         ${mkRadio('pe-smart',  'pe-type', 'smart',  'Smart',  promptType === 'smart')}
         ${mkRadio('pe-beats',  'pe-type', 'beats',  'Beats',  promptType === 'beats')}
         ${mkRadio('pe-simple', 'pe-type', 'simple', 'Simple', promptType === 'simple')}
-        <span style="flex:1"></span>
+        <span id="pe-type-hint" style="flex:1;text-align:center;font-size:10px;font-family:monospace;color:#c8922a">${esc(TYPE_HINTS[promptType] ?? '')}</span>
         ${sectionLabel('PROMPT')}
       `
       panel.appendChild(promptHdr)
       promptHdr.querySelectorAll('input[name="pe-type"]').forEach(r => {
-        r.addEventListener('change', e => { if (e.target.checked) promptType = e.target.value })
+        r.addEventListener('change', e => {
+          if (!e.target.checked) return
+          promptType = e.target.value
+          const hint = promptHdr.querySelector('#pe-type-hint')
+          if (hint) hint.textContent = TYPE_HINTS[promptType] ?? ''
+        })
       })
 
       // ── Segment text area ───────────────────────────────────────────────

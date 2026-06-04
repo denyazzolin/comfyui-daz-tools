@@ -641,7 +641,7 @@ export function buildWorkflowConfigExtension(cfg) {
         // ── Center column ─────────────────────────────────────────────────
         const colCenter = `
           ${box('Prompt', `
-            <div style="display:flex;gap:16px;margin-bottom:7px">
+            <div style="display:flex;gap:16px;margin-bottom:4px">
               <label style="display:flex;align-items:center;gap:4px;color:#ccc;font-size:11px;cursor:pointer">
                 <input type="radio" name="daz-pos-type-${uid}" value="smart"
                   ${posType === 'smart' ? 'checked' : ''}>Smart
@@ -655,6 +655,10 @@ export function buildWorkflowConfigExtension(cfg) {
                   ${posType === 'simple' ? 'checked' : ''}>Simple
               </label>
             </div>
+            <div id="daz-pos-type-hint" style="min-height:16px;margin-bottom:6px;font-size:10px;font-family:monospace;color:#c8922a">${
+              posType === 'smart' ? 'Warning! Prompt Relays work better with CFG 1.0' :
+              posType === 'beats' ? 'Beats will coerce frame count into full seconds' : ''
+            }</div>
             <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
             <label style="${lbl}">Master</label>
             <textarea id="daz-master-prompt"
@@ -764,11 +768,18 @@ export function buildWorkflowConfigExtension(cfg) {
         node._dazEditKeydownPanel = panel
         panel.addEventListener('keydown', node._dazEditKeydownHandler)
 
-        // Radio → hidden type sync
+        // Radio → hidden type sync + hint
+        const POS_TYPE_HINTS = {
+          smart:  'Warning! Prompt Relays work better with CFG 1.0',
+          beats:  'Beats will coerce frame count into full seconds',
+          simple: '',
+        }
         panel.querySelectorAll(`input[name="daz-pos-type-${uid}"]`).forEach(r => {
           r.addEventListener('change', () => {
             const h = panel.querySelector('#daz-positive-prompt-type')
             if (h) h.value = r.value
+            const hint = panel.querySelector('#daz-pos-type-hint')
+            if (hint) hint.textContent = POS_TYPE_HINTS[r.value] ?? ''
           })
         })
 
