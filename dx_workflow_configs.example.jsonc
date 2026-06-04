@@ -1,0 +1,109 @@
+{
+  "_meta": {
+    "schema_version": 1,                   // internal schema version; do not change
+    "name": "dx_workflow_configs",          // file identifier
+    "version": "1.0",                       // file format version string
+    "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
+    "updated_at": "2026-06-02T00:00:00"    // file last-modified timestamp (ISO 8601)
+  },
+  "My WAN2.2 Config": {                    // config name — shown in the node dropdown
+    "class": "Wan2.2",                     // node class this config targets
+    "created_at": "2026-06-02T00:00:00",   // entry creation timestamp
+    "updated_at": "2026-06-02T00:00:00",   // entry last-modified timestamp
+    "sets": [                              // array of versioned parameter sets
+      {
+        "version": "1",                    // set version number (auto-incremented on save)
+        "created_at": "2026-06-02T00:00:00", // set creation timestamp
+        "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
+        "type": "I2V",                     // generation mode (e.g. I2V, T2V)
+        "group": { "name": "" },           // optional UI grouping label
+        "note": { "value": "" },           // free-text note for this set
+        "unet_high": { "name": "wan2.2_14B_vace_highpass.safetensors" }, // high-pass diffusion model filename
+        "unet_low": { "name": "wan2.2_14B_vace_lowpass.safetensors" },   // low-pass diffusion model filename
+        "vae": { "name": "wan2.2_vae.safetensors" },                      // VAE model filename
+        "clip": { "name": "umt5xxl_fp8_e4m3fn.safetensors" },            // text encoder filename
+        "audio_vae": { "name": "" },       // audio VAE filename (leave empty if unused)
+        "checkpoint": { "name": "" },      // full checkpoint filename (empty for WAN)
+        "clip_2": { "name": "" },          // second text encoder slot (empty for WAN)
+        "image_path": { "path": "C:/path/to/input_image.png" }, // absolute path to input image (for I2V)
+        "width": { "value": 1280 },        // output width in pixels
+        "height": { "value": 720 },        // output height in pixels
+        "steps": { "value": 30 },          // number of denoising steps
+        "split_step": { "value": 15 },     // step at which high/low-pass unet split occurs
+        "seed": { "value": 0, "randomize": false }, // seed value; randomize: re-rolls each run
+        "cfg_high": { "value": 6.0 },      // guidance scale for the high-pass unet
+        "cfg_low": { "value": 3.5 },       // guidance scale for the low-pass unet
+        "total_frames": { "value": 81 },   // total number of output video frames
+        "fps": { "value": 16.0 },          // output video frame rate
+        "master_prompt": { "text": "" },   // base prompt; combined with positive when type is not "smart"
+        "positive_prompt": { "text": "A cinematic shot of ...", "type": "smart" }, // type "smart" forwards only this text to the relay node
+        "negative_prompt": { "text": "" }, // negative prompt text
+        "loras": {
+          "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1: filename, weight multiplier, active toggle
+          "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2: 1 and 2 will be seen as high and low loras
+          "lora_3": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 3: 3 and 4 will be seen as high and low loras
+          "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
+          "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5: 5 and 6 will be seen as high and low loras
+          "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
+          "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7: 7 and 8 will be seen as high and low loras
+          "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
+        },
+        "filename": { "file": "" },        // output filename (without extension)
+        "flags": {
+          "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
+          "flag_2": { "label": "flag 2", "value": false }  // custom boolean toggle 2
+        }
+      }
+    ]
+  },
+  "My LTX2.3 Config": {                   // config name — shown in the node dropdown
+    "class": "ltx2.3",                    // node class this config targets
+    "created_at": "2026-06-02T00:00:00",   // entry creation timestamp
+    "updated_at": "2026-06-02T00:00:00",   // entry last-modified timestamp
+    "sets": [                              // array of versioned parameter sets
+      {
+        "version": "1",                    // set version number (auto-incremented on save)
+        "created_at": "2026-06-02T00:00:00", // set creation timestamp
+        "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
+        "type": "T2V",                     // generation mode (e.g. I2V, T2V); used by UI for filtering
+        "group": { "name": "" },           // optional UI grouping label
+        "note": { "value": "" },           // free-text note for this set
+        "checkpoint": { "name": "ltx_video_0.9.7_distilled_fp8.safetensors" }, // primary checkpoint (loads model + clip + vae together)
+        "unet_high": { "name": "" },       // standalone transformer model (optional; overrides checkpoint model)
+        "unet_low": { "name": "" },        // NOT USED by LTX node
+        "vae": { "name": "ltx_video_0.9.7_vae.safetensors" }, // standalone video VAE (overrides checkpoint VAE)
+        "audio_vae": { "name": "" },       // audio VAE filename (leave empty if unused)
+        "clip_2": { "name": "t5xxl_fp8_e4m3fn.safetensors" }, // primary text encoder (T5 for LTX)
+        "clip": { "name": "" },            // second text encoder slot (optional)
+        "image_path": { "path": "" },      // input image path (empty for T2V)
+        "width": { "value": 768 },         // output width in pixels
+        "height": { "value": 512 },        // output height in pixels
+        "steps": { "value": 8 },           // number of denoising steps
+        "split_step": { "value": 0 },      // NOT USED by LTX node
+        "seed": { "value": 0, "randomize": false }, // seed value; randomize: re-rolls each run
+        "cfg_high": { "value": 1.0 },      // guidance scale (distilled models use low values near 1)
+        "cfg_low": { "value": 0.0 },       // NOT USED by LTX node
+        "total_frames": { "value": 121 },  // total number of output video frames
+        "fps": { "value": 24.0 },          // output video frame rate
+        "master_prompt": { "text": "" },   // base prompt; combined with positive when type is not "smart"
+        "positive_prompt": { "text": "A cinematic shot of ...", "type": "smart" }, // type "smart" forwards only this text to the relay node
+        "negative_prompt": { "text": "" }, // negative prompt text
+        "loras": {
+          "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1 (typically the distillation LoRA)
+          "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
+          "lora_3": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 3
+          "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
+          "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5
+          "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
+          "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // NOT USED by LTX node
+          "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // NOT USED by LTX node
+        },
+        "filename": { "file": "" },        // output filename (without extension)
+        "flags": {
+          "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
+          "flag_2": { "label": "flag 2", "value": false }  // custom boolean toggle 2
+        }
+      }
+    ]
+  }
+}
