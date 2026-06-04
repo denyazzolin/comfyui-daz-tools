@@ -1625,8 +1625,10 @@ export function buildWorkflowConfigExtension(cfg) {
           if (!this[keys.editMode]) {
             const cw = this.widgets?.find(w => w.name === 'config')
             if (cw && cw.value !== '(no configs)') {
+              const myGen = (this._dazVersionReloadGen || 0) + 1
               await reloadVersionWidget(this, cw.value)
-              loadDetail(this, cw.value, this._dazVersionWidget?.value)
+              if (this._dazVersionReloadGen === myGen)
+                loadDetail(this, cw.value, this._dazVersionWidget?.value)
             }
           }
         }, { values: ['All', 'I2V', 'T2V', 'MULTI'] })
@@ -1639,8 +1641,10 @@ export function buildWorkflowConfigExtension(cfg) {
           if (!this[keys.editMode]) {
             const cw = this.widgets?.find(w => w.name === 'config')
             if (cw && cw.value !== '(no configs)') {
+              const myGen = (this._dazVersionReloadGen || 0) + 1
               await reloadVersionWidget(this, cw.value)
-              loadDetail(this, cw.value, this._dazVersionWidget?.value)
+              if (this._dazVersionReloadGen === myGen)
+                loadDetail(this, cw.value, this._dazVersionWidget?.value)
             }
           }
         }, { values: initialGroups })
@@ -1771,9 +1775,9 @@ export function buildWorkflowConfigExtension(cfg) {
             return
           }
           const w = self.widgets?.find(w => w.name === 'config')
-          const labels = filteredLabels(self._dazAllConfigs || [], self._dazTypeFilter, self._dazGroupFilter)
-          if (w && !labels.includes(w.value)) syncWidget(self)
-          await reloadVersionWidget(self, w?.value, savedVersion)
+          const configBefore = w?.value
+          syncWidget(self)
+          await reloadVersionWidget(self, w?.value, w?.value === configBefore ? savedVersion : null)
           self._dazCurrentVersion = self._dazVersionWidget?.value || '1'
           if (!self[keys.editMode]) loadDetail(self, w?.value, self._dazCurrentVersion)
         })
