@@ -931,7 +931,7 @@ export function buildWorkflowConfigExtension(cfg) {
         if (isNew) {
           panel.querySelector('#daz-create-btn')?.addEventListener('click', () => createConfig(node, panel))
         } else {
-          panel.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => showDuplicateModal(node, panel))
+          panel.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => showPreDuplicateModal(node, panel))
           panel.querySelector('#daz-del-version-btn')?.addEventListener('click', () => showDeleteVersionConfirm(node, panel))
           panel.querySelector('#daz-del-config-btn')?.addEventListener('click', () => showDeleteConfigConfirm(node, panel))
           panel.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, panel, 'current'))
@@ -1002,15 +1002,21 @@ export function buildWorkflowConfigExtension(cfg) {
             if (masterTA) masterTA.value = updates.master_prompt.text
             const posTA = wrap.querySelector('#daz-positive-prompt')
             if (posTA) posTA.value = updates.positive_prompt.text
+            const newType = updates.positive_prompt.type
             const posTypeInput = wrap.querySelector('#daz-positive-prompt-type')
-            if (posTypeInput) posTypeInput.value = updates.positive_prompt.type
+            if (posTypeInput) posTypeInput.value = newType
+            wrap.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === newType })
+            const posHint = wrap.querySelector('#daz-pos-type-hint')
+            if (posHint) posHint.textContent = newType === 'smart'
+              ? 'Warning! Prompt Relays work better with CFG 1.0'
+              : newType === 'beats' ? 'Beats will coerce frame count into full seconds' : ''
             const negTA = wrap.querySelector('#daz-negative-prompt')
             if (negTA) negTA.value = updates.negative_prompt.text
             const framesInput = wrap.querySelector('#daz-total-frames')
             if (framesInput) framesInput.value = updates.total_frames.value
             const fpsInput = wrap.querySelector('#daz-fps')
             if (fpsInput) fpsInput.value = updates.fps.value
-            if (!isNewConfig) saveConfig(node, wrap, 'current', true)
+            // Do not save immediately — let the user decide via Save / +Version
           },
         })
       }
@@ -1083,7 +1089,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Save existing config ──────────────────────────────────────────────
 
-      async function saveConfig(node, wrap, saveMode = 'current', skipRescale = false, nameChangeConfirmed = false) {
+      async function saveConfig(node, wrap, saveMode = 'current', skipRescale = false, nameChangeConfirmed = false, keepPanelOpen = false, thenFn = null) {
         const cw    = node.widgets?.find(w => w.name === 'config')
         const label = cw?.value
         if (!label || label === '(no configs)') return
@@ -1102,7 +1108,7 @@ export function buildWorkflowConfigExtension(cfg) {
         }
 
         if (!nameChangeConfirmed && newName !== (node[keys.detail]?.name || '')) {
-          showNameChangeConfirm(node, wrap, saveMode, skipRescale)
+          showNameChangeConfirm(node, wrap, saveMode, skipRescale, keepPanelOpen, thenFn)
           return
         }
 
@@ -1137,14 +1143,19 @@ export function buildWorkflowConfigExtension(cfg) {
           if (r.status === 409) {
             activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
             activeBtn.disabled    = false
-            showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode, true, true))
+            showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode, true, true, keepPanelOpen, thenFn))
             return
           }
           const result = await r.json()
           if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-          if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
-          node[keys.editMode] = false
+          if (!keepPanelOpen) {
+            if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
+            node[keys.editMode] = false
+          } else {
+            activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+            activeBtn.disabled    = false
+          }
 
           await reloadNodeConfigs(node)
           if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
@@ -1164,12 +1175,102 @@ export function buildWorkflowConfigExtension(cfg) {
           const detailResp = await fetch(detailUrl)
           if (detailResp.ok) node[keys.detail] = await detailResp.json()
 
-          renderUseMode(node, node[keys.detail] || {})
+          if (!keepPanelOpen) renderUseMode(node, node[keys.detail] || {})
+          thenFn?.()
+          return true
         } catch (e) {
           activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
           activeBtn.disabled    = false
           errorDiv.textContent  = `Error: ${e.message}`
         }
+      }
+
+      // ── Pre-duplicate: handle unsaved changes ─────────────────────────────
+
+      function showPreDuplicateModal(node, wrap) {
+        const overlay = document.createElement('div')
+        overlay.style.cssText = [
+          'position:fixed;top:0;left:0;right:0;bottom:0',
+          'background:rgba(0,0,0,0.75);z-index:10000',
+          'display:flex;align-items:center;justify-content:center',
+        ].join(';')
+        const box = document.createElement('div')
+        box.style.cssText = [
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+          'padding:20px 24px;width:440px;font-family:monospace',
+        ].join(';')
+        const rowBtn = 'font-family:monospace;font-size:11px;padding:8px 12px;border-radius:3px;' +
+          'cursor:pointer;border:1px solid #555;width:100%;text-align:left;margin-bottom:6px;' +
+          'background:#1a1a1a;color:#ddd;display:block'
+        box.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 10px">Duplicate — unsaved changes</p>
+          <p style="font-size:11px;color:#888;margin:0 0 14px">
+            The edit panel may have unsaved changes. What would you like to do?
+          </p>
+          <button id="pdm-save-first" style="${rowBtn}">
+            Save current version first<br>
+            <span style="color:#666;font-size:10px">Saves edits, then shows duplicate options</span>
+          </button>
+          <button id="pdm-discard" style="${rowBtn}">
+            Discard changes, then duplicate<br>
+            <span style="color:#666;font-size:10px">Reverts unsaved prompt edits, then shows duplicate options</span>
+          </button>
+          <button id="pdm-save-only" style="${rowBtn}">
+            Save and go ahead<br>
+            <span style="color:#666;font-size:10px">Saves edits and returns to use mode (no duplicate)</span>
+          </button>
+          <div style="display:flex;justify-content:flex-end;margin-top:10px">
+            <button id="pdm-cancel"
+              style="font-family:monospace;font-size:11px;padding:4px 14px;
+                     background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">
+              Cancel
+            </button>
+          </div>
+        `
+        overlay.appendChild(box)
+        document.body.appendChild(overlay)
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+
+        box.querySelector('#pdm-cancel')?.addEventListener('click', () => overlay.remove())
+
+        // Save current version, then show duplicate options (panel stays open).
+        // thenFn ensures showDuplicateModal fires even if a name-change or name-clash
+        // sub-dialog intercepts the save flow.
+        box.querySelector('#pdm-save-first')?.addEventListener('click', () => {
+          overlay.remove()
+          saveConfig(node, wrap, 'current', false, false, true, () => showDuplicateModal(node, wrap))
+        })
+
+        // Discard prompt-editor changes, then show duplicate options
+        box.querySelector('#pdm-discard')?.addEventListener('click', () => {
+          overlay.remove()
+          const detail = node[keys.detail] || {}
+          const posType = fType(detail.positive_prompt)
+          const masterTA = wrap.querySelector('#daz-master-prompt')
+          if (masterTA) masterTA.value = fText(detail.master_prompt)
+          const posTA = wrap.querySelector('#daz-positive-prompt')
+          if (posTA) posTA.value = fText(detail.positive_prompt)
+          const posTypeInput = wrap.querySelector('#daz-positive-prompt-type')
+          if (posTypeInput) posTypeInput.value = posType
+          wrap.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === posType })
+          const posHint = wrap.querySelector('#daz-pos-type-hint')
+          if (posHint) posHint.textContent = posType === 'smart'
+            ? 'Warning! Prompt Relays work better with CFG 1.0'
+            : posType === 'beats' ? 'Beats will coerce frame count into full seconds' : ''
+          const negTA = wrap.querySelector('#daz-negative-prompt')
+          if (negTA) negTA.value = fText(detail.negative_prompt)
+          const framesInput = wrap.querySelector('#daz-total-frames')
+          if (framesInput) framesInput.value = fValue(detail.total_frames)
+          const fpsInput = wrap.querySelector('#daz-fps')
+          if (fpsInput) fpsInput.value = fValue(detail.fps)
+          showDuplicateModal(node, wrap)
+        })
+
+        // Save normally and return to use mode (no duplicate)
+        box.querySelector('#pdm-save-only')?.addEventListener('click', () => {
+          overlay.remove()
+          saveConfig(node, wrap, 'current')
+        })
       }
 
       // ── Duplicate config ──────────────────────────────────────────────────
@@ -1279,7 +1380,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Name change confirm ───────────────────────────────────────────────
 
-      function showNameChangeConfirm(node, wrap, saveMode, skipRescale) {
+      function showNameChangeConfirm(node, wrap, saveMode, skipRescale, keepPanelOpen = false, thenFn = null) {
         const overlay = document.createElement('div')
         overlay.style.cssText = [
           'position:fixed;top:0;left:0;right:0;bottom:0',
@@ -1310,7 +1411,7 @@ export function buildWorkflowConfigExtension(cfg) {
         box.querySelector('#ncc-cancel')?.addEventListener('click', () => overlay.remove())
         box.querySelector('#ncc-continue')?.addEventListener('click', () => {
           overlay.remove()
-          saveConfig(node, wrap, saveMode, skipRescale, true)
+          saveConfig(node, wrap, saveMode, skipRescale, true, keepPanelOpen, thenFn)
         })
       }
 
