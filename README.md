@@ -66,9 +66,13 @@ Scans `models/loras`, reads safetensors metadata, and caches results to `models/
 
 ### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`)
 
-Store named presets (model paths, prompts, dimensions, sampling params) in a JSON file and select them from a dropdown. The node loads all models at execution time and passes every value downstream as individual outputs.
+Store named presets (model paths, prompts, dimensions, sampling params) in `dx_*.json` files and select them from a dropdown. The node loads all models at execution time and passes every value downstream as individual outputs. The default config file (`dx_workflow_configs.json`) is created automatically in `.dx_mgr/` the first time you add a configuration through the node's UI.
 
-**Storage:** `ComfyUI/user/default/workflows/dx_workflow_configs.json` (default). Additional `dx_*.json` files can be placed in `.dx_mgr/` inside that folder — a **Config file** dropdown appears when multiple files exist. Each node only shows configs of its own class.
+Multiple config files are supported — any `dx_*.json` file in `.dx_mgr/` is picked up automatically. Each file can contain configs for any node class (WAN2.2, LTX2.3, etc.), and each node only shows its own class entries. This lets you organize presets by project, client, style, or any other grouping that suits your workflow.
+
+> **Note:** The nodes do not currently support saving configs directly into a specific file — new files must be created and populated manually (or by duplicating an existing file). A managed experience for creating and assigning files is planned for a future version.
+
+**Storage:** All config files (`dx_*.json`) must be placed in `ComfyUI/user/default/workflows/.dx_mgr/`. A **Config file** dropdown appears when multiple files exist. Each node only shows configs of its own class.
 
 **Custom root directory:** To store configs in a different location, create `dx_root_dir_config.json` in the plugin folder (`custom_nodes/comfyui-daz-tools/`):
 
@@ -121,9 +125,13 @@ An annotated example is included as `dx_root_dir_config.example.jsonc`. If the f
 
 #### WAN2.2 outputs
 
-`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `seed` (INT) · `cfg_high` · `cfg_low` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` · `lora_4_high` · `lora_4_low` (LORA) · **`unet_stack_high` · `unet_stack_low`** (MODEL) · `flag_1` · `flag_2` (BOOLEAN)
+`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `seed` (INT) · `cfg_high` · `cfg_low` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` · `lora_4_high` · `lora_4_low` (LORA) · `flag_1` · `flag_2` (BOOLEAN)
 
-LoRAs 1–4 map to config pairs `lora_1/2`, `lora_3/4`, `lora_5/6`, `lora_7/8` as High/Low outputs. `unet_stack_high/low` are the respective UNet models with all enabled LoRAs pre-applied.
+LoRAs 1–4 map to config pairs `lora_1/2`, `lora_3/4`, `lora_5/6`, `lora_7/8` as High/Low outputs.
+
+> **`unet_stack_high` · `unet_stack_low` (MODEL) — recommended outputs for most workflows**
+>
+> These are `unet_high` and `unet_low` with all enabled LoRAs from the config already applied. Connect these directly to your sampler instead of wiring individual LoRA nodes — the node handles the full stack for you. Individual `lora_*_high/low` outputs are available if you need to apply LoRAs manually or in a custom order.
 
 #### LTX2.3-specific attributes
 
@@ -139,9 +147,13 @@ LoRAs 1–4 map to config pairs `lora_1/2`, `lora_3/4`, `lora_5/6`, `lora_7/8` a
 
 #### LTX2.3 outputs
 
-`checkpoint_model` · `checkpoint_vae` · `checkpoint_clip` (CLIP) · `transformer_only` (MODEL) · `video_vae` · `audio_vae` (VAE) · `clip_2` · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `seed` (INT) · `cfg` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1`–`lora_6` (LORA) · **`transformer_stack` · `checkpoint_stack`** (MODEL) · `flag_1` · `flag_2` (BOOLEAN)
+`checkpoint_model` · `checkpoint_vae` · `checkpoint_clip` (CLIP) · `transformer_only` (MODEL) · `video_vae` · `audio_vae` (VAE) · `clip_2` · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `seed` (INT) · `cfg` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1`–`lora_6` (LORA) · `flag_1` · `flag_2` (BOOLEAN)
 
-Checkpoint outputs are `None` when no checkpoint is set. `transformer_stack` / `checkpoint_stack` are the respective models with all enabled LoRAs pre-applied.
+Checkpoint outputs are `None` when no checkpoint is set.
+
+> **`transformer_stack` · `checkpoint_stack` (MODEL) — recommended outputs for most workflows**
+>
+> These are the transformer (standalone) and checkpoint model with all enabled LoRAs from the config already applied. Use `transformer_stack` when working without a checkpoint, or `checkpoint_stack` when loading from a combined checkpoint — connect either directly to your sampler. Individual `lora_*` outputs are available if you need to apply LoRAs manually or in a custom order.
 
 #### Versioned sets
 
