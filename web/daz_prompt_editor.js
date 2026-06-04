@@ -63,11 +63,36 @@
 
   // ── Segment parsing ───────────────────────────────────────────────────────
 
+  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple'])
+
+  // Infer the serialised format of prompt text from its content.
+  // Returns 'beats', 'smart', or null (= cannot determine, use declared type).
+  function detectPromptFormat(text) {
+    const lines = text.split('\n').filter(l => l.trim())
+    // Beats: every non-empty line starts with a numeric range [X-Y] or [Xs-Ys]
+    if (lines.length >= 2 && lines.every(l => /^\[(\d+)s?\s*[-–]\s*(\d+)s?\]/.test(l))) {
+      return 'beats'
+    }
+    // Smart: multiple pipe-separated parts where at least one ends with [X-Y]
+    const parts = text.split(/\s*\|\s*/).filter(p => p.trim())
+    if (parts.length > 1 && parts.some(p => /\[(\d+)\s*[-–]\s*(\d+)\]\s*$/.test(p.trim()))) {
+      return 'smart'
+    }
+    return null
+  }
+
   function parseSegments(text, type, totalFrames, fps = 0) {
+    if (!VALID_PROMPT_TYPES.has(type)) type = 'smart'
     text = (text || '').trim()
     if (!text) return [{ text: '', frames: Math.max(1, totalFrames) }]
 
-    if (type === 'smart') {
+    // If the text's actual format differs from the declared type, infer from
+    // content so segment structure survives a type switch in the edit panel.
+    // 'simple' is never overridden — it has no detectable markers.
+    const detected  = type !== 'simple' ? detectPromptFormat(text) : null
+    const parseType = detected ?? type
+
+    if (parseType === 'smart') {
       const parts = text.split(/\s*\|\s*/)
       return parts.map(part => {
         const m = part.match(/^([\s\S]*?)\s*\[(\d+)\s*[-–]\s*(\d+)\]\s*$/)
@@ -76,7 +101,7 @@
       })
     }
 
-    if (type === 'beats') {
+    if (parseType === 'beats') {
       const lines = text.split('\n').filter(l => l.trim())
       if (!lines.length) return [{ text: '', frames: totalFrames }]
       return lines.map(line => {
@@ -159,6 +184,7 @@
     let negText     = fText(detail.negative_prompt)
     let promptType  = (detail.positive_prompt && typeof detail.positive_prompt === 'object')
                         ? (detail.positive_prompt.type || 'smart') : 'smart'
+    if (!VALID_PROMPT_TYPES.has(promptType)) promptType = 'smart'
     let segments    = parseSegments(fText(detail.positive_prompt), promptType, totalFrames, fps)
     let selIdx      = 0
 
@@ -541,7 +567,10 @@
       }))
     }
 
-    return writeSegments(scaled, type, fps)
+    // Use the actual serialised format (may differ from declared type if text was
+    // written in a different mode) so rescaling never silently converts the format.
+    const effectiveType = (type !== 'simple' ? detectPromptFormat(text) : null) ?? type
+    return writeSegments(scaled, effectiveType, fps)
   }
 
   window.DazPromptEditor = { open, rescalePrompt }

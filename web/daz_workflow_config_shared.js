@@ -159,7 +159,7 @@ export function buildWorkflowConfigExtension(cfg) {
       function fText(val)  { return (val && typeof val === 'object') ? (val.text  ?? '') : (val ?? '') }
       function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
       function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
-      function fType(val)       { return (val && typeof val === 'object') ? (val.type      ?? 'smart') : 'smart'  }
+      function fType(val)       { return (val && typeof val === 'object') ? (val.type      || 'smart') : 'smart'  }
       function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
       function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
       function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
