@@ -276,6 +276,7 @@
       })
       topRow.querySelector('#pe-fps').addEventListener('change', e => {
         fps = parseFloat(e.target.value) || 0
+        render()
       })
 
       // ── Master ──────────────────────────────────────────────────────────
@@ -323,7 +324,12 @@
       const q       = Math.round(totalFrames / 4)
       const ruler   = el('div',
         'display:flex;justify-content:space-between;padding:1px 10px 0;font-size:9px;color:#555')
-      ruler.innerHTML = `<span>0</span><span>${q}</span><span>${q*2}</span><span>${q*3}</span><span>${totalFrames}</span>`
+      function frameLabel(f) {
+        if (!fps || fps <= 0) return `${f}`
+        const secStr = (f / fps).toFixed(1).replace(/\.0$/, '')
+        return `${f}(${secStr}s)`
+      }
+      ruler.innerHTML = `<span>0</span><span>${frameLabel(q)}</span><span>${frameLabel(q*2)}</span><span>${frameLabel(q*3)}</span><span>${frameLabel(totalFrames)}</span>`
       panel.appendChild(ruler)
 
       // ── Segment bar ─────────────────────────────────────────────────────
