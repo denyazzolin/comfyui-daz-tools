@@ -1116,7 +1116,8 @@ export function buildWorkflowConfigExtension(cfg) {
           if (oldTotal > 0 && newTotal > 0 && oldTotal !== newTotal) {
             const posTA   = wrap.querySelector('#daz-positive-prompt')
             const posType = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
-            if (posTA) posTA.value = window.DazPromptEditor.rescalePrompt(posTA.value, posType, oldTotal, newTotal)
+            const oldFps  = fValue((node[keys.detail] || {}).fps)
+            if (posTA) posTA.value = window.DazPromptEditor.rescalePrompt(posTA.value, posType, oldTotal, newTotal, oldFps)
           }
         }
 

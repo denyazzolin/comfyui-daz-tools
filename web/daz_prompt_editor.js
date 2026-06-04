@@ -63,7 +63,7 @@
 
   // ── Segment parsing ───────────────────────────────────────────────────────
 
-  function parseSegments(text, type, totalFrames) {
+  function parseSegments(text, type, totalFrames, fps = 0) {
     text = (text || '').trim()
     if (!text) return [{ text: '', frames: Math.max(1, totalFrames) }]
 
@@ -80,8 +80,17 @@
       const lines = text.split('\n').filter(l => l.trim())
       if (!lines.length) return [{ text: '', frames: totalFrames }]
       return lines.map(line => {
-        const m = line.match(/^\[(\d+)\s*[-–]\s*(\d+)\]\s*([\s\S]*)$/)
-        if (m) return { text: m[3].trim(), frames: Math.max(1, parseInt(m[2]) - parseInt(m[1])) }
+        // New format: [xs-ys] text (seconds)
+        const ms = line.match(/^\[(\d+)s\s*[-–]\s*(\d+)s\]\s*([\s\S]*)$/)
+        if (ms) {
+          const frames = fps > 0
+            ? Math.max(1, Math.round((parseInt(ms[2]) - parseInt(ms[1])) * fps))
+            : Math.max(1, Math.floor(totalFrames / lines.length))
+          return { text: ms[3].trim(), frames }
+        }
+        // Old format: [x-y] text (frames) — backward compat
+        const mf = line.match(/^\[(\d+)\s*[-–]\s*(\d+)\]\s*([\s\S]*)$/)
+        if (mf) return { text: mf[3].trim(), frames: Math.max(1, parseInt(mf[2]) - parseInt(mf[1])) }
         return { text: line.trim(), frames: Math.max(1, Math.floor(totalFrames / lines.length)) }
       })
     }
@@ -98,7 +107,7 @@
 
   // ── Segment writing ───────────────────────────────────────────────────────
 
-  function writeSegments(segments, type) {
+  function writeSegments(segments, type, fps = 0) {
     if (!segments.length) return ''
     if (type === 'smart') {
       let pos = 0
@@ -110,6 +119,20 @@
       }).join(' | ')
     }
     if (type === 'beats') {
+      // half-down rounding: x.5 rounds to x (floor at midpoint)
+      const halfDown = secs => Math.ceil(secs - 0.5)
+      if (fps > 0) {
+        let accFrames = 0
+        let prevSec   = 0
+        return segments.map(s => {
+          accFrames  += s.frames
+          const thisSec = halfDown(accFrames / fps)
+          const line = `[${prevSec}-${thisSec}s] ${s.text}`
+          prevSec = thisSec
+          return line
+        }).join('\n')
+      }
+      // fallback when fps unknown: use frame numbers
       let pos = 0
       return segments.map(s => {
         const end  = pos + s.frames
@@ -136,7 +159,7 @@
     let negText     = fText(detail.negative_prompt)
     let promptType  = (detail.positive_prompt && typeof detail.positive_prompt === 'object')
                         ? (detail.positive_prompt.type || 'smart') : 'smart'
-    let segments    = parseSegments(fText(detail.positive_prompt), promptType, totalFrames)
+    let segments    = parseSegments(fText(detail.positive_prompt), promptType, totalFrames, fps)
     let selIdx      = 0
 
     // ── Overlay / panel ───────────────────────────────────────────────────
@@ -472,7 +495,7 @@
       if (tfEl) totalFrames = Math.max(1, parseInt(tfEl.value) || 1)
       onSave({
         master_prompt:   { text: masterText },
-        positive_prompt: { text: writeSegments(segments, promptType), type: promptType },
+        positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
         negative_prompt: { text: negText },
         total_frames:    { value: totalFrames },
         fps:             { value: fps },
@@ -484,11 +507,11 @@
     render()
   }
 
-  function rescalePrompt(text, type, oldTotal, newTotal) {
+  function rescalePrompt(text, type, oldTotal, newTotal, fps = 0) {
     if (!text || type === 'simple' || oldTotal <= 0 || newTotal <= 0 || oldTotal === newTotal) {
       return text
     }
-    const segs = parseSegments(text, type, oldTotal)
+    const segs = parseSegments(text, type, oldTotal, fps)
     if (!segs.length) return text
 
     const ratio  = newTotal / oldTotal
@@ -518,7 +541,7 @@
       }))
     }
 
-    return writeSegments(scaled, type)
+    return writeSegments(scaled, type, fps)
   }
 
   window.DazPromptEditor = { open, rescalePrompt }
