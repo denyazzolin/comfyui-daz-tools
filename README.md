@@ -95,6 +95,8 @@ An annotated example is included as `dx_root_dir_config.example.jsonc`. If the f
 | **Type** | `All` / `I2V` / `T2V` / `MULTI` | Filter by workflow type |
 | **Group** | `All` / any custom label | Filter by free-form group name |
 
+Filters check across **all versions** in a config, not just the active one — so a config that has both an I2V and a T2V version will appear under both type buckets. The version dropdown also filters to show only versions matching the current type and group selection. Selecting a version or saving a new one automatically updates the filters to match that version's type and group (unless the filter is already `All`).
+
 #### Shared attributes (both nodes)
 
 | Attribute | Type | Description |
@@ -112,8 +114,9 @@ An annotated example is included as `dx_root_dir_config.example.jsonc`. If the f
 | `filename` | string | Output path relative to ComfyUI's output directory |
 | `type` | string | `I2V`, `T2V`, `MULTI`, or blank |
 | `group` | string | Custom group label |
+| `label` | string | Optional version label. Shown in the version dropdown as `N - label`. |
 | `note` | string | Free-form note (max 900 chars). Shown in use mode (up to 4 lines). |
-| `flag_1` / `flag_2` | bool | General-purpose boolean flags with configurable labels. Togglable from use mode. |
+| `flag_1` / `flag_2` / `flag_3` | bool | General-purpose boolean flags with configurable labels. Togglable from use mode. |
 
 #### WAN2.2-specific attributes
 
@@ -129,13 +132,15 @@ An annotated example is included as `dx_root_dir_config.example.jsonc`. If the f
 
 #### WAN2.2 outputs
 
-`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `seed` (INT) · `cfg_high` · `cfg_low` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` · `lora_4_high` · `lora_4_low` (LORA) · `flag_1` · `flag_2` (BOOLEAN)
+`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `seed` (INT) · `master_prmt` · `pos_prompt` · `neg_prompt` (STRING) · `is_relay_prompt` (BOOLEAN) · `cfg_high` · `cfg_low` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` · `lora_4_high` · `lora_4_low` (LORA) · `filename` (STRING) · `unet_stack_high` · `unet_stack_low` (MODEL) · `is_t2v` · `flag_1` · `flag_2` · `flag_3` (BOOLEAN)
 
 LoRAs 1–4 map to config pairs `lora_1/2`, `lora_3/4`, `lora_5/6`, `lora_7/8` as High/Low outputs.
 
 > **`unet_stack_high` · `unet_stack_low` (MODEL) — recommended outputs for most workflows**
 >
 > These are `unet_high` and `unet_low` with all enabled LoRAs from the config already applied. Connect these directly to your sampler instead of wiring individual LoRA nodes — the node handles the full stack for you. Individual `lora_*_high/low` outputs are available if you need to apply LoRAs manually or in a custom order.
+
+> **`is_t2v` (BOOLEAN)** — `True` when the active version's `type` is `T2V`, `False` otherwise (`I2V`, `MULTI`, or blank). Positioned after `unet_stack_low`, before the flag outputs.
 
 #### LTX2.3-specific attributes
 
@@ -151,7 +156,7 @@ LoRAs 1–4 map to config pairs `lora_1/2`, `lora_3/4`, `lora_5/6`, `lora_7/8` a
 
 #### LTX2.3 outputs
 
-`checkpoint_model` · `checkpoint_vae` · `checkpoint_clip` (CLIP) · `transformer_only` (MODEL) · `video_vae` · `audio_vae` (VAE) · `clip_2` · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `seed` (INT) · `cfg` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `master_prompt` · `positive_prompt` · `negative_prompt` · `filename` (STRING) · `lora_1`–`lora_6` (LORA) · `flag_1` · `flag_2` (BOOLEAN)
+`checkpoint_model` · `checkpoint_vae` · `checkpoint_clip` (MODEL/VAE/CLIP) · `transformer_only` (MODEL) · `video_vae` · `audio_vae` (VAE) · `dual_clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `seed` (INT) · `master_prmt` · `pos_prompt` · `neg_prompt` (STRING) · `is_relay_prompt` (BOOLEAN) · `cfg` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `distillation_lora` · `lora_2`–`lora_6` (LORA) · `filename` (STRING) · `transformer_stack` · `checkpoint_stack` (MODEL) · `is_t2v` · `flag_1` · `flag_2` · `flag_3` (BOOLEAN)
 
 Checkpoint outputs are `None` when no checkpoint is set.
 
@@ -159,9 +164,13 @@ Checkpoint outputs are `None` when no checkpoint is set.
 >
 > These are the transformer (standalone) and checkpoint model with all enabled LoRAs from the config already applied. Use `transformer_stack` when working without a checkpoint, or `checkpoint_stack` when loading from a combined checkpoint — connect either directly to your sampler. Individual `lora_*` outputs are available if you need to apply LoRAs manually or in a custom order.
 
+> **`is_t2v` (BOOLEAN)** — `True` when the active version's `type` is `T2V`, `False` otherwise (`I2V`, `MULTI`, or blank). Positioned after `checkpoint_stack`, before the flag outputs.
+
 #### Versioned sets
 
 Each named config holds one or more **versions** — independent snapshots numbered from `1`. A **Version** dropdown below the config selector switches snapshots without affecting others. The active version is serialised into the workflow file. If a version no longer exists at execution time, the node falls back to the last version in the array.
+
+Each version can have an optional **label**. When set, the dropdown shows it as `N - label` (e.g. `2 - my preset`). When creating a new version with **+ Version**, if the label field was not changed from the previous version's label, `alt ` is prepended automatically to distinguish it.
 
 #### Managing configurations
 
@@ -176,7 +185,7 @@ Each named config holds one or more **versions** — independent snapshots numbe
 
 | Button | Action |
 |---|---|
-| **Duplicate** | If the panel has unsaved prompt-editor changes, asks whether to save first, discard, or save-only (no duplicate); then opens the duplicate options |
+| **Duplicate** | If the panel has any unsaved changes (from any input, not just the prompt editor), asks whether to save first, discard, or save-only (no duplicate); then opens the duplicate options |
 | **Del All** | Deletes the entire config and all versions |
 | **Cancel** | If the Prompt Editor left unsaved changes in the panel, asks to discard or return to the editor; otherwise returns to use mode immediately |
 | **Delete Version** | Deletes the current version (removes config if last) |
