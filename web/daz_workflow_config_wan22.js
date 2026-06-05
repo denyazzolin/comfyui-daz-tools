@@ -116,6 +116,7 @@ function updateOutputLabels(node, data, h) {
     fFile(data.filename),
     fName(data.unet_high),
     fName(data.unet_low),
+    data.type === 'T2V',
     fFlagLabel(data.flags?.flag_1, 'flag 1') + ': ' + fFlagValue(data.flags?.flag_1),
     fFlagLabel(data.flags?.flag_2, 'flag 2') + ': ' + fFlagValue(data.flags?.flag_2),
     fFlagLabel(data.flags?.flag_3, 'flag 3') + ': ' + fFlagValue(data.flags?.flag_3),

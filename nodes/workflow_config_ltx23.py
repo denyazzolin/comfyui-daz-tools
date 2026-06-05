@@ -163,6 +163,7 @@ class WorkflowConfigLtx23:
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
         "MODEL", "MODEL",
+        "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
     )
     RETURN_NAMES = (
@@ -180,6 +181,7 @@ class WorkflowConfigLtx23:
         "distillation_lora", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
         "filename",
         "transformer_stack", "checkpoint_stack",
+        "is_t2v",
         "flag_1", "flag_2", "flag_3",
     )
     FUNCTION    = "load_config"
@@ -305,6 +307,7 @@ class WorkflowConfigLtx23:
             _get_file(active_set.get("filename")),
             _apply_loras(unet,       lora_pairs),
             _apply_loras(ckpt_model, lora_pairs),
+            active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),
             _get_flag_value(active_set.get("flags", {}).get("flag_3")),

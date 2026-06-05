@@ -147,6 +147,7 @@ class WorkflowConfigWan22:
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
         "MODEL", "MODEL",
+        "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
     )
     RETURN_NAMES = (
@@ -165,6 +166,7 @@ class WorkflowConfigWan22:
         "lora_4_high", "lora_4_low",
         "filename",
         "unet_stack_high", "unet_stack_low",
+        "is_t2v",
         "flag_1", "flag_2", "flag_3",
     )
     FUNCTION    = "load_config"
@@ -275,6 +277,7 @@ class WorkflowConfigWan22:
                 (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
                 (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
             ]),
+            active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),
             _get_flag_value(active_set.get("flags", {}).get("flag_3")),
