@@ -4,7 +4,7 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 // ── WAN2.2 — use-mode detail table ────────────────────────────────────────────
 
 function renderDetailHtml(data, h) {
-  const { esc, fName, fValue, fText, fPath, fFile, fRandomize, fFlagLabel, fFlagValue, fNote,
+  const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fNote,
           row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
   if (data.error) {
     return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -58,6 +58,7 @@ function renderDetailHtml(data, h) {
     ${row('Master',      trunc(fText(data.master_prompt)))}
     ${row('Positive',    trunc(fText(data.positive_prompt)))}
     ${row('Negative',    trunc(fText(data.negative_prompt)))}
+    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple' })[fType(data.positive_prompt)] || 'Smart')}
     ${rowDiv()}
     ${row('Filename',    fFile(data.filename))}
     <tr>
@@ -238,7 +239,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigWan22',
   nodeDataName: 'WorkflowConfigWan22',
   CLASS:        'Wan2.2',
-  PANEL_H: 578, NODE_W: 460, NODE_H: 790,
+  PANEL_H: 628, NODE_W: 460, NODE_H: 840,
 
   keys: {
     detail:          '_dazWan22Detail',

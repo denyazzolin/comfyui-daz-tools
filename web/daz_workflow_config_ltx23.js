@@ -4,7 +4,7 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 // ── LTX2.3 — use-mode detail table ───────────────────────────────────────────
 
 function renderDetailHtml(data, h) {
-  const { esc, fName, fValue, fText, fPath, fFile, fRandomize, fFlagLabel, fFlagValue, fNote,
+  const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fNote,
           row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
 
   function dualClipDisp(n1, n2) {
@@ -67,6 +67,7 @@ function renderDetailHtml(data, h) {
     ${row('Master',      trunc(fText(data.master_prompt)))}
     ${row('Positive',    trunc(fText(data.positive_prompt)))}
     ${row('Negative',    trunc(fText(data.negative_prompt)))}
+    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple' })[fType(data.positive_prompt)] || 'Smart')}
     ${rowDiv()}
     ${row('Filename',    fFile(data.filename))}
     <tr>
@@ -257,7 +258,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigLtx23',
   nodeDataName: 'WorkflowConfigLtx23',
   CLASS:        'ltx2.3',
-  PANEL_H: 600, NODE_W: 460, NODE_H: 812,
+  PANEL_H: 650, NODE_W: 460, NODE_H: 862,
 
   keys: {
     detail:          '_dazLtx23Detail',
