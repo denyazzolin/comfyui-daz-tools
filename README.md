@@ -4,12 +4,16 @@ ComfyUI custom nodes by [deny azzolin](https://github.com/denyazzolin).
 
 ## Installation
 
+Install from Github...
+
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/denyazzolin/comfyui-daz-tools
 ```
 
-Restart ComfyUI.
+...and restart ComfyUI.
+
+You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ---
 
