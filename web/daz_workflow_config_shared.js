@@ -127,8 +127,10 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function filteredLabels(configs, typeFilter, groupFilter) {
         let filtered = configs
-        if (typeFilter && typeFilter !== 'All') filtered = filtered.filter(c => c.type === typeFilter)
-        if (groupFilter && groupFilter !== 'All') filtered = filtered.filter(c => c.group === groupFilter)
+        if (typeFilter && typeFilter !== 'All')
+          filtered = filtered.filter(c => (c.types ?? [c.type]).includes(typeFilter))
+        if (groupFilter && groupFilter !== 'All')
+          filtered = filtered.filter(c => (c.groups ?? [c.group]).includes(groupFilter))
         return filtered.map(c => c.label)
       }
 
@@ -136,8 +138,11 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!node._dazGroupFilterWidget) return
         const configs    = node._dazAllConfigs || []
         const typeFilter = node._dazTypeFilter || 'All'
-        const base       = typeFilter === 'All' ? configs : configs.filter(c => c.type === typeFilter)
-        const groups     = ['All', ...Array.from(new Set(base.map(c => c.group).filter(Boolean))).sort()]
+        const base = typeFilter === 'All' ? configs
+          : configs.filter(c => (c.types ?? [c.type]).includes(typeFilter))
+        const groups = ['All', ...Array.from(new Set(
+          base.flatMap(c => c.groups ?? [c.group]).filter(Boolean)
+        )).sort()]
         node._dazGroupFilterWidget.options.values = groups
         if (!groups.includes(node._dazGroupFilter)) {
           node._dazGroupFilter = 'All'

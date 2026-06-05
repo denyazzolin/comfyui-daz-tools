@@ -550,11 +550,16 @@ def configs_with_type_for_class(cls: str, file: str = None) -> list[dict]:
     for name, entry in configs.items():
         if entry.get("class") != cls:
             continue
+        sets = entry.get("sets", [])
         active_set = _get_active_set(entry)
+        all_types  = list(dict.fromkeys(s.get("type", "")          for s in sets if s.get("type", "")))
+        all_groups = list(dict.fromkeys(_get_name(s.get("group", "")) for s in sets if _get_name(s.get("group", ""))))
         result.append({
-            "label": make_label(name, entry.get("created_at", "")),
-            "type":  active_set.get("type", ""),
-            "group": _get_name(active_set.get("group", "")),
+            "label":  make_label(name, entry.get("created_at", "")),
+            "type":   active_set.get("type", ""),
+            "group":  _get_name(active_set.get("group", "")),
+            "types":  all_types,
+            "groups": all_groups,
         })
     return result
 
