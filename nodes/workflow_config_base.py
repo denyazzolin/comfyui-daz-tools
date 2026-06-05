@@ -641,6 +641,8 @@ try:
             {
                 "version":    str(s.get("version", "")),
                 "label":      str(s.get("label", "")),
+                "type":       str(s.get("type", "")),
+                "group":      str(_get_name(s.get("group", {}))),
                 "created_at": s.get("created_at", ""),
                 "updated_at": s.get("updated_at", ""),
             }

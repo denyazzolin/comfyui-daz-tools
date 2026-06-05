@@ -103,7 +103,14 @@ export function buildWorkflowConfigExtension(cfg) {
           const versions = await r.json()
           if (gen !== node._dazVersionReloadGen) return
           if (versions.error) return
-          const vList = versions.map(v => v.version).filter(Boolean)
+          node._dazVersionData = versions
+          const typeFilter  = node._dazTypeFilter  || 'All'
+          const groupFilter = node._dazGroupFilter || 'All'
+          let visible = versions
+          if (typeFilter  !== 'All') visible = visible.filter(v => (v.type  || '') === typeFilter)
+          if (groupFilter !== 'All') visible = visible.filter(v => (v.group || '') === groupFilter)
+          if (!visible.length) visible = versions
+          const vList = visible.map(v => v.version).filter(Boolean)
           vw.options.values = vList.length ? vList : ['1']
           if (selectVersion && vList.includes(selectVersion)) {
             vw.value = selectVersion
@@ -1132,11 +1139,15 @@ export function buildWorkflowConfigExtension(cfg) {
           node[keys.editMode] = false
 
           await reloadNodeConfigs(node)
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = newType
-          node._dazTypeFilter = newType
+          if (node._dazTypeFilter !== 'All') {
+            if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = newType
+            node._dazTypeFilter = newType
+          }
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = newGroup
-          node._dazGroupFilter = newGroup
+          if (node._dazGroupFilter !== 'All') {
+            if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = newGroup
+            node._dazGroupFilter = newGroup
+          }
           syncWidget(node)
           const configWidget = node.widgets?.find(w => w.name === 'config')
           if (configWidget) configWidget.value = result.label
@@ -1231,11 +1242,15 @@ export function buildWorkflowConfigExtension(cfg) {
           await reloadNodeConfigs(node)
           const saveType  = payload.type        || 'All'
           const saveGroup = payload.group?.name || 'All'
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = saveType
-          node._dazTypeFilter = saveType
+          if (node._dazTypeFilter !== 'All') {
+            if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = saveType
+            node._dazTypeFilter = saveType
+          }
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = saveGroup
-          node._dazGroupFilter = saveGroup
+          if (node._dazGroupFilter !== 'All') {
+            if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = saveGroup
+            node._dazGroupFilter = saveGroup
+          }
           syncWidget(node)
           const configWidget = node.widgets?.find(w => w.name === 'config')
           if (configWidget) configWidget.value = result.label
@@ -1433,11 +1448,15 @@ export function buildWorkflowConfigExtension(cfg) {
           node[keys.editMode] = false
 
           await reloadNodeConfigs(node)
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = srcType
-          node._dazTypeFilter = srcType
+          if (node._dazTypeFilter !== 'All') {
+            if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = srcType
+            node._dazTypeFilter = srcType
+          }
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = srcGroup
-          node._dazGroupFilter = srcGroup
+          if (node._dazGroupFilter !== 'All') {
+            if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = srcGroup
+            node._dazGroupFilter = srcGroup
+          }
           syncWidget(node)
           if (cw) cw.value = result.label
 
