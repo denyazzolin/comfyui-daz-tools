@@ -616,6 +616,10 @@ export function buildWorkflowConfigExtension(cfg) {
               <textarea id="daz-note" maxlength="900"
                 style="${tas};height:60px;resize:none">${esc(fNote(data.note))}</textarea>
             </div>
+            <div style="${rw}"><label style="${lbl}">Version Label</label>
+              <input id="daz-version-label" type="text" value="${esc(data.label || '')}"
+                placeholder="Optional version label…" style="${fs}">
+            </div>
             <div style="display:flex;justify-content:flex-end">
               <button id="daz-name-clear" style="${cb}">clear</button>
             </div>
@@ -719,6 +723,15 @@ export function buildWorkflowConfigExtension(cfg) {
                   value="${esc(fFlagLabel(data.flags?.flag_2, 'flag 2'))}"
                   placeholder="flag 2" style="flex:1;${fs}">
                 <input type="checkbox" id="daz-flag-2-value"${fFlagValue(data.flags?.flag_2) ? ' checked' : ''}
+                  style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+              </div>
+            </div>
+            <div style="margin-bottom:5px"><label style="${lbl}">Flag 3</label>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input id="daz-flag-3-label" type="text"
+                  value="${esc(fFlagLabel(data.flags?.flag_3, 'flag 3'))}"
+                  placeholder="flag 3" style="flex:1;${fs}">
+                <input type="checkbox" id="daz-flag-3-value"${fFlagValue(data.flags?.flag_3) ? ' checked' : ''}
                   style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
               </div>
             </div>
@@ -869,7 +882,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // Clear buttons
         panel.querySelector('#daz-name-clear')?.addEventListener('click', () => {
-          ;['#daz-config-name','#daz-group'].forEach(id => {
+          ;['#daz-config-name','#daz-group','#daz-version-label'].forEach(id => {
             const el = panel.querySelector(id); if (el) el.value = ''
           })
           const t = panel.querySelector('#daz-type'); if (t) t.value = ''
@@ -916,6 +929,8 @@ export function buildWorkflowConfigExtension(cfg) {
           const v1 = panel.querySelector('#daz-flag-1-value'); if (v1) v1.checked = false
           const l2 = panel.querySelector('#daz-flag-2-label'); if (l2) l2.value = 'flag 2'
           const v2 = panel.querySelector('#daz-flag-2-value'); if (v2) v2.checked = false
+          const l3 = panel.querySelector('#daz-flag-3-label'); if (l3) l3.value = 'flag 3'
+          const v3 = panel.querySelector('#daz-flag-3-value'); if (v3) v3.checked = false
         })
 
         // Close panel helper
@@ -1090,6 +1105,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         const payload = {
           name, class: CLASS, file: currentFile(node),
+          version_label: wrap.querySelector('#daz-version-label')?.value ?? '',
           group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
           type:  wrap.querySelector('#daz-type')?.value ?? '',
           ...buildPayload(wrap),
@@ -1180,9 +1196,11 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
+        const versionLabel = wrap.querySelector('#daz-version-label')?.value ?? ''
         const payload = {
           label, class: CLASS, file: currentFile(node), new_name: newName,
           version: node._dazCurrentVersion || '1', save_mode: saveMode,
+          version_label: saveMode === 'new_version' ? (versionLabel ? 'alt ' + versionLabel : '') : versionLabel,
           group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
           type:  wrap.querySelector('#daz-type')?.value ?? '',
           ...buildPayload(wrap),

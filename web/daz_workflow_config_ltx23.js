@@ -84,6 +84,11 @@ function renderDetailHtml(data, h) {
               style="cursor:pointer;accent-color:#54af7b;width:13px;height:13px;flex-shrink:0">
             <span style="color:#999;font-size:11px;font-family:monospace">${esc(fFlagLabel(data.flags?.flag_2, 'flag 2'))}</span>
           </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="daz-use-flag-3"${fFlagValue(data.flags?.flag_3) ? ' checked' : ''}
+              style="cursor:pointer;accent-color:#54af7b;width:13px;height:13px;flex-shrink:0">
+            <span style="color:#999;font-size:11px;font-family:monospace">${esc(fFlagLabel(data.flags?.flag_3, 'flag 3'))}</span>
+          </div>
         </div>
       </td>
     </tr>
@@ -125,6 +130,7 @@ function updateOutputLabels(node, data, h) {
     ckpt,
     fFlagLabel(data.flags?.flag_1, 'flag 1') + ': ' + fFlagValue(data.flags?.flag_1),
     fFlagLabel(data.flags?.flag_2, 'flag 2') + ': ' + fFlagValue(data.flags?.flag_2),
+    fFlagLabel(data.flags?.flag_3, 'flag 3') + ': ' + fFlagValue(data.flags?.flag_3),
   ]
   values.forEach((val, i) => {
     if (!node.outputs[i]) return
@@ -247,6 +253,7 @@ function buildPayload(wrap) {
     flags: {
       flag_1: { label: wrap.querySelector('#daz-flag-1-label')?.value ?? 'flag 1', value: wrap.querySelector('#daz-flag-1-value')?.checked ?? false },
       flag_2: { label: wrap.querySelector('#daz-flag-2-label')?.value ?? 'flag 2', value: wrap.querySelector('#daz-flag-2-value')?.checked ?? false },
+      flag_3: { label: wrap.querySelector('#daz-flag-3-label')?.value ?? 'flag 3', value: wrap.querySelector('#daz-flag-3-value')?.checked ?? false },
     },
     note: { value: (wrap.querySelector('#daz-note')?.value ?? '').substring(0, 900) },
   }
