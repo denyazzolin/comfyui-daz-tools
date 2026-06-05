@@ -1105,15 +1105,18 @@ export function buildWorkflowConfigExtension(cfg) {
           const result = await r.json()
           if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
+          const newType  = payload.type        || 'All'
+          const newGroup = payload.group?.name || 'All'
+
           if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
           node[keys.editMode] = false
 
           await reloadNodeConfigs(node)
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
-          node._dazTypeFilter = 'All'
+          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = newType
+          node._dazTypeFilter = newType
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
-          node._dazGroupFilter = 'All'
+          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = newGroup
+          node._dazGroupFilter = newGroup
           syncWidget(node)
           const configWidget = node.widgets?.find(w => w.name === 'config')
           if (configWidget) configWidget.value = result.label
@@ -1204,11 +1207,13 @@ export function buildWorkflowConfigExtension(cfg) {
           }
 
           await reloadNodeConfigs(node)
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
-          node._dazTypeFilter = 'All'
+          const saveType  = payload.type        || 'All'
+          const saveGroup = payload.group?.name || 'All'
+          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = saveType
+          node._dazTypeFilter = saveType
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
-          node._dazGroupFilter = 'All'
+          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = saveGroup
+          node._dazGroupFilter = saveGroup
           syncWidget(node)
           const configWidget = node.widgets?.find(w => w.name === 'config')
           if (configWidget) configWidget.value = result.label
@@ -1382,6 +1387,9 @@ export function buildWorkflowConfigExtension(cfg) {
         if (dupBtn) { dupBtn.textContent = 'Duplicating…'; dupBtn.disabled = true }
         if (errDiv) errDiv.textContent = ''
 
+        const srcType  = node[keys.detail]?.type        || 'All'
+        const srcGroup = fName(node[keys.detail]?.group) || 'All'
+
         try {
           const r = await fetch('/daz/workflow-config-duplicate-config', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1403,11 +1411,11 @@ export function buildWorkflowConfigExtension(cfg) {
           node[keys.editMode] = false
 
           await reloadNodeConfigs(node)
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
-          node._dazTypeFilter = 'All'
+          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = srcType
+          node._dazTypeFilter = srcType
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
-          node._dazGroupFilter = 'All'
+          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = srcGroup
+          node._dazGroupFilter = srcGroup
           syncWidget(node)
           if (cw) cw.value = result.label
 
