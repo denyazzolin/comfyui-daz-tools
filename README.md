@@ -112,7 +112,7 @@ Filters check across **all versions** in a config, not just the active one — s
 | `master_prompt` | string | Base prompt / Prompt Relay master |
 | `positive_prompt` | string | Positive conditioning text. Prompt type: `smart` (Prompt Relay, pipe-separated segments with frame ranges `[x-y]`), `beats` (newline-separated segments with second ranges `[x-ys]`), or `simple` (plain flat text, no segments). |
 | `negative_prompt` | string | Negative conditioning text |
-| `lora_1`–`lora_8` | object | LoRA slot: `name`, `strength`, `enabled`. Disabled/empty slots are skipped at execution. |
+| `lora_1`–`lora_8` | object | LoRA slot: `name`, `strength`, `enabled`. Disabled/empty slots are skipped at execution. In Wan2.2 the loras are grouped in 4 groups of high/low pairs|
 | `filename` | string | Output path relative to ComfyUI's output directory |
 | `type` | string | `I2V`, `T2V`, `MULTI`, or blank |
 | `group` | string | Custom group label |
