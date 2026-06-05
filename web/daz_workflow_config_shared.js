@@ -546,6 +546,8 @@ export function buildWorkflowConfigExtension(cfg) {
         const inputFiles = folderMap.input || []
         const loraFiles  = folderMap.loras  || []
 
+        node._dazEditPanelDirty = false
+
         const data      = isNew ? {} : (node[keys.detail] || {})
         const imageName = fPath(data.image_path).split(/[\\/]/).pop() || ''
         const posType   = fType(data.positive_prompt)
@@ -919,12 +921,55 @@ export function buildWorkflowConfigExtension(cfg) {
             node[keys.editOverlay] = null
           }
           node[keys.editMode] = false
+          node._dazEditPanelDirty = false
+        }
+
+        function doCancel() {
+          closePanel()
+          renderUseMode(node, node[keys.detail] || {})
+        }
+
+        function showUnsavedChangesConfirm() {
+          const mo = document.createElement('div')
+          mo.style.cssText = [
+            'position:fixed;top:0;left:0;right:0;bottom:0',
+            'background:rgba(0,0,0,0.75);z-index:10000',
+            'display:flex;align-items:center;justify-content:center',
+          ].join(';')
+          const mb = document.createElement('div')
+          mb.style.cssText = [
+            'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+            'padding:20px 24px;width:380px;font-family:monospace',
+          ].join(';')
+          mb.innerHTML = `
+            <p style="font-size:13px;color:#ddd;margin:0 0 8px">Unsaved changes</p>
+            <p style="font-size:11px;color:#888;margin:0 0 20px">
+              The prompt editor has changes that haven't been saved yet.
+            </p>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
+              <button id="usc-back"
+                style="font-family:monospace;font-size:11px;padding:4px 14px;
+                       background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">
+                Get back to editor
+              </button>
+              <button id="usc-discard"
+                style="font-family:monospace;font-size:11px;padding:4px 14px;
+                       background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">
+                Discard changes and exit
+              </button>
+            </div>
+          `
+          mo.appendChild(mb)
+          document.body.appendChild(mo)
+          mo.addEventListener('click', e => { if (e.target === mo) mo.remove() })
+          mb.querySelector('#usc-back')?.addEventListener('click', () => mo.remove())
+          mb.querySelector('#usc-discard')?.addEventListener('click', () => { mo.remove(); doCancel() })
         }
 
         // Cancel
         panel.querySelector('#daz-cancel-btn')?.addEventListener('click', () => {
-          closePanel()
-          renderUseMode(node, node[keys.detail] || {})
+          if (node._dazEditPanelDirty) showUnsavedChangesConfirm()
+          else doCancel()
         })
 
         // Action buttons
@@ -1017,6 +1062,7 @@ export function buildWorkflowConfigExtension(cfg) {
             const fpsInput = wrap.querySelector('#daz-fps')
             if (fpsInput) fpsInput.value = updates.fps.value
             // Do not save immediately — let the user decide via Save / +Version
+            node._dazEditPanelDirty = true
           },
         })
       }
@@ -1175,6 +1221,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const detailResp = await fetch(detailUrl)
           if (detailResp.ok) node[keys.detail] = await detailResp.json()
 
+          node._dazEditPanelDirty = false
           if (!keepPanelOpen) renderUseMode(node, node[keys.detail] || {})
           thenFn?.()
           return true
@@ -1263,6 +1310,7 @@ export function buildWorkflowConfigExtension(cfg) {
           if (framesInput) framesInput.value = fValue(detail.total_frames)
           const fpsInput = wrap.querySelector('#daz-fps')
           if (fpsInput) fpsInput.value = fValue(detail.fps)
+          node._dazEditPanelDirty = false
           showDuplicateModal(node, wrap)
         })
 
