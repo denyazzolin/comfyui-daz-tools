@@ -72,6 +72,8 @@ Scans `models/loras`, reads safetensors metadata, and caches results to `models/
 
 Store named presets (model paths, prompts, dimensions, sampling params) in `dx_*.json` files and select them from a dropdown. The node loads all models at execution time and passes every value downstream as individual outputs. The default config file (`dx_workflow_configs.json`) is created automatically in `.dx_mgr/` the first time you add a configuration through the node's UI.
 
+![Sample nodes](sample_nodes_v1.png)
+
 Multiple config files are supported — any `dx_*.json` file in `.dx_mgr/` is picked up automatically. Each file can contain configs for any node class (WAN2.2, LTX2.3, etc.), and each node only shows its own class entries. This lets you organize presets by project, client, style, or any other grouping that suits your workflow.
 
 > **Note:** The nodes do not currently support saving configs directly into a specific file — new files must be created and populated manually (or by duplicating an existing file). A managed experience for creating and assigning files is planned for a future version.
@@ -168,9 +170,53 @@ Checkpoint outputs are `None` when no checkpoint is set.
 
 #### Versioned sets
 
+![Sample editor](sample_editor_v1.png)
+
 Each named config holds one or more **versions** — independent snapshots numbered from `1`. A **Version** dropdown below the config selector switches snapshots without affecting others. The active version is serialised into the workflow file. If a version no longer exists at execution time, the node falls back to the last version in the array.
 
 Each version can have an optional **label**. When set, the dropdown shows it as `N - label` (e.g. `2 - my preset`). When creating a new version with **+ Version**, if the label field was not changed from the previous version's label, `alt ` is prepended automatically to distinguish it.
+
+#### Managing prompts
+
+Each version stores three prompt fields — **Master**, **Positive**, and **Negative** — plus a **Prompt Type** that controls how the positive prompt is structured and passed downstream.
+
+**Prompt types**
+
+| Type | Format | Description |
+|---|---|---|
+| **Smart** | `text [start-end] \| text [start-end] \| …` | Multiple pipe-separated segments, each with a frame range. The `is_relay_prompt` output is `True`, signalling a downstream Prompt Relay node to handle distribution. Best used with CFG ≈ 1.0. |
+| **Beats** | `[start-ends] text` (one line per segment) | Segments aligned to time ranges in seconds. Frame counts are derived from FPS. If FPS is unknown, frame numbers are used as a fallback. |
+| **Simple** | plain text | No structure — a single flat string passed as-is. `is_relay_prompt` is `False`. |
+
+When type is **Simple** or **Smart**, the Master prompt is combined with the Positive prompt before being passed downstream (unless type is Smart, in which case the Positive text is forwarded directly to the relay). The `master_prmt` output always carries the raw master text regardless of type.
+
+**Prompt Editor**
+
+![Prompt editor](prompt_editor_v1.png)
+
+Opened from the **Prompt Editor** button inside the edit panel. It is a floating full-screen editor pre-filled with the current Master, Positive, Negative, total frames, and FPS values. Clicking **OK** pushes the values back into the edit panel — it does **not** save to disk. Use **Save** or **+ Version** in the edit panel to persist.
+
+The editor layout:
+
+- **Frames / FPS** — top row. Changing Frames rescales all segment frame counts proportionally (with a minimum of 1 frame per segment and trimming if needed). Changing FPS updates the frame ruler and Beats time labels.
+- **Master** — free-form text area with a **clear** button.
+- **Prompt type** — Smart / Beats / Simple radio group. A contextual hint reminds you of relevant behaviour for the selected type. Switching types converts segments where possible:
+  - Beats → Smart or Simple: strips the `[X-Ys]` time-range prefix from each segment's text.
+  - Any → Simple: merges all segment texts into one block.
+- **Segment bar** — a horizontal bar divided proportionally by segment frame count. Each segment has a distinct colour; the selected segment is highlighted in green. Click any segment to select it.
+- **Frame ruler** — marks 0, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels show both frame number and seconds (e.g. `40(2.5s)`).
+- **Segment text** — editable text area for the selected segment.
+- **Segment controls** (per selected segment):
+  - **Frames** — set the exact frame count for the segment. Cannot exceed remaining unallocated frames.
+  - **clear** — empties the segment text.
+  - **delete** — removes the segment (disabled when only one segment remains).
+  - **equalize** — redistributes total frames evenly across all segments.
+  - **add** — appends a new segment consuming any remaining unallocated frames (or 1 frame with an equalize if none remain).
+  - A warning appears below the bar if the sum of segment frames exceeds total frames.
+- **Negative** — free-form text area with a **clear** button.
+- **Clear All** — resets Master, Positive, and Negative to empty and collapses to a single segment.
+- **Cancel** — closes the editor without changes.
+- **OK** — writes Master, Positive (with type), Negative, total frames, and FPS back into the edit panel.
 
 #### Managing configurations
 
