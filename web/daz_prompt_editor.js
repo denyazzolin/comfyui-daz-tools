@@ -349,7 +349,7 @@
       const TYPE_HINTS = {
         smart:  'Warning! Prompt Relays work better with CFG 1.0',
         beats:  'Beats will coerce frame count into full seconds',
-        simple: '',
+        simple: 'Simple prompt will remove all segments',
       }
       const promptHdr = el('div', 'display:flex;align-items:center;gap:10px;padding:6px 10px 4px')
       promptHdr.innerHTML = `
