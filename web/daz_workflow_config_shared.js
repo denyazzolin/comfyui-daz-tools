@@ -643,6 +643,7 @@ export function buildWorkflowConfigExtension(cfg) {
             </div>
             <div style="${rw}"><label style="${lbl}">Version Label</label>
               <input id="daz-version-label" type="text" value="${esc(data.label || '')}"
+                data-original="${esc(data.label || '')}"
                 placeholder="Optional version label…" style="${fs}">
             </div>
             <div style="display:flex;justify-content:flex-end">
@@ -1225,11 +1226,15 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
-        const versionLabel = wrap.querySelector('#daz-version-label')?.value ?? ''
+        const versionLabelEl = wrap.querySelector('#daz-version-label')
+        const versionLabel   = versionLabelEl?.value ?? ''
+        const originalLabel  = versionLabelEl?.dataset.original ?? ''
         const payload = {
           label, class: CLASS, file: currentFile(node), new_name: newName,
           version: node._dazCurrentVersion || '1', save_mode: saveMode,
-          version_label: saveMode === 'new_version' ? (versionLabel ? 'alt ' + versionLabel : '') : versionLabel,
+          version_label: saveMode === 'new_version'
+            ? (versionLabel === originalLabel ? (versionLabel ? 'alt ' + versionLabel : '') : versionLabel)
+            : versionLabel,
           group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
           type:  wrap.querySelector('#daz-type')?.value ?? '',
           ...buildPayload(wrap),
