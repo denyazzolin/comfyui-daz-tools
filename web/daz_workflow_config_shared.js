@@ -1021,7 +1021,10 @@ export function buildWorkflowConfigExtension(cfg) {
         if (isNew) {
           panel.querySelector('#daz-create-btn')?.addEventListener('click', () => createConfig(node, panel))
         } else {
-          panel.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => showPreDuplicateModal(node, panel))
+          panel.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => {
+            if (node._dazEditPanelDirty) showPreDuplicateModal(node, panel)
+            else showDuplicateModal(node, panel)
+          })
           panel.querySelector('#daz-del-version-btn')?.addEventListener('click', () => showDeleteVersionConfirm(node, panel))
           panel.querySelector('#daz-del-config-btn')?.addEventListener('click', () => showDeleteConfigConfirm(node, panel))
           panel.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, panel, 'current'))
