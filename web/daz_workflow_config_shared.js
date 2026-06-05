@@ -220,6 +220,10 @@ export function buildWorkflowConfigExtension(cfg) {
         return maxLen && d.length > maxLen ? d.substring(0, maxLen - 1) + '…' : d
       }
 
+      function rowDiv() {
+        return `<tr><td colspan="4" style="padding:0"><div style="border-top:1px solid #333;margin:2px 8px"></div></td></tr>`
+      }
+
       function rowPairLora(l1, lora1, l2, lora2, id1, id2) {
         function cell(lora, id) {
           const enabled = loraEnabled(lora)
@@ -273,7 +277,7 @@ export function buildWorkflowConfigExtension(cfg) {
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
         fFlagLabel, fFlagValue, fNote, loraEnabled,
-        row, rowPair, rowNote, rowPairLora, disp, trunc,
+        row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
         box, selOpt, selOptImg,
         fs, ns, tas, lbl, rw, cb,
       }

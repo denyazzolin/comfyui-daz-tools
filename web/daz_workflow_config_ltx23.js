@@ -5,7 +5,7 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 
 function renderDetailHtml(data, h) {
   const { esc, fName, fValue, fText, fPath, fFile, fRandomize, fFlagLabel, fFlagValue, fNote,
-          row, rowPair, rowNote, rowPairLora, disp, trunc, loraEnabled } = h
+          row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
 
   function dualClipDisp(n1, n2) {
     const a = disp(n1, 9), b = disp(n2, 9)
@@ -31,6 +31,7 @@ function renderDetailHtml(data, h) {
     ${row('Group',       fName(data.group))}
     ${row('Type',        typeLabel)}
     ${rowNote(fNote(data.note))}
+    ${rowDiv()}
     ${row('Checkpoint',  disp(fName(data.checkpoint)))}
     ${row('Transformer', disp(fName(data.unet_high)))}
     ${row('Video VAE',   disp(fName(data.vae)))}
@@ -41,9 +42,11 @@ function renderDetailHtml(data, h) {
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
     </tr>
+    ${rowDiv()}
     ${rowPairLora('LoRA 1', loras.lora_1, 'LoRA 2', loras.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
     ${rowPairLora('LoRA 3', loras.lora_3, 'LoRA 4', loras.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
     ${rowPairLora('LoRA 5', loras.lora_5, 'LoRA 6', loras.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
+    ${rowDiv()}
     ${row('Resolution',  fValue(data.width) && fValue(data.height) ? `${fValue(data.width)} × ${fValue(data.height)}` : '')}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Steps</td>
@@ -60,9 +63,11 @@ function renderDetailHtml(data, h) {
     </tr>
     ${row('CFG',         fValue(data.cfg_high))}
     ${rowPair('Frames',  fValue(data.total_frames), 'FPS', fValue(data.fps))}
+    ${rowDiv()}
     ${row('Master',      trunc(fText(data.master_prompt)))}
     ${row('Positive',    trunc(fText(data.positive_prompt)))}
     ${row('Negative',    trunc(fText(data.negative_prompt)))}
+    ${rowDiv()}
     ${row('Filename',    fFile(data.filename))}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:middle">Flags</td>
