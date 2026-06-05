@@ -773,6 +773,10 @@ export function buildWorkflowConfigExtension(cfg) {
           <div style="display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden">${colRight}</div>
         `
 
+        // Mark panel dirty on any input/change inside the body
+        panelBody.addEventListener('input',  () => { node._dazEditPanelDirty = true })
+        panelBody.addEventListener('change', () => { node._dazEditPanelDirty = true })
+
         // Footer
         const btnBase = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
         panelFooter.innerHTML = isNew
