@@ -221,7 +221,7 @@ export function buildWorkflowConfigExtension(cfg) {
       }
 
       function rowDiv() {
-        return `<tr><td colspan="4" style="padding:0"><div style="border-top:1px solid #333;margin:2px 8px"></div></td></tr>`
+        return `<tr><td colspan="4" style="padding:0"><div style="border-top:1px solid #555;margin:2px 8px"></div></td></tr>`
       }
 
       function rowPairLora(l1, lora1, l2, lora2, id1, id2) {
