@@ -120,14 +120,8 @@
       })
     }
 
-    // simple: split on newlines, equalize frames
-    const lines = text.split('\n')
-    const n     = lines.length
-    const base  = Math.max(1, Math.floor(totalFrames / n))
-    return lines.map((l, i) => ({
-      text:   l,
-      frames: i === n - 1 ? Math.max(1, totalFrames - base * (n - 1)) : base,
-    }))
+    // simple: one flat segment — no structural parsing
+    return [{ text, frames: Math.max(1, totalFrames) }]
   }
 
   // ── Segment writing ───────────────────────────────────────────────────────
@@ -371,6 +365,10 @@
               ...s,
               text: s.text.replace(/^\[\d+s?\s*[-–]\s*\d+s?\]\s*/, '').trim(),
             }))
+          }
+          if (promptType === 'simple') {
+            const merged = segments.map(s => s.text).filter(t => t.trim()).join('\n')
+            segments = [{ text: merged, frames: totalFrames }]
           }
           render()
         })
