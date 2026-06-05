@@ -50,7 +50,7 @@ os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 _MGR_DIR    = os.path.join(_WORKFLOWS_DIR, ".dx_mgr")
 
-CURRENT_SCHEMA = 1
+CURRENT_SCHEMA = 2
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -164,9 +164,10 @@ def _get_active_set(entry: dict, version: str = None) -> dict:
     if not isinstance(sets, list) or not sets:
         return {}
     if version:
-        version = str(version)
+        # Strip optional " - label" display suffix added by the UI
+        raw = str(version).split(" - ")[0].strip()
         for s in sets:
-            if str(s.get("version", "")) == version:
+            if str(s.get("version", "")) == raw:
                 return s
     return sets[-1]
 
@@ -346,10 +347,13 @@ def _apply_set_fields(target: dict, data: dict) -> None:
         for key in _LORA_FIELDS:
             target.pop(key, None)
 
+    if "version_label" in data:
+        target["label"] = str(data.get("version_label") or "")
+
     if "flags" in data and isinstance(data["flags"], dict):
         if not isinstance(target.get("flags"), dict):
             target["flags"] = {}
-        for flag_key in ("flag_1", "flag_2"):
+        for flag_key in ("flag_1", "flag_2", "flag_3"):
             if flag_key in data["flags"] and isinstance(data["flags"][flag_key], dict):
                 target["flags"][flag_key] = data["flags"][flag_key]
 
@@ -360,7 +364,7 @@ def _apply_set_fields(target: dict, data: dict) -> None:
 
 def _build_set_from_data(data: dict, version: str, now: str) -> dict:
     """Build a new set object from request data."""
-    s: dict = {"version": version, "created_at": now, "updated_at": now}
+    s: dict = {"version": version, "label": str(data.get("version_label") or ""), "created_at": now, "updated_at": now}
     s["type"] = data.get("type", "")
     for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
         v = data.get(f)
@@ -400,6 +404,8 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
                   else {"label": "flag 1", "value": False},
         "flag_2": flags_data.get("flag_2") if isinstance(flags_data.get("flag_2"), dict)
                   else {"label": "flag 2", "value": False},
+        "flag_3": flags_data.get("flag_3") if isinstance(flags_data.get("flag_3"), dict)
+                  else {"label": "flag 3", "value": False},
     }
     v = data.get("note")
     s["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
@@ -461,14 +467,18 @@ def _normalize_set(set_obj: dict) -> dict:
     for key in _LORA_FIELDS:
         result.pop(key, None)
 
+    if not isinstance(result.get("label"), str):
+        result["label"] = ""
+
     flags = result.get("flags")
     if not isinstance(flags, dict):
         result["flags"] = {
             "flag_1": {"label": "flag 1", "value": False},
             "flag_2": {"label": "flag 2", "value": False},
+            "flag_3": {"label": "flag 3", "value": False},
         }
     else:
-        for key, default_label in (("flag_1", "flag 1"), ("flag_2", "flag 2")):
+        for key, default_label in (("flag_1", "flag 1"), ("flag_2", "flag 2"), ("flag_3", "flag 3")):
             if not isinstance(flags.get(key), dict):
                 flags[key] = {"label": default_label, "value": False}
 
@@ -499,7 +509,14 @@ def load_checkpoint(name: str):
 # ── Schema migration ──────────────────────────────────────────────────────────
 
 def _migrate(configs: dict, from_version: int) -> dict:
-    """v1 is the base schema — no migrations exist."""
+    if from_version < 2:
+        for entry in configs.values():
+            for s in entry.get("sets", []):
+                if "label" not in s:
+                    s["label"] = ""
+                flags = s.get("flags")
+                if isinstance(flags, dict) and "flag_3" not in flags:
+                    flags["flag_3"] = {"label": "flag 3", "value": False}
     return configs
 
 
@@ -534,11 +551,16 @@ def configs_with_type_for_class(cls: str, file: str = None) -> list[dict]:
     for name, entry in configs.items():
         if entry.get("class") != cls:
             continue
+        sets = entry.get("sets", [])
         active_set = _get_active_set(entry)
+        all_types  = list(dict.fromkeys(s.get("type", "")          for s in sets if s.get("type", "")))
+        all_groups = list(dict.fromkeys(_get_name(s.get("group", "")) for s in sets if _get_name(s.get("group", ""))))
         result.append({
-            "label": make_label(name, entry.get("created_at", "")),
-            "type":  active_set.get("type", ""),
-            "group": _get_name(active_set.get("group", "")),
+            "label":  make_label(name, entry.get("created_at", "")),
+            "type":   active_set.get("type", ""),
+            "group":  _get_name(active_set.get("group", "")),
+            "types":  all_types,
+            "groups": all_groups,
         })
     return result
 
@@ -552,27 +574,38 @@ def label_to_name(label: str, cls: str, file: str = None) -> Optional[str]:
 
 
 def _version_sort_key(v: str):
-    return (0, int(v)) if isinstance(v, str) and v.isdigit() else (1, v)
+    raw = v.split(" - ")[0].strip() if " - " in v else v
+    return (0, int(raw), v) if raw.isdigit() else (1, raw, v)
 
 
 def all_versions_for_class(cls: str) -> list[str]:
-    """Collect all known version strings across all files for a class."""
+    """Collect all known version display strings across all files for a class.
+
+    Includes both raw versions ("1") and labelled display strings ("1 - glock")
+    so that widgets saved in either format pass ComfyUI validation.
+    """
     seen: set = {"1"}
+
+    def _add_set(s: dict):
+        v = str(s.get("version", ""))
+        if not v:
+            return
+        seen.add(v)
+        label = str(s.get("label", "")).strip()
+        if label:
+            seen.add(f"{v} - {label}")
+
     sources = scan_config_files(cls)
     for src in sources:
         cfgs = load_configs(file=src["file"])
         for entry in cfgs.values():
             if entry.get("class") == cls:
                 for s in entry.get("sets", []):
-                    v = str(s.get("version", ""))
-                    if v:
-                        seen.add(v)
+                    _add_set(s)
     for entry in load_configs(file=None).values():
         if entry.get("class") == cls:
             for s in entry.get("sets", []):
-                v = str(s.get("version", ""))
-                if v:
-                    seen.add(v)
+                _add_set(s)
     return sorted(seen, key=_version_sort_key)
 
 
@@ -624,6 +657,9 @@ try:
         return web.json_response([
             {
                 "version":    str(s.get("version", "")),
+                "label":      str(s.get("label", "")),
+                "type":       str(s.get("type", "")),
+                "group":      str(_get_name(s.get("group", {}))),
                 "created_at": s.get("created_at", ""),
                 "updated_at": s.get("updated_at", ""),
             }

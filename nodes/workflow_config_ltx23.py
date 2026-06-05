@@ -163,7 +163,8 @@ class WorkflowConfigLtx23:
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
         "MODEL", "MODEL",
-        "BOOLEAN", "BOOLEAN",
+        "BOOLEAN",
+        "BOOLEAN", "BOOLEAN", "BOOLEAN",
     )
     RETURN_NAMES = (
         "checkpoint_model", "checkpoint_vae", "checkpoint_clip",
@@ -180,7 +181,8 @@ class WorkflowConfigLtx23:
         "distillation_lora", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
         "filename",
         "transformer_stack", "checkpoint_stack",
-        "flag_1", "flag_2",
+        "is_t2v",
+        "flag_1", "flag_2", "flag_3",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -227,8 +229,9 @@ class WorkflowConfigLtx23:
         if _get_seed_randomize(seed_obj):
             seed_val = random.randint(1, 2**31 - 1)
             sets = entry.get("sets", [])
+            raw_version = str(version).split(" - ")[0].strip()
             for i, s in enumerate(sets):
-                if str(s.get("version", "")) == str(version):
+                if str(s.get("version", "")) == raw_version:
                     sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
                     break
             else:
@@ -305,6 +308,8 @@ class WorkflowConfigLtx23:
             _get_file(active_set.get("filename")),
             _apply_loras(unet,       lora_pairs),
             _apply_loras(ckpt_model, lora_pairs),
+            active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),
+            _get_flag_value(active_set.get("flags", {}).get("flag_3")),
         )

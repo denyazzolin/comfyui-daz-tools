@@ -147,7 +147,8 @@ class WorkflowConfigWan22:
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
         "MODEL", "MODEL",
-        "BOOLEAN", "BOOLEAN",
+        "BOOLEAN",
+        "BOOLEAN", "BOOLEAN", "BOOLEAN",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -165,7 +166,8 @@ class WorkflowConfigWan22:
         "lora_4_high", "lora_4_low",
         "filename",
         "unet_stack_high", "unet_stack_low",
-        "flag_1", "flag_2",
+        "is_t2v",
+        "flag_1", "flag_2", "flag_3",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -212,8 +214,9 @@ class WorkflowConfigWan22:
         if _get_seed_randomize(seed_obj):
             seed_val = random.randint(1, 2**31 - 1)
             sets = entry.get("sets", [])
+            raw_version = str(version).split(" - ")[0].strip()
             for i, s in enumerate(sets):
-                if str(s.get("version", "")) == str(version):
+                if str(s.get("version", "")) == raw_version:
                     sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
                     break
             else:
@@ -275,6 +278,8 @@ class WorkflowConfigWan22:
                 (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
                 (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
             ]),
+            active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),
+            _get_flag_value(active_set.get("flags", {}).get("flag_3")),
         )

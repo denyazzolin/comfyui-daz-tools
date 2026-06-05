@@ -4,8 +4,8 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 // ── WAN2.2 — use-mode detail table ────────────────────────────────────────────
 
 function renderDetailHtml(data, h) {
-  const { esc, fName, fValue, fText, fPath, fFile, fRandomize, fFlagLabel, fFlagValue, fNote,
-          row, rowPair, rowNote, rowPairLora, disp, trunc, loraEnabled } = h
+  const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fNote,
+          row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
   if (data.error) {
     return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
   }
@@ -24,6 +24,7 @@ function renderDetailHtml(data, h) {
     ${row('Group',      fName(data.group))}
     ${row('Type',       typeLabel)}
     ${rowNote(fNote(data.note))}
+    ${rowDiv()}
     ${row('UNet High',  disp(fName(data.unet_high)))}
     ${row('UNet Low',   disp(fName(data.unet_low)))}
     ${row('VAE',        disp(fName(data.vae)))}
@@ -32,10 +33,12 @@ function renderDetailHtml(data, h) {
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
     </tr>
+    ${rowDiv()}
     ${rowPairLora('LoRA 1 High', loras.lora_1, 'LoRA 1 Low', loras.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
     ${rowPairLora('LoRA 2 High', loras.lora_3, 'LoRA 2 Low', loras.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
     ${rowPairLora('LoRA 3 High', loras.lora_5, 'LoRA 3 Low', loras.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
     ${rowPairLora('LoRA 4 High', loras.lora_7, 'LoRA 4 Low', loras.lora_8, 'daz-use-lora-7', 'daz-use-lora-8')}
+    ${rowDiv()}
     ${row('Resolution',  fValue(data.width) && fValue(data.height) ? `${fValue(data.width)} × ${fValue(data.height)}` : '')}
     ${rowPair('Steps',    fValue(data.steps),       'Split Step', fValue(data.split_step))}
     <tr>
@@ -51,9 +54,12 @@ function renderDetailHtml(data, h) {
     </tr>
     ${rowPair('CFG High', fValue(data.cfg_high),    'CFG Low',    fValue(data.cfg_low))}
     ${rowPair('Frames',   fValue(data.total_frames), 'FPS',       fValue(data.fps))}
+    ${rowDiv()}
     ${row('Master',      trunc(fText(data.master_prompt)))}
     ${row('Positive',    trunc(fText(data.positive_prompt)))}
     ${row('Negative',    trunc(fText(data.negative_prompt)))}
+    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple' })[fType(data.positive_prompt)] || 'Smart')}
+    ${rowDiv()}
     ${row('Filename',    fFile(data.filename))}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:middle">Flags</td>
@@ -68,6 +74,11 @@ function renderDetailHtml(data, h) {
             <input type="checkbox" id="daz-use-flag-2"${fFlagValue(data.flags?.flag_2) ? ' checked' : ''}
               style="cursor:pointer;accent-color:#54af7b;width:13px;height:13px;flex-shrink:0">
             <span style="color:#999;font-size:11px;font-family:monospace">${esc(fFlagLabel(data.flags?.flag_2, 'flag 2'))}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="daz-use-flag-3"${fFlagValue(data.flags?.flag_3) ? ' checked' : ''}
+              style="cursor:pointer;accent-color:#54af7b;width:13px;height:13px;flex-shrink:0">
+            <span style="color:#999;font-size:11px;font-family:monospace">${esc(fFlagLabel(data.flags?.flag_3, 'flag 3'))}</span>
           </div>
         </div>
       </td>
@@ -105,8 +116,10 @@ function updateOutputLabels(node, data, h) {
     fFile(data.filename),
     fName(data.unet_high),
     fName(data.unet_low),
+    data.type === 'T2V',
     fFlagLabel(data.flags?.flag_1, 'flag 1') + ': ' + fFlagValue(data.flags?.flag_1),
     fFlagLabel(data.flags?.flag_2, 'flag 2') + ': ' + fFlagValue(data.flags?.flag_2),
+    fFlagLabel(data.flags?.flag_3, 'flag 3') + ': ' + fFlagValue(data.flags?.flag_3),
   ]
   values.forEach((val, i) => {
     if (!node.outputs[i]) return
@@ -222,6 +235,7 @@ function buildPayload(wrap) {
     flags: {
       flag_1: { label: wrap.querySelector('#daz-flag-1-label')?.value ?? 'flag 1', value: wrap.querySelector('#daz-flag-1-value')?.checked ?? false },
       flag_2: { label: wrap.querySelector('#daz-flag-2-label')?.value ?? 'flag 2', value: wrap.querySelector('#daz-flag-2-value')?.checked ?? false },
+      flag_3: { label: wrap.querySelector('#daz-flag-3-label')?.value ?? 'flag 3', value: wrap.querySelector('#daz-flag-3-value')?.checked ?? false },
     },
     note: { value: (wrap.querySelector('#daz-note')?.value ?? '').substring(0, 900) },
   }
@@ -233,7 +247,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigWan22',
   nodeDataName: 'WorkflowConfigWan22',
   CLASS:        'Wan2.2',
-  PANEL_H: 578, NODE_W: 460, NODE_H: 790,
+  PANEL_H: 628, NODE_W: 460, NODE_H: 840,
 
   keys: {
     detail:          '_dazWan22Detail',

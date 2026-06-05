@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 1,                   // internal schema version; do not change
+    "schema_version": 2,                   // internal schema version; do not change
     "name": "dx_workflow_configs",          // file identifier
     "version": "1.0",                       // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -13,6 +13,7 @@
     "sets": [                              // array of versioned parameter sets
       {
         "version": "1",                    // set version number (auto-incremented on save)
+        "label": "My First Version",       // optional user-friendly label for this set version
         "created_at": "2026-06-02T00:00:00", // set creation timestamp
         "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
         "type": "I2V",                     // generation mode (e.g. I2V, T2V)
@@ -51,7 +52,8 @@
         "filename": { "file": "" },        // output filename (without extension)
         "flags": {
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
-          "flag_2": { "label": "flag 2", "value": false }  // custom boolean toggle 2
+          "flag_2": { "label": "flag 2", "value": false }, // custom boolean toggle 2
+          "flag_3": { "label": "flag 3", "value": false }  // custom boolean toggle 3
         }
       }
     ]
@@ -63,6 +65,7 @@
     "sets": [                              // array of versioned parameter sets
       {
         "version": "1",                    // set version number (auto-incremented on save)
+        "label": "My First Version",       // optional user-friendly label for this set version
         "created_at": "2026-06-02T00:00:00", // set creation timestamp
         "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
         "type": "T2V",                     // generation mode (e.g. I2V, T2V); used by UI for filtering
@@ -101,7 +104,8 @@
         "filename": { "file": "" },        // output filename (without extension)
         "flags": {
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
-          "flag_2": { "label": "flag 2", "value": false }  // custom boolean toggle 2
+          "flag_2": { "label": "flag 2", "value": false },  // custom boolean toggle 2
+          "flag_3": { "label": "flag 3", "value": false }  // custom boolean toggle 3
         }
       }
     ]

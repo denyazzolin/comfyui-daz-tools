@@ -74,6 +74,13 @@ export function buildWorkflowConfigExtension(cfg) {
         return f ? `${base}&file=${encodeURIComponent(f)}` : base
       }
 
+      function rawVersion(display) {
+        if (!display) return display
+        const s = String(display)
+        const dash = s.indexOf(' - ')
+        return dash !== -1 ? s.substring(0, dash) : s
+      }
+
       async function reloadNodeConfigs(node) {
         const url = configsUrl(node,
           `/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
@@ -103,14 +110,24 @@ export function buildWorkflowConfigExtension(cfg) {
           const versions = await r.json()
           if (gen !== node._dazVersionReloadGen) return
           if (versions.error) return
-          const vList = versions.map(v => v.version).filter(Boolean)
+          node._dazVersionData = versions
+          const typeFilter  = node._dazTypeFilter  || 'All'
+          const groupFilter = node._dazGroupFilter || 'All'
+          let visible = versions
+          if (typeFilter  !== 'All') visible = visible.filter(v => (v.type  || '') === typeFilter)
+          if (groupFilter !== 'All') visible = visible.filter(v => (v.group || '') === groupFilter)
+          if (!visible.length) visible = versions
+          const makeDisplay = v => v.label ? `${v.version} - ${v.label}` : String(v.version)
+          const selectRaw   = selectVersion != null ? rawVersion(String(selectVersion)) : null
+          const vList = visible.map(makeDisplay).filter(Boolean)
           vw.options.values = vList.length ? vList : ['1']
-          if (selectVersion && vList.includes(selectVersion)) {
-            vw.value = selectVersion
-          } else if (!vList.includes(vw.value)) {
+          const selectDisplay = selectRaw ? vList.find(d => rawVersion(d) === selectRaw) : null
+          if (selectDisplay) {
+            vw.value = selectDisplay
+          } else if (!vList.some(d => rawVersion(d) === rawVersion(String(vw.value || '')))) {
             vw.value = vList[vList.length - 1] ?? '1'
           }
-          node._dazCurrentVersion = vw.value
+          node._dazCurrentVersion = rawVersion(vw.value)
         } catch (e) {
           console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not reload versions`, e)
         }
@@ -120,8 +137,10 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function filteredLabels(configs, typeFilter, groupFilter) {
         let filtered = configs
-        if (typeFilter && typeFilter !== 'All') filtered = filtered.filter(c => c.type === typeFilter)
-        if (groupFilter && groupFilter !== 'All') filtered = filtered.filter(c => c.group === groupFilter)
+        if (typeFilter && typeFilter !== 'All')
+          filtered = filtered.filter(c => (c.types ?? [c.type]).includes(typeFilter))
+        if (groupFilter && groupFilter !== 'All')
+          filtered = filtered.filter(c => (c.groups ?? [c.group]).includes(groupFilter))
         return filtered.map(c => c.label)
       }
 
@@ -129,8 +148,11 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!node._dazGroupFilterWidget) return
         const configs    = node._dazAllConfigs || []
         const typeFilter = node._dazTypeFilter || 'All'
-        const base       = typeFilter === 'All' ? configs : configs.filter(c => c.type === typeFilter)
-        const groups     = ['All', ...Array.from(new Set(base.map(c => c.group).filter(Boolean))).sort()]
+        const base = typeFilter === 'All' ? configs
+          : configs.filter(c => (c.types ?? [c.type]).includes(typeFilter))
+        const groups = ['All', ...Array.from(new Set(
+          base.flatMap(c => c.groups ?? [c.group]).filter(Boolean)
+        )).sort()]
         node._dazGroupFilterWidget.options.values = groups
         if (!groups.includes(node._dazGroupFilter)) {
           node._dazGroupFilter = 'All'
@@ -220,6 +242,10 @@ export function buildWorkflowConfigExtension(cfg) {
         return maxLen && d.length > maxLen ? d.substring(0, maxLen - 1) + '…' : d
       }
 
+      function rowDiv() {
+        return `<tr><td colspan="4" style="padding:0"><div style="border-top:1px solid #555;margin:2px 8px"></div></td></tr>`
+      }
+
       function rowPairLora(l1, lora1, l2, lora2, id1, id2) {
         function cell(lora, id) {
           const enabled = loraEnabled(lora)
@@ -273,7 +299,7 @@ export function buildWorkflowConfigExtension(cfg) {
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
         fFlagLabel, fFlagValue, fNote, loraEnabled,
-        row, rowPair, rowNote, rowPairLora, disp, trunc,
+        row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
         box, selOpt, selOptImg,
         fs, ns, tas, lbl, rw, cb,
       }
@@ -498,7 +524,7 @@ export function buildWorkflowConfigExtension(cfg) {
         node[keys.wrap].innerHTML =
           '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Loading…</p>'
         try {
-          const ver = version ?? node._dazCurrentVersion ?? node._dazVersionWidget?.value ?? '1'
+          const ver = rawVersion(version ?? node._dazCurrentVersion ?? node._dazVersionWidget?.value ?? '1')
           const url = configsUrl(node,
             `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(label)}&version=${encodeURIComponent(ver)}`)
           const resp = await fetch(url)
@@ -513,11 +539,14 @@ export function buildWorkflowConfigExtension(cfg) {
             syncWidget(node)
           }
           if (data.version && node._dazVersionWidget) {
-            if (!node._dazVersionWidget.options.values.includes(data.version)) {
-              node._dazVersionWidget.options.values = [...node._dazVersionWidget.options.values, data.version]
+            const rawVer     = String(data.version)
+            const matchDisp  = node._dazVersionWidget.options.values.find(d => rawVersion(d) === rawVer)
+            const displayVal = matchDisp ?? rawVer
+            if (!matchDisp) {
+              node._dazVersionWidget.options.values = [...node._dazVersionWidget.options.values, displayVal]
             }
-            node._dazVersionWidget.value = data.version
-            node._dazCurrentVersion = data.version
+            node._dazVersionWidget.value = displayVal
+            node._dazCurrentVersion = rawVer
           }
           node[keys.detail] = data
           renderUseMode(node, data)
@@ -611,6 +640,11 @@ export function buildWorkflowConfigExtension(cfg) {
             <div style="${rw}"><label style="${lbl}">Note</label>
               <textarea id="daz-note" maxlength="900"
                 style="${tas};height:60px;resize:none">${esc(fNote(data.note))}</textarea>
+            </div>
+            <div style="${rw}"><label style="${lbl}">Version Label</label>
+              <input id="daz-version-label" type="text" value="${esc(data.label || '')}"
+                data-original="${esc(data.label || '')}"
+                placeholder="Optional version label…" style="${fs}">
             </div>
             <div style="display:flex;justify-content:flex-end">
               <button id="daz-name-clear" style="${cb}">clear</button>
@@ -718,6 +752,15 @@ export function buildWorkflowConfigExtension(cfg) {
                   style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
               </div>
             </div>
+            <div style="margin-bottom:5px"><label style="${lbl}">Flag 3</label>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input id="daz-flag-3-label" type="text"
+                  value="${esc(fFlagLabel(data.flags?.flag_3, 'flag 3'))}"
+                  placeholder="flag 3" style="flex:1;${fs}">
+                <input type="checkbox" id="daz-flag-3-value"${fFlagValue(data.flags?.flag_3) ? ' checked' : ''}
+                  style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+              </div>
+            </div>
             <div style="display:flex;justify-content:flex-end">
               <button id="daz-other-clear" style="${cb}">clear</button>
             </div>
@@ -729,6 +772,10 @@ export function buildWorkflowConfigExtension(cfg) {
           <div style="display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden">${colCenter}</div>
           <div style="display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden">${colRight}</div>
         `
+
+        // Mark panel dirty on any input/change inside the body
+        panelBody.addEventListener('input',  () => { node._dazEditPanelDirty = true })
+        panelBody.addEventListener('change', () => { node._dazEditPanelDirty = true })
 
         // Footer
         const btnBase = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
@@ -865,7 +912,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // Clear buttons
         panel.querySelector('#daz-name-clear')?.addEventListener('click', () => {
-          ;['#daz-config-name','#daz-group'].forEach(id => {
+          ;['#daz-config-name','#daz-group','#daz-version-label'].forEach(id => {
             const el = panel.querySelector(id); if (el) el.value = ''
           })
           const t = panel.querySelector('#daz-type'); if (t) t.value = ''
@@ -912,6 +959,8 @@ export function buildWorkflowConfigExtension(cfg) {
           const v1 = panel.querySelector('#daz-flag-1-value'); if (v1) v1.checked = false
           const l2 = panel.querySelector('#daz-flag-2-label'); if (l2) l2.value = 'flag 2'
           const v2 = panel.querySelector('#daz-flag-2-value'); if (v2) v2.checked = false
+          const l3 = panel.querySelector('#daz-flag-3-label'); if (l3) l3.value = 'flag 3'
+          const v3 = panel.querySelector('#daz-flag-3-value'); if (v3) v3.checked = false
         })
 
         // Close panel helper
@@ -976,7 +1025,10 @@ export function buildWorkflowConfigExtension(cfg) {
         if (isNew) {
           panel.querySelector('#daz-create-btn')?.addEventListener('click', () => createConfig(node, panel))
         } else {
-          panel.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => showPreDuplicateModal(node, panel))
+          panel.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => {
+            if (node._dazEditPanelDirty) showPreDuplicateModal(node, panel)
+            else showDuplicateModal(node, panel)
+          })
           panel.querySelector('#daz-del-version-btn')?.addEventListener('click', () => showDeleteVersionConfirm(node, panel))
           panel.querySelector('#daz-del-config-btn')?.addEventListener('click', () => showDeleteConfigConfirm(node, panel))
           panel.querySelector('#daz-save-btn')?.addEventListener('click', () => saveConfig(node, panel, 'current'))
@@ -1086,6 +1138,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         const payload = {
           name, class: CLASS, file: currentFile(node),
+          version_label: wrap.querySelector('#daz-version-label')?.value ?? '',
           group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
           type:  wrap.querySelector('#daz-type')?.value ?? '',
           ...buildPayload(wrap),
@@ -1112,11 +1165,15 @@ export function buildWorkflowConfigExtension(cfg) {
           node[keys.editMode] = false
 
           await reloadNodeConfigs(node)
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = newType
-          node._dazTypeFilter = newType
+          if (node._dazTypeFilter !== 'All') {
+            if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = newType
+            node._dazTypeFilter = newType
+          }
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = newGroup
-          node._dazGroupFilter = newGroup
+          if (node._dazGroupFilter !== 'All') {
+            if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = newGroup
+            node._dazGroupFilter = newGroup
+          }
           syncWidget(node)
           const configWidget = node.widgets?.find(w => w.name === 'config')
           if (configWidget) configWidget.value = result.label
@@ -1176,9 +1233,15 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
+        const versionLabelEl = wrap.querySelector('#daz-version-label')
+        const versionLabel   = versionLabelEl?.value ?? ''
+        const originalLabel  = versionLabelEl?.dataset.original ?? ''
         const payload = {
           label, class: CLASS, file: currentFile(node), new_name: newName,
           version: node._dazCurrentVersion || '1', save_mode: saveMode,
+          version_label: saveMode === 'new_version'
+            ? (versionLabel === originalLabel ? (versionLabel ? 'alt ' + versionLabel : '') : versionLabel)
+            : versionLabel,
           group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
           type:  wrap.querySelector('#daz-type')?.value ?? '',
           ...buildPayload(wrap),
@@ -1209,11 +1272,15 @@ export function buildWorkflowConfigExtension(cfg) {
           await reloadNodeConfigs(node)
           const saveType  = payload.type        || 'All'
           const saveGroup = payload.group?.name || 'All'
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = saveType
-          node._dazTypeFilter = saveType
+          if (node._dazTypeFilter !== 'All') {
+            if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = saveType
+            node._dazTypeFilter = saveType
+          }
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = saveGroup
-          node._dazGroupFilter = saveGroup
+          if (node._dazGroupFilter !== 'All') {
+            if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = saveGroup
+            node._dazGroupFilter = saveGroup
+          }
           syncWidget(node)
           const configWidget = node.widgets?.find(w => w.name === 'config')
           if (configWidget) configWidget.value = result.label
@@ -1411,11 +1478,15 @@ export function buildWorkflowConfigExtension(cfg) {
           node[keys.editMode] = false
 
           await reloadNodeConfigs(node)
-          if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = srcType
-          node._dazTypeFilter = srcType
+          if (node._dazTypeFilter !== 'All') {
+            if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = srcType
+            node._dazTypeFilter = srcType
+          }
           updateGroupFilterWidget(node)
-          if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = srcGroup
-          node._dazGroupFilter = srcGroup
+          if (node._dazGroupFilter !== 'All') {
+            if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = srcGroup
+            node._dazGroupFilter = srcGroup
+          }
           syncWidget(node)
           if (cw) cw.value = result.label
 
@@ -1779,10 +1850,10 @@ export function buildWorkflowConfigExtension(cfg) {
           const origVwCb = versionWidget.callback
           versionWidget.callback = (value) => {
             origVwCb?.call(this, value)
-            this._dazCurrentVersion = value
+            this._dazCurrentVersion = rawVersion(value)
             if (!this[keys.editMode]) {
               const cw = this.widgets?.find(w => w.name === 'config')
-              if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, value)
+              if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, rawVersion(value))
             }
           }
         }
@@ -1947,7 +2018,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const configBefore = w?.value
           syncWidget(self)
           await reloadVersionWidget(self, w?.value, w?.value === configBefore ? savedVersion : null)
-          self._dazCurrentVersion = self._dazVersionWidget?.value || '1'
+          self._dazCurrentVersion = rawVersion(self._dazVersionWidget?.value || '1')
           if (!self[keys.editMode]) loadDetail(self, w?.value, self._dazCurrentVersion)
         })
       }
