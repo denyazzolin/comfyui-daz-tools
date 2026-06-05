@@ -102,7 +102,7 @@ An annotated example is included as `dx_root_dir_config.example.jsonc`. If the f
 | `total_frames` | int | Number of video frames |
 | `fps` | float | Playback frame rate |
 | `master_prompt` | string | Base prompt / Prompt Relay master |
-| `positive_prompt` | string | Positive conditioning text. Prompt type: `smart` (relay), `beats`, or `simple`. |
+| `positive_prompt` | string | Positive conditioning text. Prompt type: `smart` (Prompt Relay, pipe-separated segments with frame ranges `[x-y]`), `beats` (newline-separated segments with second ranges `[x-ys]`), or `simple` (plain flat text, no segments). |
 | `negative_prompt` | string | Negative conditioning text |
 | `lora_1`–`lora_8` | object | LoRA slot: `name`, `strength`, `enabled`. Disabled/empty slots are skipped at execution. |
 | `filename` | string | Output path relative to ComfyUI's output directory |
@@ -168,16 +168,18 @@ Each named config holds one or more **versions** — independent snapshots numbe
 - **Center:** Prompt type (Smart / Beat / Simple) · Master, Positive, Negative prompts · Prompt Editor button
 - **Right:** Model selectors · LoRA slots (name, strength, enabled) · Filename, flags
 
+**Prompt Editor from edit mode:** clicking the Prompt Editor button opens the editor pre-filled with the current panel values. When you click OK, the editor populates the Master, Positive, and Negative prompt fields in the panel — it does **not** save immediately. Use **Save** or **+ Version** to persist the changes.
+
 | Button | Action |
 |---|---|
-| **Duplicate** | Opens duplicate modal |
+| **Duplicate** | If the panel has unsaved prompt-editor changes, asks whether to save first, discard, or save-only (no duplicate); then opens the duplicate options |
 | **Del All** | Deletes the entire config and all versions |
-| **Cancel** | Discards edits and returns to use mode |
+| **Cancel** | If the Prompt Editor left unsaved changes in the panel, asks to discard or return to the editor; otherwise returns to use mode immediately |
 | **Delete Version** | Deletes the current version (removes config if last) |
 | **+ Version** | Saves form as a new auto-numbered version |
 | **Save** | Overwrites the current version |
 
-**Duplicate modal** options: new config with all versions · new config with current version only · new version in this config · Cancel.
+**Duplicate options:** new config with all versions · new config with current version only · new version in this config · Cancel.
 
 **Name conflicts:** if a Save, Create, or Duplicate would clash, a popup offers **Cancel** or **Auto name** (appends `_alt` + 4 random digits and retries).
 
