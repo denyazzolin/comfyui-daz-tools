@@ -574,27 +574,38 @@ def label_to_name(label: str, cls: str, file: str = None) -> Optional[str]:
 
 
 def _version_sort_key(v: str):
-    return (0, int(v)) if isinstance(v, str) and v.isdigit() else (1, v)
+    raw = v.split(" - ")[0].strip() if " - " in v else v
+    return (0, int(raw), v) if raw.isdigit() else (1, raw, v)
 
 
 def all_versions_for_class(cls: str) -> list[str]:
-    """Collect all known version strings across all files for a class."""
+    """Collect all known version display strings across all files for a class.
+
+    Includes both raw versions ("1") and labelled display strings ("1 - glock")
+    so that widgets saved in either format pass ComfyUI validation.
+    """
     seen: set = {"1"}
+
+    def _add_set(s: dict):
+        v = str(s.get("version", ""))
+        if not v:
+            return
+        seen.add(v)
+        label = str(s.get("label", "")).strip()
+        if label:
+            seen.add(f"{v} - {label}")
+
     sources = scan_config_files(cls)
     for src in sources:
         cfgs = load_configs(file=src["file"])
         for entry in cfgs.values():
             if entry.get("class") == cls:
                 for s in entry.get("sets", []):
-                    v = str(s.get("version", ""))
-                    if v:
-                        seen.add(v)
+                    _add_set(s)
     for entry in load_configs(file=None).values():
         if entry.get("class") == cls:
             for s in entry.get("sets", []):
-                v = str(s.get("version", ""))
-                if v:
-                    seen.add(v)
+                _add_set(s)
     return sorted(seen, key=_version_sort_key)
 
 

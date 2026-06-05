@@ -229,8 +229,9 @@ class WorkflowConfigLtx23:
         if _get_seed_randomize(seed_obj):
             seed_val = random.randint(1, 2**31 - 1)
             sets = entry.get("sets", [])
+            raw_version = str(version).split(" - ")[0].strip()
             for i, s in enumerate(sets):
-                if str(s.get("version", "")) == str(version):
+                if str(s.get("version", "")) == raw_version:
                     sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
                     break
             else:
