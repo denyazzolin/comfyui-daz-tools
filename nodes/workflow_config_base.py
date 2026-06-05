@@ -164,9 +164,10 @@ def _get_active_set(entry: dict, version: str = None) -> dict:
     if not isinstance(sets, list) or not sets:
         return {}
     if version:
-        version = str(version)
+        # Strip optional " - label" display suffix added by the UI
+        raw = str(version).split(" - ")[0].strip()
         for s in sets:
-            if str(s.get("version", "")) == version:
+            if str(s.get("version", "")) == raw:
                 return s
     return sets[-1]
 

@@ -74,6 +74,13 @@ export function buildWorkflowConfigExtension(cfg) {
         return f ? `${base}&file=${encodeURIComponent(f)}` : base
       }
 
+      function rawVersion(display) {
+        if (!display) return display
+        const s = String(display)
+        const dash = s.indexOf(' - ')
+        return dash !== -1 ? s.substring(0, dash) : s
+      }
+
       async function reloadNodeConfigs(node) {
         const url = configsUrl(node,
           `/daz/workflow-configs-with-type?class=${encodeURIComponent(CLASS)}`)
@@ -110,14 +117,17 @@ export function buildWorkflowConfigExtension(cfg) {
           if (typeFilter  !== 'All') visible = visible.filter(v => (v.type  || '') === typeFilter)
           if (groupFilter !== 'All') visible = visible.filter(v => (v.group || '') === groupFilter)
           if (!visible.length) visible = versions
-          const vList = visible.map(v => v.version).filter(Boolean)
+          const makeDisplay = v => v.label ? `${v.version} - ${v.label}` : String(v.version)
+          const selectRaw   = selectVersion != null ? rawVersion(String(selectVersion)) : null
+          const vList = visible.map(makeDisplay).filter(Boolean)
           vw.options.values = vList.length ? vList : ['1']
-          if (selectVersion && vList.includes(selectVersion)) {
-            vw.value = selectVersion
-          } else if (!vList.includes(vw.value)) {
+          const selectDisplay = selectRaw ? vList.find(d => rawVersion(d) === selectRaw) : null
+          if (selectDisplay) {
+            vw.value = selectDisplay
+          } else if (!vList.some(d => rawVersion(d) === rawVersion(String(vw.value || '')))) {
             vw.value = vList[vList.length - 1] ?? '1'
           }
-          node._dazCurrentVersion = vw.value
+          node._dazCurrentVersion = rawVersion(vw.value)
         } catch (e) {
           console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not reload versions`, e)
         }
@@ -514,7 +524,7 @@ export function buildWorkflowConfigExtension(cfg) {
         node[keys.wrap].innerHTML =
           '<p style="font-family:monospace;font-size:12px;color:#555;padding:8px">Loading…</p>'
         try {
-          const ver = version ?? node._dazCurrentVersion ?? node._dazVersionWidget?.value ?? '1'
+          const ver = rawVersion(version ?? node._dazCurrentVersion ?? node._dazVersionWidget?.value ?? '1')
           const url = configsUrl(node,
             `/daz/workflow-config-detail?class=${encodeURIComponent(CLASS)}&label=${encodeURIComponent(label)}&version=${encodeURIComponent(ver)}`)
           const resp = await fetch(url)
@@ -529,11 +539,14 @@ export function buildWorkflowConfigExtension(cfg) {
             syncWidget(node)
           }
           if (data.version && node._dazVersionWidget) {
-            if (!node._dazVersionWidget.options.values.includes(data.version)) {
-              node._dazVersionWidget.options.values = [...node._dazVersionWidget.options.values, data.version]
+            const rawVer     = String(data.version)
+            const matchDisp  = node._dazVersionWidget.options.values.find(d => rawVersion(d) === rawVer)
+            const displayVal = matchDisp ?? rawVer
+            if (!matchDisp) {
+              node._dazVersionWidget.options.values = [...node._dazVersionWidget.options.values, displayVal]
             }
-            node._dazVersionWidget.value = data.version
-            node._dazCurrentVersion = data.version
+            node._dazVersionWidget.value = displayVal
+            node._dazCurrentVersion = rawVer
           }
           node[keys.detail] = data
           renderUseMode(node, data)
@@ -1825,10 +1838,10 @@ export function buildWorkflowConfigExtension(cfg) {
           const origVwCb = versionWidget.callback
           versionWidget.callback = (value) => {
             origVwCb?.call(this, value)
-            this._dazCurrentVersion = value
+            this._dazCurrentVersion = rawVersion(value)
             if (!this[keys.editMode]) {
               const cw = this.widgets?.find(w => w.name === 'config')
-              if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, value)
+              if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, rawVersion(value))
             }
           }
         }
@@ -1993,7 +2006,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const configBefore = w?.value
           syncWidget(self)
           await reloadVersionWidget(self, w?.value, w?.value === configBefore ? savedVersion : null)
-          self._dazCurrentVersion = self._dazVersionWidget?.value || '1'
+          self._dazCurrentVersion = rawVersion(self._dazVersionWidget?.value || '1')
           if (!self[keys.editMode]) loadDetail(self, w?.value, self._dazCurrentVersion)
         })
       }
