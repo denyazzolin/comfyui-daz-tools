@@ -36,8 +36,8 @@ function renderDetailHtml(data, h) {
     ${row('Transformer', disp(fName(data.unet_high)))}
     ${row('Video VAE',   disp(fName(data.vae)))}
     ${row('Audio VAE',   disp(fName(data.audio_vae)))}
-    ${row('Gemma3 / T5', disp(fName(data.clip)))}
-    ${row('Text Proj',   disp(fName(data.clip_2)))}
+    ${row('CLIP 2',      disp(fName(data.clip_2)))}
+    ${row('CLIP',        disp(fName(data.clip)))}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
@@ -162,10 +162,10 @@ function buildModelsHtml(folderMap, data, h) {
     <div style="${rw}"><label style="${lbl}">Audio VAE</label>
       <select id="daz-audio-vae" style="${fs}">${selOpt(vaeFiles, fName(data.audio_vae))}</select>
     </div>
-    <div style="${rw}"><label style="${lbl}">Gemma3 / T5</label>
+    <div style="${rw}"><label style="${lbl}">CLIP</label>
       <select id="daz-clip" style="${fs}">${selOpt(clipFiles, fName(data.clip))}</select>
     </div>
-    <div style="${rw}"><label style="${lbl}">Text Proj</label>
+    <div style="${rw}"><label style="${lbl}">CLIP 2</label>
       <select id="daz-clip-2" style="${fs}">${selOpt(clipFiles, fName(data.clip_2))}</select>
     </div>
     <div style="display:flex;justify-content:flex-end">
