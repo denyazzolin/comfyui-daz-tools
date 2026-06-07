@@ -72,7 +72,7 @@ Scans `models/loras`, reads safetensors metadata, and caches results to `models/
 
 Store named presets (model paths, prompts, dimensions, sampling params) in `dx_*.json` files and select them from a dropdown. The node loads all models at execution time and passes every value downstream as individual outputs. The default config file (`dx_workflow_configs.json`) is created automatically in `.dx_mgr/` the first time you add a configuration through the node's UI.
 
-![Sample nodes](sample_nodes_v1.png)
+![Sample nodes](content\sample_nodes_v1.png)
 
 Multiple config files are supported — any `dx_*.json` file in `.dx_mgr/` is picked up automatically. Each file can contain configs for any node class (WAN2.2, LTX2.3, etc.), and each node only shows its own class entries. This lets you organize presets by project, client, style, or any other grouping that suits your workflow.
 
@@ -170,7 +170,7 @@ Checkpoint outputs are `None` when no checkpoint is set.
 
 #### Versioned sets
 
-![Sample editor](sample_editor_v1.png)
+![Sample editor](content\sample_editor_v1.png)
 
 Each named config holds one or more **versions** — independent snapshots numbered from `1`. A **Version** dropdown below the config selector switches snapshots without affecting others. The active version is serialised into the workflow file. If a version no longer exists at execution time, the node falls back to the last version in the array.
 
@@ -192,7 +192,7 @@ When type is **Simple** or **Smart**, the Master prompt is combined with the Pos
 
 **Prompt Editor**
 
-![Prompt editor](prompt_editor_v1.png)
+![Prompt editor](content\prompt_editor_v1.png)
 
 Opened from the **Prompt Editor** button inside the edit panel. It is a floating full-screen editor pre-filled with the current Master, Positive, Negative, total frames, and FPS values. Clicking **OK** pushes the values back into the edit panel — it does **not** save to disk. Use **Save** or **+ Version** in the edit panel to persist.
 
