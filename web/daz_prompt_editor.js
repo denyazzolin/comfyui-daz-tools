@@ -382,19 +382,39 @@
         r.addEventListener('change', e => {
           if (!e.target.checked) return
           saveDomState()
-          const oldType  = promptType
-          promptType     = e.target.value
-          if (oldType === 'beats' && promptType !== 'beats') {
-            segments = segments.map(s => ({
-              ...s,
-              text: s.text.replace(/^\[\d+s?\s*[-–]\s*\d+s?\]\s*/, '').trim(),
-            }))
+          const oldType = promptType
+          const newType = e.target.value
+
+          const doChange = () => {
+            promptType = newType
+            if (oldType === 'beats' && promptType !== 'beats') {
+              segments = segments.map(s => ({
+                ...s,
+                text: s.text.replace(/^\[\d+s?\s*[-–]\s*\d+s?\]\s*/, '').trim(),
+              }))
+            }
+            if (promptType === 'simple') {
+              const merged = segments.map(s => s.text).filter(t => t.trim()).join('\n')
+              segments = [{ text: merged, frames: totalFrames }]
+            }
+            render()
           }
-          if (promptType === 'simple') {
-            const merged = segments.map(s => s.text).filter(t => t.trim()).join('\n')
-            segments = [{ text: merged, frames: totalFrames }]
+
+          if (newType === 'simple' && oldType !== 'simple') {
+            confirmPopup(
+              'This will delete all segments. A simple prompt has no segments. Continue?',
+              yes => {
+                if (!yes) {
+                  promptHdr.querySelector(`input[value="${oldType}"]`).checked = true
+                  return
+                }
+                doChange()
+              }
+            )
+            return
           }
-          render()
+
+          doChange()
         })
       })
 
