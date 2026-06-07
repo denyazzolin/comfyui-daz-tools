@@ -70,178 +70,132 @@ Scans `models/loras`, reads safetensors metadata, and caches results to `models/
 
 ### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`)
 
-Store named presets (model paths, prompts, dimensions, sampling params) in `dx_*.json` files and select them from a dropdown. The node loads all models at execution time and passes every value downstream as individual outputs. The default config file (`dx_workflow_configs.json`) is created automatically in `.dx_mgr/` the first time you add a configuration through the node's UI.
+These nodes let you store named workflow presets — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a preset, the node loads all the models and sends every value downstream automatically. There is no need to rewire anything when switching between setups.
 
 ![Sample nodes](content\sample_nodes_v1.png)
 
-Multiple config files are supported — any `dx_*.json` file in `.dx_mgr/` is picked up automatically. Each file can contain configs for any node class (WAN2.2, LTX2.3, etc.), and each node only shows its own class entries. This lets you organize presets by project, client, style, or any other grouping that suits your workflow.
+#### Config files
 
-> **Note:** The nodes do not currently support saving configs directly into a specific file — new files must be created and populated manually (or by duplicating an existing file). A managed experience for creating and assigning files is planned for a future version.
+Presets are stored in `dx_*.json` files inside `ComfyUI/user/default/workflows/.dx_mgr/`. The default file (`dx_workflow_configs.json`) is created automatically the first time you add a preset through the node UI.
 
-**Storage:** All config files (`dx_*.json`) must be placed in `ComfyUI/user/default/workflows/.dx_mgr/`. A **Config file** dropdown appears when multiple files exist. Each node only shows configs of its own class.
+You can have as many config files as you like — any `dx_*.json` file in that folder is picked up automatically, and a **Config file** dropdown appears when more than one file exists. Each file can hold presets for any node class (WAN2.2, LTX2.3, etc.), and each node shows only its own class entries. Use multiple files to organise presets by project, client, style, or any other grouping.
 
-**Custom root directory:** To store configs in a different location, create `dx_root_dir_config.json` in the plugin folder (`custom_nodes/comfyui-daz-tools/`):
-
-```json
-{
-  "workflows_root_dir": "D:/path/to/your/workflows"
-}
-```
-
-An annotated example is included as `dx_root_dir_config.example.jsonc`. If the file is absent or the key is empty, the default location is used.
+> **Custom location:** To store config files somewhere else, create `dx_root_dir_config.json` in the plugin folder (`custom_nodes/comfyui-daz-tools/`) with the key `"workflows_root_dir"` pointing to your preferred path. An annotated example is included as `dx_root_dir_config.example.jsonc`.
 
 #### Filters
 
-| Widget | Values | Description |
-|---|---|---|
-| **Type** | `All` / `I2V` / `T2V` / `MULTI` | Filter by workflow type |
-| **Group** | `All` / any custom label | Filter by free-form group name |
+Two filters at the top of the node let you narrow down which presets are shown:
 
-Filters check across **all versions** in a config, not just the active one — so a config that has both an I2V and a T2V version will appear under both type buckets. The version dropdown also filters to show only versions matching the current type and group selection. Selecting a version or saving a new one automatically updates the filters to match that version's type and group (unless the filter is already `All`).
+- **Type** — filter by workflow type: `All`, `I2V` (image-to-video), `T2V` (text-to-video), or `MULTI`.
+- **Group** — filter by a custom group name you assign to presets, or `All` to show everything.
 
-#### Shared attributes (both nodes)
+Filters check across all versions of a preset, so a preset that has both an I2V and a T2V version appears under both type filters. The version dropdown also updates to show only matching versions.
 
-| Attribute | Type | Description |
-|---|---|---|
-| `image_path` | string | Input image (ComfyUI input folder filename or absolute path) |
-| `width` / `height` | int | Output frame dimensions |
-| `steps` | int | Denoising steps |
-| `seed` | int | Sampler seed. **Randomize** picks a new one on every run. |
-| `total_frames` | int | Number of video frames |
-| `fps` | float | Playback frame rate |
-| `master_prompt` | string | Base prompt / Prompt Relay master |
-| `positive_prompt` | string | Positive conditioning text. Prompt type: `smart` (Prompt Relay, pipe-separated segments with frame ranges `[x-y]`), `beats` (newline-separated segments with second ranges `[x-ys]`), or `simple` (plain flat text, no segments). |
-| `negative_prompt` | string | Negative conditioning text |
-| `lora_1`–`lora_8` | object | LoRA slot: `name`, `strength`, `enabled`. Disabled/empty slots are skipped at execution. In Wan2.2 the loras are grouped in 4 groups of high/low pairs|
-| `filename` | string | Output path relative to ComfyUI's output directory |
-| `type` | string | `I2V`, `T2V`, `MULTI`, or blank |
-| `group` | string | Custom group label |
-| `label` | string | Optional version label. Shown in the version dropdown as `N - label`. |
-| `note` | string | Free-form note (max 900 chars). Shown in use mode (up to 4 lines). |
-| `flag_1` / `flag_2` / `flag_3` | bool | General-purpose boolean flags with configurable labels. Togglable from use mode. |
+#### What each node stores
 
-#### WAN2.2-specific attributes
+Both nodes share a common set of configurable fields:
 
-| Attribute | Type | Description |
-|---|---|---|
-| `unet_high` | string | High-quality UNet diffusion model |
-| `unet_low` | string | Low-quality / draft UNet diffusion model |
-| `vae` | string | VAE model |
-| `clip` | string | Text encoder |
-| `split_step` | int | Step at which sampler switches from `unet_high` to `unet_low` |
-| `cfg_high` | float | CFG scale for the high-quality pass |
-| `cfg_low` | float | CFG scale for the low-quality pass |
+| Field | What it controls |
+|---|---|
+| **Name / Group / Type** | How the preset is identified and filtered |
+| **Label** | Optional short label shown in the version dropdown (e.g. `2 - cinematic`) |
+| **Note** | Free-form note (up to 900 characters), shown on the node while in use |
+| **Image** | Reference input image — a filename inside ComfyUI's input folder, or an absolute path |
+| **Width / Height** | Output frame dimensions |
+| **Steps** | Number of denoising steps |
+| **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
+| **Total frames / FPS** | Video length and playback speed |
+| **Master prompt** | Base text combined with the positive prompt (see Prompts below) |
+| **Positive / Negative prompts** | Conditioning text sent to the sampler |
+| **LoRA slots** | Up to 8 LoRA slots, each with a model name, strength, and enabled toggle. Disabled or empty slots are skipped automatically |
+| **Filename** | Output path, relative to ComfyUI's output folder |
+| **Flags 1 / 2 / 3** | Three boolean toggles with configurable labels — useful for routing or switching behaviour downstream |
 
-#### WAN2.2 outputs
+**WAN2.2** additionally stores:
 
-`unet_high` · `unet_low` (MODEL) · `vae` (VAE) · `clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `split_step` · `seed` (INT) · `master_prmt` · `pos_prompt` · `neg_prompt` (STRING) · `is_relay_prompt` (BOOLEAN) · `cfg_high` · `cfg_low` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `lora_1_high` · `lora_1_low` · `lora_2_high` · `lora_2_low` · `lora_3_high` · `lora_3_low` · `lora_4_high` · `lora_4_low` (LORA) · `filename` (STRING) · `unet_stack_high` · `unet_stack_low` (MODEL) · `is_t2v` · `flag_1` · `flag_2` · `flag_3` (BOOLEAN)
+| Field | What it controls |
+|---|---|
+| **UNet High** | Diffusion model used for the high-quality pass |
+| **UNet Low** | Diffusion model used for the low/draft pass |
+| **VAE** | Video VAE |
+| **CLIP** | Text encoder |
+| **Split step** | The step at which the sampler switches from the high to the low model |
+| **CFG High / CFG Low** | CFG scale for each model pass |
 
-LoRAs 1–4 map to config pairs `lora_1/2`, `lora_3/4`, `lora_5/6`, `lora_7/8` as High/Low outputs.
+LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be applied independently to each model pass. The node outputs a ready-to-use model stack for each pass with all enabled LoRAs already applied — connect those directly to your sampler.
 
-> **`unet_stack_high` · `unet_stack_low` (MODEL) — recommended outputs for most workflows**
->
-> These are `unet_high` and `unet_low` with all enabled LoRAs from the config already applied. Connect these directly to your sampler instead of wiring individual LoRA nodes — the node handles the full stack for you. Individual `lora_*_high/low` outputs are available if you need to apply LoRAs manually or in a custom order.
+**LTX2.3** additionally stores:
 
-> **`is_t2v` (BOOLEAN)** — `True` when the active version's `type` is `T2V`, `False` otherwise (`I2V`, `MULTI`, or blank). Positioned after `unet_stack_low`, before the flag outputs.
+| Field | What it controls |
+|---|---|
+| **Checkpoint** | A combined model file that includes the diffusion model, CLIP, and VAE in one |
+| **UNet / Transformer** | Standalone diffusion model, used when not loading from a checkpoint |
+| **Video VAE / Audio VAE** | Separate VAE models for video and audio |
+| **CLIP / CLIP 2** | Primary and secondary text encoders |
+| **CFG** | CFG scale |
 
-#### LTX2.3-specific attributes
+You can fill in either the checkpoint path or the standalone model paths — both sets of outputs are available on the node. The node outputs a ready-to-use model stack with all enabled LoRAs already applied for both the standalone transformer and the checkpoint model.
 
-| Attribute | Type | Description |
-|---|---|---|
-| `checkpoint` | string | Combined checkpoint (model + CLIP + VAE) |
-| `unet_high` | string | Transformer/diffusion model (standalone, without checkpoint) |
-| `vae` | string | Video VAE |
-| `audio_vae` | string | Audio VAE |
-| `clip` | string | Primary text encoder |
-| `clip_2` | string | Secondary text encoder |
-| `cfg` | float | CFG scale |
-
-#### LTX2.3 outputs
-
-`checkpoint_model` · `checkpoint_vae` · `checkpoint_clip` (MODEL/VAE/CLIP) · `transformer_only` (MODEL) · `video_vae` · `audio_vae` (VAE) · `dual_clip` (CLIP) · `image` (IMAGE) · `width` · `height` · `steps` · `seed` (INT) · `master_prmt` · `pos_prompt` · `neg_prompt` (STRING) · `is_relay_prompt` (BOOLEAN) · `cfg` (FLOAT) · `total_frames` (INT) · `fps` (FLOAT) · `distillation_lora` · `lora_2`–`lora_6` (LORA) · `filename` (STRING) · `transformer_stack` · `checkpoint_stack` (MODEL) · `is_t2v` · `flag_1` · `flag_2` · `flag_3` (BOOLEAN)
-
-Checkpoint outputs are `None` when no checkpoint is set.
-
-> **`transformer_stack` · `checkpoint_stack` (MODEL) — recommended outputs for most workflows**
->
-> These are the transformer (standalone) and checkpoint model with all enabled LoRAs from the config already applied. Use `transformer_stack` when working without a checkpoint, or `checkpoint_stack` when loading from a combined checkpoint — connect either directly to your sampler. Individual `lora_*` outputs are available if you need to apply LoRAs manually or in a custom order.
-
-> **`is_t2v` (BOOLEAN)** — `True` when the active version's `type` is `T2V`, `False` otherwise (`I2V`, `MULTI`, or blank). Positioned after `checkpoint_stack`, before the flag outputs.
-
-#### Versioned sets
+#### Versioned presets
 
 ![Sample editor](content\sample_editor_v1.png)
 
-Each named config holds one or more **versions** — independent snapshots numbered from `1`. A **Version** dropdown below the config selector switches snapshots without affecting others. The active version is serialised into the workflow file. If a version no longer exists at execution time, the node falls back to the last version in the array.
+Each named preset can hold multiple **versions** — independent snapshots of all settings, numbered from 1. Switch between them with the **Version** dropdown without affecting other versions. The active version is saved in the workflow file and restored the next time you open it. If a version is missing at load time, the node falls back to the last available version.
 
-Each version can have an optional **label**. When set, the dropdown shows it as `N - label` (e.g. `2 - my preset`). When creating a new version with **+ Version**, if the label field was not changed from the previous version's label, `alt ` is prepended automatically to distinguish it.
+Each version can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). When you create a new version with **+ Version** and the label hasn't been changed, `alt ` is prepended automatically to distinguish it.
 
 #### Managing prompts
 
-Each version stores three prompt fields — **Master**, **Positive**, and **Negative** — plus a **Prompt Type** that controls how the positive prompt is structured and passed downstream.
+Each version stores three prompt fields — **Master**, **Positive**, and **Negative** — along with a **Prompt Type** that controls how the positive prompt is structured.
 
-**Prompt types**
+| Type | How it works |
+|---|---|
+| **Smart** | The positive prompt is split into pipe-separated segments, each covering a frame range (`text [start-end] \| text [start-end] \| …`). A downstream Prompt Relay node handles distribution across frames. Best used with CFG ≈ 1.0. |
+| **Beats** | Segments are aligned to time ranges in seconds (`[start-ends] text`, one per line). Frame counts are derived from FPS automatically. |
+| **Simple** | A single flat text string passed as-is. |
 
-| Type | Format | Description |
-|---|---|---|
-| **Smart** | `text [start-end] \| text [start-end] \| …` | Multiple pipe-separated segments, each with a frame range. The `is_relay_prompt` output is `True`, signalling a downstream Prompt Relay node to handle distribution. Best used with CFG ≈ 1.0. |
-| **Beats** | `[start-ends] text` (one line per segment) | Segments aligned to time ranges in seconds. Frame counts are derived from FPS. If FPS is unknown, frame numbers are used as a fallback. |
-| **Simple** | plain text | No structure — a single flat string passed as-is. `is_relay_prompt` is `False`. |
-
-When type is **Simple** or **Smart**, the Master prompt is combined with the Positive prompt before being passed downstream (unless type is Smart, in which case the Positive text is forwarded directly to the relay). The `master_prmt` output always carries the raw master text regardless of type.
+For **Simple** and **Beats** types, the Master prompt is prepended to the positive prompt before it reaches the sampler. For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
 
 **Prompt Editor**
 
 ![Prompt editor](content\prompt_editor_v1.png)
 
-Opened from the **Prompt Editor** button inside the edit panel. It is a floating full-screen editor pre-filled with the current Master, Positive, Negative, total frames, and FPS values. Clicking **OK** pushes the values back into the edit panel — it does **not** save to disk. Use **Save** or **+ Version** in the edit panel to persist.
+Click **Prompt Editor** inside the edit panel to open a full-screen editor. It loads the current Master, Positive, Negative, total frames, and FPS values and lets you work with them visually.
 
-The editor layout:
-
-- **Frames / FPS** — top row. Changing Frames rescales all segment frame counts proportionally (with a minimum of 1 frame per segment and trimming if needed). Changing FPS updates the frame ruler and Beats time labels.
-- **Master** — free-form text area with a **clear** button.
-- **Prompt type** — Smart / Beats / Simple radio group. A contextual hint reminds you of relevant behaviour for the selected type. Switching types converts segments where possible:
-  - Beats → Smart or Simple: strips the `[X-Ys]` time-range prefix from each segment's text.
-  - Any → Simple: merges all segment texts into one block.
-- **Segment bar** — a horizontal bar divided proportionally by segment frame count. Each segment has a distinct colour; the selected segment is highlighted in green. Click any segment to select it.
-- **Frame ruler** — marks 0, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels show both frame number and seconds (e.g. `40(2.5s)`).
-- **Segment text** — editable text area for the selected segment.
-- **Segment controls** (per selected segment):
-  - **Frames** — set the exact frame count for the segment. Cannot exceed remaining unallocated frames.
-  - **clear** — empties the segment text.
-  - **delete** — removes the segment (disabled when only one segment remains).
-  - **equalize** — redistributes total frames evenly across all segments.
-  - **add** — appends a new segment consuming any remaining unallocated frames (or 1 frame with an equalize if none remain).
-  - A warning appears below the bar if the sum of segment frames exceeds total frames.
-- **Negative** — free-form text area with a **clear** button.
+- **Frames / FPS** — changing Frames rescales all segment lengths proportionally; changing FPS updates the time labels on the ruler.
+- **Master** — free-form text area.
+- **Prompt type** — switch between Smart, Beats, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
+- **Segment bar** — a horizontal bar showing each segment as a proportional colour-coded block. Click any block to select it; the active segment is highlighted in green.
+- **Frame ruler** — marks 0%, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels include both frame number and seconds (e.g. `40 (2.5s)`).
+- **Segment text** — edit the text for the selected segment.
+- **Segment controls** — set the exact frame count, clear the text, delete the segment, equalize all segments evenly, or add a new segment.
+- **Negative** — free-form text area.
 - **Clear All** — resets Master, Positive, and Negative to empty and collapses to a single segment.
-- **Cancel** — closes the editor without changes.
-- **OK** — writes Master, Positive (with type), Negative, total frames, and FPS back into the edit panel.
 
-#### Managing configurations
+Clicking **OK** sends all values back to the edit panel. It does **not** save to disk — use **Save** or **+ Version** in the edit panel to persist.
 
-**Use mode** — summary of the active version. LoRA enabled checkboxes and flag checkboxes save immediately without entering edit mode.
+#### Edit mode
 
-**Edit mode** — floating full-screen panel with three columns:
-- **Left:** Name, Group, Type, Note · Reference image (upload/preview) · Dimensions, seed, CFG, frames, FPS
-- **Center:** Prompt type (Smart / Beat / Simple) · Master, Positive, Negative prompts · Prompt Editor button
-- **Right:** Model selectors · LoRA slots (name, strength, enabled) · Filename, flags
+Open the full-screen edit panel by clicking the node's **Edit** button (or double-clicking the node on the canvas).
 
-**Prompt Editor from edit mode:** clicking the Prompt Editor button opens the editor pre-filled with the current panel values. When you click OK, the editor populates the Master, Positive, and Negative prompt fields in the panel — it does **not** save immediately. Use **Save** or **+ Version** to persist the changes.
+The panel has three columns:
+- **Left:** Name, Group, Type, Note, reference image, dimensions, seed, CFG, frames, and FPS.
+- **Center:** Prompt Type selector, Master / Positive / Negative prompts, and the **Prompt Editor** button.
+- **Right:** Model selectors, LoRA slots (name, strength, enabled toggle), filename, and flag labels.
 
-| Button | Action |
+| Button | What it does |
 |---|---|
-| **Duplicate** | If the panel has any unsaved changes (from any input, not just the prompt editor), asks whether to save first, discard, or save-only (no duplicate); then opens the duplicate options |
-| **Del All** | Deletes the entire config and all versions |
-| **Cancel** | If the Prompt Editor left unsaved changes in the panel, asks to discard or return to the editor; otherwise returns to use mode immediately |
-| **Delete Version** | Deletes the current version (removes config if last) |
-| **+ Version** | Saves form as a new auto-numbered version |
-| **Save** | Overwrites the current version |
+| **Save** | Overwrites the current version with the panel values |
+| **+ Version** | Saves the current panel as a new auto-numbered version |
+| **Duplicate** | Copies this preset — you can duplicate all versions, just the current version, or add a new version to the same preset. If there are unsaved changes, prompts to save or discard first |
+| **Delete Version** | Removes the current version (removes the entire preset if it is the last version) |
+| **Del All** | Deletes the entire preset and all its versions |
+| **Cancel** | Returns to use mode; prompts to discard if there are unsaved changes |
 
-**Duplicate options:** new config with all versions · new config with current version only · new version in this config · Cancel.
+**Name conflicts** — if saving or duplicating would clash with an existing preset name, a popup offers to cancel or auto-rename (appends `_alt` + 4 random digits).
 
-**Name conflicts:** if a Save, Create, or Duplicate would clash, a popup offers **Cancel** or **Auto name** (appends `_alt` + 4 random digits and retries).
+**Rename warning** — saving with a changed name applies to all versions in the preset; a confirmation popup appears before proceeding.
 
-**Rename warning:** saving with a changed config name affects all versions — a confirmation popup appears before proceeding.
+**Use mode** — when not in edit mode, the node shows a summary of the active version. LoRA enabled toggles and flag toggles can be changed directly from use mode without opening the edit panel, and save immediately.
 
-When no configs exist, the panel shows an empty state with a centered **Create** button.
+When no presets exist yet, the node shows an empty state with a centred **Create** button.
