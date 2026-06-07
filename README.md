@@ -131,7 +131,8 @@ LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be appli
 | **Checkpoint** | A combined model file that includes the diffusion model, CLIP, and VAE in one |
 | **UNet / Transformer** | Standalone diffusion model, used when not loading from a checkpoint |
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio |
-| **CLIP / CLIP 2** | Primary and secondary text encoders |
+| **Gemma3 / T5** | Main text encoder (e.g. Gemma3 12B). Must go in this field — order matters |
+| **Text Proj** | LTX text projection model (e.g. `ltx-2.3_text_projection_bf16`). Goes in this field — do not swap |
 | **CFG** | CFG scale |
 
 You can fill in either the checkpoint path or the standalone model paths — both sets of outputs are available on the node. The node outputs a ready-to-use model stack with all enabled LoRAs already applied for both the standalone transformer and the checkpoint model.
