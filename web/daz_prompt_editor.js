@@ -360,7 +360,7 @@
       // ── Master ──────────────────────────────────────────────────────────
       const masterSec = el('div', 'padding:6px 10px')
       masterSec.innerHTML = `
-        <textarea id="pe-master" style="${TA_STYLE};min-height:60px">${esc(masterText)}</textarea>
+        <textarea id="pe-master" style="${TA_STYLE};min-height:106px">${esc(masterText)}</textarea>
         <div style="display:flex;justify-content:flex-end;margin-top:3px">
           ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
         </div>
@@ -432,7 +432,7 @@
       // ── Segment text area ───────────────────────────────────────────────
       const posSec = el('div', 'padding:0 10px 4px')
       posSec.innerHTML = `
-        <textarea id="pe-seg-text" style="${TA_STYLE};min-height:80px">${esc(segments[selIdx]?.text ?? '')}</textarea>
+        <textarea id="pe-seg-text" style="${TA_STYLE};min-height:106px">${esc(segments[selIdx]?.text ?? '')}</textarea>
       `
       panel.appendChild(posSec)
       posSec.querySelector('#pe-seg-text').addEventListener('input', e => {
@@ -587,7 +587,7 @@
 
       const negSec = el('div', 'padding:0 10px 6px')
       negSec.innerHTML = `
-        <textarea id="pe-neg" style="${TA_STYLE};min-height:60px">${esc(negText)}</textarea>
+        <textarea id="pe-neg" style="${TA_STYLE};min-height:92px">${esc(negText)}</textarea>
         <div style="display:flex;justify-content:flex-end;margin-top:3px">
           ${mkBtn('pe-neg-clear','clear','#555','#333','#999')}
         </div>
