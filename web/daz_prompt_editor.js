@@ -293,6 +293,30 @@
       if (old) old.replaceWith(makeSegBar())
     }
 
+    function confirmPopup(message, callback) {
+      const ov  = el('div',
+        'position:fixed;top:0;left:0;right:0;bottom:0;' +
+        'background:rgba(0,0,0,0.6);z-index:10001;' +
+        'display:flex;align-items:center;justify-content:center')
+      const box = el('div',
+        'background:#252525;border:1px solid #555;border-radius:6px;' +
+        'padding:20px 24px;font-family:monospace;font-size:12px;color:#ddd;' +
+        'display:flex;flex-direction:column;gap:16px;max-width:300px;text-align:center')
+      const msgDiv = el('div', null)
+      msgDiv.textContent = message
+      const btnRow = el('div', 'display:flex;gap:10px;justify-content:center')
+      btnRow.innerHTML =
+        mkBtn('pe-popup-yes', 'Yes', '#2a8050', '#1a5c35', '#cde') +
+        mkBtn('pe-popup-no',  'No',  '#555',    '#333',    '#ccc')
+      box.appendChild(msgDiv)
+      box.appendChild(btnRow)
+      ov.appendChild(box)
+      document.body.appendChild(ov)
+      box.addEventListener('click', e => e.stopPropagation())
+      btnRow.querySelector('#pe-popup-yes').addEventListener('click', () => { ov.remove(); callback(true)  })
+      btnRow.querySelector('#pe-popup-no' ).addEventListener('click', () => { ov.remove(); callback(false) })
+    }
+
     // ── Full render ───────────────────────────────────────────────────────
 
     function render() {
@@ -358,19 +382,39 @@
         r.addEventListener('change', e => {
           if (!e.target.checked) return
           saveDomState()
-          const oldType  = promptType
-          promptType     = e.target.value
-          if (oldType === 'beats' && promptType !== 'beats') {
-            segments = segments.map(s => ({
-              ...s,
-              text: s.text.replace(/^\[\d+s?\s*[-–]\s*\d+s?\]\s*/, '').trim(),
-            }))
+          const oldType = promptType
+          const newType = e.target.value
+
+          const doChange = () => {
+            promptType = newType
+            if (oldType === 'beats' && promptType !== 'beats') {
+              segments = segments.map(s => ({
+                ...s,
+                text: s.text.replace(/^\[\d+s?\s*[-–]\s*\d+s?\]\s*/, '').trim(),
+              }))
+            }
+            if (promptType === 'simple') {
+              const merged = segments.map(s => s.text).filter(t => t.trim()).join('\n')
+              segments = [{ text: merged, frames: totalFrames }]
+            }
+            render()
           }
-          if (promptType === 'simple') {
-            const merged = segments.map(s => s.text).filter(t => t.trim()).join('\n')
-            segments = [{ text: merged, frames: totalFrames }]
+
+          if (newType === 'simple' && oldType !== 'simple') {
+            confirmPopup(
+              'This will delete all segments. A simple prompt has no segments. Continue?',
+              yes => {
+                if (!yes) {
+                  promptHdr.querySelector(`input[value="${oldType}"]`).checked = true
+                  return
+                }
+                doChange()
+              }
+            )
+            return
           }
-          render()
+
+          doChange()
         })
       })
 
@@ -418,16 +462,73 @@
       const segErr    = segCtrl.querySelector('#pe-seg-err')
       let   prevFrames = selSeg?.frames ?? 1
 
+      segFInput.addEventListener('input', e => {
+        const v = e.target.value
+        if (v === '') return
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 0) { e.target.value = ''; return }
+        if (String(n) !== v) e.target.value = String(n)
+      })
+
       segFInput.addEventListener('change', e => {
-        const nv       = Math.max(1, parseInt(e.target.value) || 1)
+        const nv       = Math.max(1, parseInt(e.target.value, 10) || 1)
+        e.target.value = nv
         const otherSum = segments.reduce((a, s, i) => i === selIdx ? a : a + s.frames, 0)
         const maxOk    = totalFrames - otherSum
+        const isLast   = selIdx === segments.length - 1
+
         if (nv > prevFrames && nv > maxOk) {
-          segErr.textContent = `Max ${Math.max(0, maxOk)}`
-          setTimeout(() => { segErr.textContent = '' }, 2000)
-          e.target.value = prevFrames
+          if (isLast) {
+            segErr.textContent = `Max ${Math.max(0, maxOk)}`
+            setTimeout(() => { segErr.textContent = '' }, 2000)
+            e.target.value = prevFrames
+            return
+          }
+          // Non-last segment: confirm then redistribute to right segments proportionally
+          const leftSum    = segments.slice(0, selIdx).reduce((a, s) => a + s.frames, 0)
+          const rightSegs  = segments.slice(selIdx + 1)
+          const rightCount = rightSegs.length
+          const maxNv      = totalFrames - leftSum - rightCount
+          const actualNv   = Math.min(nv, maxNv)
+
+          confirmPopup(
+            'This will modify the number of frames on other segments. Continue?',
+            yes => {
+              if (!yes) { segFInput.value = prevFrames; return }
+
+              segments[selIdx].frames = actualNv
+              segFInput.value         = actualNv
+
+              const newRightTotal  = totalFrames - leftSum - actualNv
+              const origRightTotal = rightSegs.reduce((a, s) => a + s.frames, 0)
+
+              if (origRightTotal <= 0) {
+                const base = Math.floor(newRightTotal / rightCount)
+                rightSegs.forEach((s, i) => {
+                  s.frames = (i === rightCount - 1)
+                    ? Math.max(1, newRightTotal - base * (rightCount - 1))
+                    : Math.max(1, base)
+                })
+              } else {
+                let assigned = 0
+                rightSegs.forEach((s, i) => {
+                  if (i === rightSegs.length - 1) {
+                    s.frames = Math.max(1, newRightTotal - assigned)
+                  } else {
+                    const share = Math.max(1, Math.round(newRightTotal * (s.frames / origRightTotal)))
+                    s.frames    = share
+                    assigned   += share
+                  }
+                })
+              }
+
+              prevFrames = actualNv
+              refreshBar()
+            }
+          )
           return
         }
+
         prevFrames = nv
         if (segments[selIdx]) segments[selIdx].frames = nv
         refreshBar()
