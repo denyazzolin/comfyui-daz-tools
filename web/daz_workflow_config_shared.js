@@ -660,7 +660,7 @@ export function buildWorkflowConfigExtension(cfg) {
               <button id="daz-name-clear" style="${cb}">clear</button>
             </div>
           `)}
-          ${box('Reference Image', `
+          ${box('Reference Image and Audio', `
             <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
               <select id="daz-image-path" style="flex:1;background:#111;color:#ddd;border:1px solid #555;
                 border-radius:4px;font-size:11px;font-family:monospace;padding:1px 3px;min-width:0">
@@ -690,7 +690,9 @@ export function buildWorkflowConfigExtension(cfg) {
                        border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
               <input id="daz-audio-upload-input" type="file" accept="audio/*" style="display:none">
               <button id="daz-audio-clear" style="${cb}">clear</button>
-              <button id="daz-audio-play-btn" style="${cb}">play</button>
+              <button id="daz-audio-play-btn"
+                style="font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;
+                       border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">play</button>
             </div>
           `)}
           ${box('Dimensions and More', buildDimsHtml(data))}
