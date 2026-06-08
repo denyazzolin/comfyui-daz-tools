@@ -72,7 +72,7 @@ Scans `models/loras`, reads safetensors metadata, and caches results to `models/
 
 These nodes let you store named workflow presets — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a preset, the node loads all the models and sends every value downstream automatically. There is no need to rewire anything when switching between setups.
 
-![Sample nodes](content\sample_nodes_v1.png)
+![Sample nodes](content/sample_nodes_v1.png)
 
 #### Config files
 
@@ -140,7 +140,7 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 
 #### Versioned presets
 
-![Sample editor](content\sample_editor_v1.png)
+![Sample editor](content/sample_editor_v1.png)
 
 Each named preset can hold multiple **versions** — independent snapshots of all settings, numbered from 1. Switch between them with the **Version** dropdown without affecting other versions. The active version is saved in the workflow file and restored the next time you open it. If a version is missing at load time, the node falls back to the last available version.
 
@@ -160,7 +160,7 @@ For **Simple** and **Beats** types, the Master prompt is prepended to the positi
 
 **Prompt Editor**
 
-![Prompt editor](content\prompt_editor_v1.png)
+![Prompt editor](content/prompt_editor_v1.png)
 
 Click **Prompt Editor** inside the edit panel to open a full-screen editor. It loads the current Master, Positive, Negative, total frames, and FPS values and lets you work with them visually.
 
