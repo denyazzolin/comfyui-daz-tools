@@ -29,7 +29,7 @@ function renderDetailHtml(data, h) {
     ${row('UNet Low',   disp(fName(data.unet_low)))}
     ${row('VAE',        disp(fName(data.vae)))}
     ${row('CLIP',       disp(fName(data.clip)))}
-    ${rowPair('Shift Hi', fValue(data.shift_high), 'Shift Lo', fValue(data.shift_low))}
+    ${rowPair('Shift Hi', data.shift_high != null ? fValue(data.shift_high) : 5.0, 'Shift Lo', data.shift_low != null ? fValue(data.shift_low) : 5.0)}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
@@ -117,8 +117,8 @@ function updateOutputLabels(node, data, h) {
     fFile(data.filename),
     fName(data.unet_high),
     fName(data.unet_low),
-    fValue(data.shift_high),
-    fValue(data.shift_low),
+    data.shift_high != null ? fValue(data.shift_high) : 5.0,
+    data.shift_low  != null ? fValue(data.shift_low)  : 5.0,
     data.type === 'T2V',
     fFlagLabel(data.flags?.flag_1, 'flag 1') + ': ' + fFlagValue(data.flags?.flag_1),
     fFlagLabel(data.flags?.flag_2, 'flag 2') + ': ' + fFlagValue(data.flags?.flag_2),
