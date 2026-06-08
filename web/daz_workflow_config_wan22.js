@@ -273,7 +273,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigWan22',
   nodeDataName: 'WorkflowConfigWan22',
   CLASS:        'Wan2.2',
-  PANEL_H: 628, NODE_W: 460, NODE_H: 840,
+  PANEL_H: 674, NODE_W: 460, NODE_H: 886,
 
   keys: {
     detail:          '_dazWan22Detail',

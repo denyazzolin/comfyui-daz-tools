@@ -281,7 +281,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigLtx23',
   nodeDataName: 'WorkflowConfigLtx23',
   CLASS:        'ltx2.3',
-  PANEL_H: 650, NODE_W: 460, NODE_H: 862,
+  PANEL_H: 673, NODE_W: 460, NODE_H: 885,
 
   keys: {
     detail:          '_dazLtx23Detail',
