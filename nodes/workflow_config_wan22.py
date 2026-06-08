@@ -85,9 +85,25 @@ def _load_audio(path: str):
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: audio not found at '{full}'")
-    import torchaudio
-    waveform, sample_rate = torchaudio.load(full)
-    return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
+    import av
+    with av.open(full) as af:
+        if not af.streams.audio:
+            raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: no audio stream in '{full}'")
+        stream = af.streams.audio[0]
+        sr = stream.codec_context.sample_rate
+        n_channels = stream.channels
+        frames = []
+        for frame in af.decode(streams=stream.index):
+            buf = torch.from_numpy(frame.to_ndarray())
+            if buf.shape[0] != n_channels:
+                buf = buf.view(-1, n_channels).t()
+            frames.append(buf)
+        if not frames:
+            raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: no audio frames in '{full}'")
+        wav = torch.cat(frames, dim=1)
+        if not wav.dtype.is_floating_point:
+            wav = wav.float() / (2 ** 15 if wav.dtype == torch.int16 else 2 ** 31)
+    return {"waveform": wav.unsqueeze(0), "sample_rate": sr}
 
 
 def _load_lora(name: str):
