@@ -14,6 +14,7 @@ from .workflow_config_base import (
 try:
     import comfy.sd
     import comfy.utils
+    import comfy.model_sampling
 except Exception:
     pass
 
@@ -96,6 +97,20 @@ def _process_lora(val):
     return _load_lora(name), strength
 
 
+def _apply_model_shift(model, shift: float):
+    if model is None:
+        return None
+    m = model.clone()
+    sampling_base = comfy.model_sampling.ModelSamplingDiscreteFlow
+    sampling_type = comfy.model_sampling.CONST
+    class ModelSamplingShifted(sampling_base, sampling_type):
+        pass
+    model_sampling = ModelSamplingShifted(model.model.model_config)
+    model_sampling.set_parameters(shift=shift)
+    m.add_object_patch("model_sampling", model_sampling)
+    return m
+
+
 def _apply_loras(model, lora_pairs):
     if model is None:
         return None
@@ -147,6 +162,7 @@ class WorkflowConfigWan22:
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
         "MODEL", "MODEL",
+        "FLOAT", "FLOAT",
         "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
     )
@@ -166,6 +182,7 @@ class WorkflowConfigWan22:
         "lora_4_high", "lora_4_low",
         "filename",
         "unet_stack_high", "unet_stack_low",
+        "shift_high", "shift_low",
         "is_t2v",
         "flag_1", "flag_2", "flag_3",
     )
@@ -246,6 +263,24 @@ class WorkflowConfigWan22:
         lora_7_sd, lora_7_w = _process_lora(loras.get("lora_7", ""))
         lora_8_sd, lora_8_w = _process_lora(loras.get("lora_8", ""))
 
+        shift_high = _get_float(active_set.get("shift_high"), 5.0)
+        shift_low  = _get_float(active_set.get("shift_low"),  5.0)
+
+        unet_stack_high = _apply_model_shift(
+            _apply_loras(unet_high, [
+                (lora_1_sd, lora_1_w), (lora_3_sd, lora_3_w),
+                (lora_5_sd, lora_5_w), (lora_7_sd, lora_7_w),
+            ]),
+            shift_high,
+        )
+        unet_stack_low = _apply_model_shift(
+            _apply_loras(unet_low, [
+                (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
+                (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
+            ]),
+            shift_low,
+        )
+
         return (
             unet_high,
             unet_low,
@@ -270,14 +305,10 @@ class WorkflowConfigWan22:
             lora_5_sd, lora_6_sd,
             lora_7_sd, lora_8_sd,
             _get_file(active_set.get("filename")),
-            _apply_loras(unet_high, [
-                (lora_1_sd, lora_1_w), (lora_3_sd, lora_3_w),
-                (lora_5_sd, lora_5_w), (lora_7_sd, lora_7_w),
-            ]),
-            _apply_loras(unet_low, [
-                (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
-                (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
-            ]),
+            unet_stack_high,
+            unet_stack_low,
+            shift_high,
+            shift_low,
             active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),

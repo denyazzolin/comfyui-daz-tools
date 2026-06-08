@@ -29,6 +29,7 @@ function renderDetailHtml(data, h) {
     ${row('UNet Low',   disp(fName(data.unet_low)))}
     ${row('VAE',        disp(fName(data.vae)))}
     ${row('CLIP',       disp(fName(data.clip)))}
+    ${rowPair('Shift Hi', fValue(data.shift_high), 'Shift Lo', fValue(data.shift_low))}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
@@ -116,6 +117,8 @@ function updateOutputLabels(node, data, h) {
     fFile(data.filename),
     fName(data.unet_high),
     fName(data.unet_low),
+    fValue(data.shift_high),
+    fValue(data.shift_low),
     data.type === 'T2V',
     fFlagLabel(data.flags?.flag_1, 'flag 1') + ': ' + fFlagValue(data.flags?.flag_1),
     fFlagLabel(data.flags?.flag_2, 'flag 2') + ': ' + fFlagValue(data.flags?.flag_2),
@@ -132,7 +135,7 @@ function updateOutputLabels(node, data, h) {
 // ── WAN2.2 — edit panel: Models box ──────────────────────────────────────────
 
 function buildModelsHtml(folderMap, data, h) {
-  const { fName, selOpt, fs, lbl, rw, cb } = h
+  const { fName, fValue, selOpt, fs, ns, lbl, rw, cb } = h
   const unetFiles = folderMap.diffusion_models || []
   const vaeFiles  = folderMap.vae              || []
   const clipFiles = folderMap.text_encoders    || []
@@ -148,6 +151,12 @@ function buildModelsHtml(folderMap, data, h) {
     </div>
     <div style="${rw}"><label style="${lbl}">Clip</label>
       <select id="daz-clip" style="${fs}">${selOpt(clipFiles, fName(data.clip))}</select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">
+      <div><label style="${lbl}">Shift Hi</label>
+        <input id="daz-shift-high" type="number" step="0.01" value="${data.shift_high != null ? fValue(data.shift_high) : 5.0}" style="width:100%;${ns}"></div>
+      <div><label style="${lbl}">Shift Lo</label>
+        <input id="daz-shift-low" type="number" step="0.01" value="${data.shift_low != null ? fValue(data.shift_low) : 5.0}" style="width:100%;${ns}"></div>
     </div>
     <div style="display:flex;justify-content:flex-end">
       <button id="daz-models-clear" style="${cb}">clear</button>
@@ -213,6 +222,8 @@ function buildPayload(wrap) {
     unet_low:        { name: wrap.querySelector('#daz-unet-low')?.value        ?? '' },
     vae:             { name: wrap.querySelector('#daz-vae')?.value             ?? '' },
     clip:            { name: wrap.querySelector('#daz-clip')?.value            ?? '' },
+    shift_high:      { value: parseFloat(wrap.querySelector('#daz-shift-high')?.value ?? '5') || 5.0 },
+    shift_low:       { value: parseFloat(wrap.querySelector('#daz-shift-low')?.value  ?? '5') || 5.0 },
     image_path:      { path: wrap.querySelector('#daz-image-path')?.value      ?? '' },
     loras,
     master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
@@ -266,7 +277,7 @@ app.registerExtension(buildWorkflowConfigExtension({
 
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-split-step','#daz-seed',
                    '#daz-cfg-high','#daz-cfg-low','#daz-total-frames','#daz-fps'],
-  modelsClearIds: ['#daz-unet-high','#daz-unet-low','#daz-vae','#daz-clip'],
+  modelsClearIds: ['#daz-unet-high','#daz-unet-low','#daz-vae','#daz-clip','#daz-shift-high','#daz-shift-low'],
 
   renderDetailHtml,
   updateOutputLabels,
