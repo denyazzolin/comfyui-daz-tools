@@ -101,6 +101,7 @@ Both nodes share a common set of configurable fields:
 | **Label** | Optional short label shown in the version dropdown (e.g. `2 - cinematic`) |
 | **Note** | Free-form note (up to 900 characters), shown on the node while in use |
 | **Image** | Reference input image — a filename inside ComfyUI's input folder, or an absolute path |
+| **Audio** | Reference input audio — a filename inside ComfyUI's input folder, or an absolute path. When set, the node outputs the decoded audio on the `audio` output for use downstream |
 | **Width / Height** | Output frame dimensions |
 | **Steps** | Number of denoising steps |
 | **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
@@ -121,8 +122,9 @@ Both nodes share a common set of configurable fields:
 | **CLIP** | Text encoder |
 | **Split step** | The step at which the sampler switches from the high to the low model |
 | **CFG High / CFG Low** | CFG scale for each model pass |
+| **Shift High / Shift Low** | Timestep shift applied to the high and low model passes respectively (default 5.0). Equivalent to ComfyUI's **ModelSamplingSD3** node |
 
-LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be applied independently to each model pass. The node outputs a ready-to-use model stack for each pass with all enabled LoRAs already applied — connect those directly to your sampler.
+LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be applied independently to each model pass. The node outputs a ready-to-use model stack for each pass (`unet_stack_high` and `unet_stack_low`) with all enabled LoRAs applied and the timestep shift already patched in — connect those directly to your sampler. **Shift is applied automatically inside these stacked outputs; it is a WAN2.2-only feature and is not present on the LTX2.3 node.**
 
 **LTX2.3** additionally stores:
 
@@ -179,7 +181,7 @@ Clicking **OK** sends all values back to the edit panel. It does **not** save to
 Open the full-screen edit panel by clicking the node's **Edit** button (or double-clicking the node on the canvas).
 
 The panel has three columns:
-- **Left:** Name, Group, Type, Note, reference image, dimensions, seed, CFG, frames, and FPS.
+- **Left:** Name, Group, Type, Note, reference image and audio, dimensions, seed, CFG, frames, and FPS.
 - **Center:** Prompt Type selector, Master / Positive / Negative prompts, and the **Prompt Editor** button.
 - **Right:** Model selectors, LoRA slots (name, strength, enabled toggle), filename, and flag labels.
 
