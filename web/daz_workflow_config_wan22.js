@@ -10,6 +10,15 @@ function renderDetailHtml(data, h) {
     return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
   }
   const loras     = data.loras ?? {}
+  const audioName = fPath(data.audio_path).split(/[\\/]/).pop()
+  const audioCell = audioName
+    ? `<div style="display:flex;align-items:flex-start;gap:6px">
+         <span style="color:#ddd;word-break:break-all;flex:1">${esc(audioName)}</span>
+         <button id="daz-use-audio-play-btn"
+           style="font-family:monospace;font-size:12px;padding:2px 6px;background:#000000;color:#ffffff;
+                  border:1px solid #666;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Play</button>
+       </div>`
+    : `<span style="color:#555">—</span>`
   const imagePath = fPath(data.image_path)
   const imageCell = imagePath
     ? `<div style="display:flex;align-items:flex-start;gap:6px">
@@ -33,6 +42,10 @@ function renderDetailHtml(data, h) {
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
+    </tr>
+    <tr>
+      <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Audio</td>
+      <td colspan="3" style="color:#ddd;padding:3px 10px">${audioCell}</td>
     </tr>
     ${rowDiv()}
     ${rowPairLora('LoRA 1 High', loras.lora_1, 'LoRA 1 Low', loras.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
@@ -97,6 +110,7 @@ function updateOutputLabels(node, data, h) {
     fName(data.unet_high), fName(data.unet_low),
     fName(data.vae), fName(data.clip),
     fPath(data.image_path),
+    fPath(data.audio_path),
     fValue(data.width), fValue(data.height),
     fValue(data.steps), fValue(data.split_step),
     fRandomize(data.seed) ? 'rnd' : fValue(data.seed),
@@ -225,6 +239,7 @@ function buildPayload(wrap) {
     shift_high:      { value: parseFloat(wrap.querySelector('#daz-shift-high')?.value ?? '5') || 5.0 },
     shift_low:       { value: parseFloat(wrap.querySelector('#daz-shift-low')?.value  ?? '5') || 5.0 },
     image_path:      { path: wrap.querySelector('#daz-image-path')?.value      ?? '' },
+    audio_path:      { path: wrap.querySelector('#daz-audio-path')?.value      ?? '' },
     loras,
     master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
     positive_prompt: {

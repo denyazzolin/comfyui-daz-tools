@@ -89,6 +89,20 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]
 
 
+def _load_audio(path: str):
+    if not path:
+        return None
+    if os.path.isabs(path):
+        full = path
+    else:
+        full = os.path.join(folder_paths.get_input_directory(), path)
+    if not os.path.exists(full):
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: audio not found at '{full}'")
+    import torchaudio
+    waveform, sample_rate = torchaudio.load(full)
+    return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
+
+
 def _load_lora(name: str):
     if not name:
         return None
@@ -154,6 +168,7 @@ class WorkflowConfigLtx23:
         "VAE", "VAE",
         "CLIP",
         "IMAGE",
+        "AUDIO",
         "INT", "INT", "INT", "INT",
         "STRING", "STRING", "STRING",
         "BOOLEAN",
@@ -172,6 +187,7 @@ class WorkflowConfigLtx23:
         "video_vae", "audio_vae",
         "dual_clip",
         "image",
+        "audio",
         "width", "height", "steps", "seed",
         "master_prmt", "pos_prompt", "neg_prompt",
         "is_relay_prompt",
@@ -293,6 +309,7 @@ class WorkflowConfigLtx23:
             audio_vae,
             _load_dual_clip(_get_name(active_set.get("clip_2")), _get_name(active_set.get("clip"))),
             _load_image(_get_path(active_set.get("image_path"))),
+            _load_audio(_get_path(active_set.get("audio_path"))),
             _get_int(active_set.get("width")),
             _get_int(active_set.get("height")),
             _get_int(active_set.get("steps")),
