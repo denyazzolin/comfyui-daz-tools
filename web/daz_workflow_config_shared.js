@@ -295,12 +295,17 @@ export function buildWorkflowConfigExtension(cfg) {
           files.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
       }
 
+      function selOptAudio(files, cur) {
+        return `<option value="">— no audio —</option>` +
+          files.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
+      }
+
       // Helpers object passed to per-class config functions
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
         fFlagLabel, fFlagValue, fNote, loraEnabled,
         row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
-        box, selOpt, selOptImg,
+        box, selOpt, selOptImg, selOptAudio,
         fs, ns, tas, lbl, rw, cb,
       }
 
@@ -387,6 +392,10 @@ export function buildWorkflowConfigExtension(cfg) {
         wrap.querySelector('#daz-use-preview-btn')?.addEventListener('click', () => {
           const filename = fPath(data.image_path).split(/[\\/]/).pop()
           if (filename) showImagePreview(filename)
+        })
+        wrap.querySelector('#daz-use-audio-play-btn')?.addEventListener('click', () => {
+          const filename = fPath(data.audio_path).split(/[\\/]/).pop()
+          if (filename) playAudio(filename)
         })
 
         // Lora enabled toggles
@@ -579,6 +588,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         const data      = isNew ? {} : (node[keys.detail] || {})
         const imageName = fPath(data.image_path).split(/[\\/]/).pop() || ''
+        const audioName = fPath(data.audio_path).split(/[\\/]/).pop() || ''
         const posType   = fType(data.positive_prompt)
         const curVer    = isNew ? '1' : (node._dazCurrentVersion || data.version || '1')
         const uid       = `${uidPrefix}${node.id || Math.random().toString(36).slice(2, 7)}`
@@ -650,7 +660,7 @@ export function buildWorkflowConfigExtension(cfg) {
               <button id="daz-name-clear" style="${cb}">clear</button>
             </div>
           `)}
-          ${box('Reference Image', `
+          ${box('Reference Image and Audio', `
             <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
               <select id="daz-image-path" style="flex:1;background:#111;color:#ddd;border:1px solid #555;
                 border-radius:4px;font-size:11px;font-family:monospace;padding:1px 3px;min-width:0">
@@ -669,6 +679,20 @@ export function buildWorkflowConfigExtension(cfg) {
                 style="${imageName ? '' : 'display:none;'}width:100%;height:100%;object-fit:contain">
               <span id="daz-img-preview-ph"
                 style="color:#555;font-size:11px${imageName ? ';display:none' : ''}">Image preview here</span>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center;margin-top:6px">
+              <select id="daz-audio-path" style="flex:1;background:#111;color:#ddd;border:1px solid #555;
+                border-radius:4px;font-size:11px;font-family:monospace;padding:1px 3px;min-width:0">
+                ${selOptAudio(inputFiles, audioName)}
+              </select>
+              <button id="daz-audio-upload-btn"
+                style="font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;
+                       border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
+              <input id="daz-audio-upload-input" type="file" accept="audio/*" style="display:none">
+              <button id="daz-audio-clear" style="${cb}">clear</button>
+              <button id="daz-audio-play-btn"
+                style="font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;
+                       border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">play</button>
             </div>
           `)}
           ${box('Dimensions and More', buildDimsHtml(data))}
@@ -880,6 +904,46 @@ export function buildWorkflowConfigExtension(cfg) {
           }
           btn.textContent = 'Upload…'
           btn.disabled    = false
+        })
+
+        // Audio upload
+        panel.querySelector('#daz-audio-upload-btn')?.addEventListener('click', () => {
+          panel.querySelector('#daz-audio-upload-input')?.click()
+        })
+        panel.querySelector('#daz-audio-upload-input')?.addEventListener('change', async (e) => {
+          const file   = e.target.files?.[0]
+          if (!file) return
+          const btn    = panel.querySelector('#daz-audio-upload-btn')
+          const errDiv = panel.querySelector('#daz-save-error')
+          if (!btn) return
+          btn.textContent = 'Uploading…'
+          btn.disabled    = true
+          if (errDiv) errDiv.textContent = ''
+          try {
+            const fd = new FormData()
+            fd.append('image', file)
+            fd.append('type', 'input')
+            const r = await fetch('/upload/image', { method: 'POST', body: fd })
+            if (!r.ok) throw new Error(r.statusText)
+            const result = await r.json()
+            delete folderFiles['input']
+            const fresh = await getFolderFiles('input')
+            const sel = panel.querySelector('#daz-audio-path')
+            if (sel) sel.innerHTML = selOptAudio(fresh, result.name)
+          } catch (err) {
+            if (errDiv) errDiv.textContent = `Upload failed: ${esc(err.message)}`
+          }
+          btn.textContent = 'Upload…'
+          btn.disabled    = false
+        })
+        panel.querySelector('#daz-audio-clear')?.addEventListener('click', () => {
+          const sel = panel.querySelector('#daz-audio-path')
+          if (sel) sel.value = ''
+        })
+        panel.querySelector('#daz-audio-play-btn')?.addEventListener('click', () => {
+          const sel = panel.querySelector('#daz-audio-path')
+          const filename = sel?.value
+          if (filename) playAudio(filename)
         })
 
         // Seed randomize (immediate save in edit mode)
@@ -1801,6 +1865,12 @@ export function buildWorkflowConfigExtension(cfg) {
         overlay.appendChild(img)
         document.body.appendChild(overlay)
         overlay.addEventListener('click', () => overlay.remove())
+      }
+
+      function playAudio(filename) {
+        const url = `/view?filename=${encodeURIComponent(filename)}&type=input`
+        const audio = new Audio(url)
+        audio.play().catch(err => console.warn('[DAZ TOOLS] audio playback failed', err))
       }
 
       // ── Lifecycle hooks ───────────────────────────────────────────────────

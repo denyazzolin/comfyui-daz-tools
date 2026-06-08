@@ -14,6 +14,7 @@ from .workflow_config_base import (
 try:
     import comfy.sd
     import comfy.utils
+    import comfy.model_sampling
 except Exception:
     pass
 
@@ -75,6 +76,36 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]
 
 
+def _load_audio(path: str):
+    if not path:
+        return None
+    if os.path.isabs(path):
+        full = path
+    else:
+        full = os.path.join(folder_paths.get_input_directory(), path)
+    if not os.path.exists(full):
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: audio not found at '{full}'")
+    import av
+    with av.open(full) as af:
+        if not af.streams.audio:
+            raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: no audio stream in '{full}'")
+        stream = af.streams.audio[0]
+        sr = stream.codec_context.sample_rate
+        n_channels = stream.channels
+        frames = []
+        for frame in af.decode(streams=stream.index):
+            buf = torch.from_numpy(frame.to_ndarray())
+            if buf.shape[0] != n_channels:
+                buf = buf.view(-1, n_channels).t()
+            frames.append(buf)
+        if not frames:
+            raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: no audio frames in '{full}'")
+        wav = torch.cat(frames, dim=1)
+        if not wav.dtype.is_floating_point:
+            wav = wav.float() / (2 ** 15 if wav.dtype == torch.int16 else 2 ** 31)
+    return {"waveform": wav.unsqueeze(0), "sample_rate": sr}
+
+
 def _load_lora(name: str):
     if not name:
         return None
@@ -94,6 +125,20 @@ def _process_lora(val):
         name     = val or ""
         strength = 1.0
     return _load_lora(name), strength
+
+
+def _apply_model_shift(model, shift: float):
+    if model is None:
+        return None
+    m = model.clone()
+    sampling_base = comfy.model_sampling.ModelSamplingDiscreteFlow
+    sampling_type = comfy.model_sampling.CONST
+    class ModelSamplingShifted(sampling_base, sampling_type):
+        pass
+    model_sampling = ModelSamplingShifted(model.model.model_config)
+    model_sampling.set_parameters(shift=shift)
+    m.add_object_patch("model_sampling", model_sampling)
+    return m
 
 
 def _apply_loras(model, lora_pairs):
@@ -139,6 +184,7 @@ class WorkflowConfigWan22:
         "VAE",
         "CLIP",
         "IMAGE",
+        "AUDIO",
         "INT", "INT", "INT", "INT", "INT",
         "STRING", "STRING", "STRING",
         "BOOLEAN",
@@ -147,6 +193,7 @@ class WorkflowConfigWan22:
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
         "MODEL", "MODEL",
+        "FLOAT", "FLOAT",
         "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
     )
@@ -155,6 +202,7 @@ class WorkflowConfigWan22:
         "vae",
         "clip",
         "image",
+        "audio",
         "width", "height", "steps", "split_step", "seed",
         "master_prmt", "pos_prompt", "neg_prompt",
         "is_relay_prompt",
@@ -166,6 +214,7 @@ class WorkflowConfigWan22:
         "lora_4_high", "lora_4_low",
         "filename",
         "unet_stack_high", "unet_stack_low",
+        "shift_high", "shift_low",
         "is_t2v",
         "flag_1", "flag_2", "flag_3",
     )
@@ -246,12 +295,31 @@ class WorkflowConfigWan22:
         lora_7_sd, lora_7_w = _process_lora(loras.get("lora_7", ""))
         lora_8_sd, lora_8_w = _process_lora(loras.get("lora_8", ""))
 
+        shift_high = _get_float(active_set.get("shift_high"), 5.0)
+        shift_low  = _get_float(active_set.get("shift_low"),  5.0)
+
+        unet_stack_high = _apply_model_shift(
+            _apply_loras(unet_high, [
+                (lora_1_sd, lora_1_w), (lora_3_sd, lora_3_w),
+                (lora_5_sd, lora_5_w), (lora_7_sd, lora_7_w),
+            ]),
+            shift_high,
+        )
+        unet_stack_low = _apply_model_shift(
+            _apply_loras(unet_low, [
+                (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
+                (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
+            ]),
+            shift_low,
+        )
+
         return (
             unet_high,
             unet_low,
             _load_vae( _get_name(active_set.get("vae"))),
             _load_clip(_get_name(active_set.get("clip"))),
             _load_image(_get_path(active_set.get("image_path"))),
+            _load_audio(_get_path(active_set.get("audio_path"))),
             _get_int(active_set.get("width")),
             _get_int(active_set.get("height")),
             _get_int(active_set.get("steps")),
@@ -270,14 +338,10 @@ class WorkflowConfigWan22:
             lora_5_sd, lora_6_sd,
             lora_7_sd, lora_8_sd,
             _get_file(active_set.get("filename")),
-            _apply_loras(unet_high, [
-                (lora_1_sd, lora_1_w), (lora_3_sd, lora_3_w),
-                (lora_5_sd, lora_5_w), (lora_7_sd, lora_7_w),
-            ]),
-            _apply_loras(unet_low, [
-                (lora_2_sd, lora_2_w), (lora_4_sd, lora_4_w),
-                (lora_6_sd, lora_6_w), (lora_8_sd, lora_8_w),
-            ]),
+            unet_stack_high,
+            unet_stack_low,
+            shift_high,
+            shift_low,
             active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),

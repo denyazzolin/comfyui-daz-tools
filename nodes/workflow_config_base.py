@@ -50,7 +50,7 @@ os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 _MGR_DIR    = os.path.join(_WORKFLOWS_DIR, ".dx_mgr")
 
-CURRENT_SCHEMA = 2
+CURRENT_SCHEMA = 3
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -305,6 +305,10 @@ def _apply_set_fields(target: dict, data: dict) -> None:
         v = data["image_path"]
         target["image_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
 
+    if "audio_path" in data:
+        v = data["audio_path"]
+        target["audio_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
+
     if "filename" in data:
         v = data["filename"]
         target["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
@@ -325,7 +329,7 @@ def _apply_set_fields(target: dict, data: dict) -> None:
                 except (ValueError, TypeError):
                     pass
 
-    for f in ("cfg_high", "cfg_low", "fps"):
+    for f in ("cfg_high", "cfg_low", "fps", "shift_high", "shift_low"):
         if f in data:
             v = data[f]
             if isinstance(v, dict):
@@ -373,6 +377,8 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
     s["group"] = v if isinstance(v, dict) else {"name": str(v or "")}
     v = data.get("image_path")
     s["image_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
+    v = data.get("audio_path")
+    s["audio_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
     v = data.get("filename")
     s["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
     for f in ("master_prompt", "positive_prompt", "negative_prompt"):
@@ -387,7 +393,7 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
                 s[f] = {"value": int(v or 0)}
             except (ValueError, TypeError):
                 s[f] = {"value": 0}
-    for f in ("cfg_high", "cfg_low", "fps"):
+    for f in ("cfg_high", "cfg_low", "fps", "shift_high", "shift_low"):
         v = data.get(f)
         if isinstance(v, dict):
             s[f] = v
@@ -431,6 +437,10 @@ def _normalize_set(set_obj: dict) -> dict:
     if not isinstance(v, dict):
         result["image_path"] = {"path": str(v or "")}
 
+    v = result.get("audio_path")
+    if not isinstance(v, dict):
+        result["audio_path"] = {"path": str(v or "")}
+
     v = result.get("filename")
     if not isinstance(v, dict):
         result["filename"] = {"file": str(v or "")}
@@ -461,6 +471,14 @@ def _normalize_set(set_obj: dict) -> dict:
                 result[f] = {"value": float(v or 0.0)}
             except (ValueError, TypeError):
                 result[f] = {"value": 0.0}
+
+    for f in ("shift_high", "shift_low"):
+        v = result.get(f)
+        if v is not None and not isinstance(v, dict):
+            try:
+                result[f] = {"value": float(v)}
+            except (ValueError, TypeError):
+                result.pop(f, None)
 
     if not isinstance(result.get("loras"), dict):
         result["loras"] = {key: _coerce_lora(result.get(key, "")) for key in _LORA_FIELDS}
