@@ -735,7 +735,8 @@ export function buildWorkflowConfigExtension(cfg) {
             <label style="${lbl}">Negative</label>
             <textarea id="daz-negative-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.negative_prompt))}</textarea>
-            <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+              <button id="daz-negative-default" style="${cb}">default</button>
               <button id="daz-negative-clear" style="${cb}">clear</button>
             </div>
             <button id="daz-prompt-editor-btn"
@@ -999,6 +1000,9 @@ export function buildWorkflowConfigExtension(cfg) {
         panel.querySelector('#daz-positive-clear')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-positive-prompt'); if (ta) ta.value = ''
         })
+        panel.querySelector('#daz-negative-default')?.addEventListener('click', () => {
+          const ta = panel.querySelector('#daz-negative-prompt'); if (ta) ta.value = cfg.defaultNegativePrompt ?? ''
+        })
         panel.querySelector('#daz-negative-clear')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-negative-prompt'); if (ta) ta.value = ''
         })
@@ -1112,6 +1116,7 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!window.DazPromptEditor) return
         window.DazPromptEditor.open({
           detail: node[keys.detail] || {},
+          defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           onSave: async (updates) => {
             const cw    = node.widgets?.find(w => w.name === 'config')
             const label = cw?.value
@@ -1151,6 +1156,7 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!window.DazPromptEditor) return
         const posType = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
         window.DazPromptEditor.open({
+          defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           detail: {
             master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
             positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },

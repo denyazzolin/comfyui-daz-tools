@@ -293,6 +293,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-split-step','#daz-seed',
                    '#daz-cfg-high','#daz-cfg-low','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-unet-high','#daz-unet-low','#daz-vae','#daz-clip','#daz-shift-high','#daz-shift-low'],
+  defaultNegativePrompt: 'low quality, blurry, watermark, text, logo, distorted, deformed, extra fingers, bad hands, static, overexposed',
 
   renderDetailHtml,
   updateOutputLabels,
