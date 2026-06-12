@@ -298,9 +298,11 @@ app.registerExtension(buildWorkflowConfigExtension({
   loraLabelWidth:   '44px',
   useModeLoraCount: 6,
 
+  cfgInputIds:    ['#daz-cfg'],
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
                    '#daz-cfg','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-checkpoint','#daz-unet-high','#daz-vae','#daz-audio-vae','#daz-clip','#daz-clip-2'],
+  defaultNegativePrompt: 'worst quality, inconsistent motion, blurry, jittery, distorted, static, flickering, text, watermark, logo, deformed, extra limbs',
 
   renderDetailHtml,
   updateOutputLabels,

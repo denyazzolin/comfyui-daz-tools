@@ -166,7 +166,7 @@
 
   // ── Main open ─────────────────────────────────────────────────────────────
 
-  function open({ detail, onSave }) {
+  function open({ detail, onSave, defaultNegativePrompt = '' }) {
     if (_overlay) _overlay.remove()
 
     const fText  = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
@@ -588,12 +588,17 @@
       const negSec = el('div', 'padding:0 10px 6px')
       negSec.innerHTML = `
         <textarea id="pe-neg" style="${TA_STYLE};min-height:92px">${esc(negText)}</textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:3px">
+        <div style="display:flex;justify-content:space-between;margin-top:3px">
+          ${mkBtn('pe-neg-default','default','#555','#333','#999')}
           ${mkBtn('pe-neg-clear','clear','#555','#333','#999')}
         </div>
       `
       panel.appendChild(negSec)
       negSec.querySelector('#pe-neg').addEventListener('input', e => { negText = e.target.value })
+      negSec.querySelector('#pe-neg-default').addEventListener('click', () => {
+        negText = defaultNegativePrompt
+        negSec.querySelector('#pe-neg').value = defaultNegativePrompt
+      })
       negSec.querySelector('#pe-neg-clear').addEventListener('click', () => {
         negText = ''
         negSec.querySelector('#pe-neg').value = ''

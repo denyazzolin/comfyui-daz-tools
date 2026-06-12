@@ -732,10 +732,11 @@ export function buildWorkflowConfigExtension(cfg) {
             <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
               <button id="daz-positive-clear" style="${cb}">clear</button>
             </div>
-            <label style="${lbl}">Negative</label>
+            <label style="${lbl}">Negative<span id="daz-neg-cfg-warn" style="color:#f88;font-size:10px;margin-left:6px"></span></label>
             <textarea id="daz-negative-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.negative_prompt))}</textarea>
-            <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+              <button id="daz-negative-default" style="${cb}">default</button>
               <button id="daz-negative-clear" style="${cb}">clear</button>
             </div>
             <button id="daz-prompt-editor-btn"
@@ -987,10 +988,20 @@ export function buildWorkflowConfigExtension(cfg) {
           if (sel) sel.value = ''
           updatePreview('')
         })
+        const _cfgWarnEl = panel.querySelector('#daz-neg-cfg-warn')
+        const _cfgIds    = cfg.cfgInputIds ?? []
+        const checkCfgWarn = () => {
+          if (!_cfgWarnEl) return
+          const atOne = _cfgIds.some(id => parseFloat(panel.querySelector(id)?.value) === 1)
+          _cfgWarnEl.textContent = atOne ? '(negative prompt is ineffective at CFG 1.0)' : ''
+        }
+        _cfgIds.forEach(id => panel.querySelector(id)?.addEventListener('input', checkCfgWarn))
+        checkCfgWarn()
         panel.querySelector('#daz-dims-clear')?.addEventListener('click', () => {
           dimsClearIds.forEach(id => {
             const el = panel.querySelector(id); if (el) el.value = '0'
           })
+          checkCfgWarn()
           const r = panel.querySelector('#daz-seed-randomize'); if (r) r.checked = false
         })
         panel.querySelector('#daz-master-clear')?.addEventListener('click', () => {
@@ -998,6 +1009,9 @@ export function buildWorkflowConfigExtension(cfg) {
         })
         panel.querySelector('#daz-positive-clear')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-positive-prompt'); if (ta) ta.value = ''
+        })
+        panel.querySelector('#daz-negative-default')?.addEventListener('click', () => {
+          const ta = panel.querySelector('#daz-negative-prompt'); if (ta) ta.value = cfg.defaultNegativePrompt ?? ''
         })
         panel.querySelector('#daz-negative-clear')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-negative-prompt'); if (ta) ta.value = ''
@@ -1112,6 +1126,7 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!window.DazPromptEditor) return
         window.DazPromptEditor.open({
           detail: node[keys.detail] || {},
+          defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           onSave: async (updates) => {
             const cw    = node.widgets?.find(w => w.name === 'config')
             const label = cw?.value
@@ -1151,6 +1166,7 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!window.DazPromptEditor) return
         const posType = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
         window.DazPromptEditor.open({
+          defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           detail: {
             master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
             positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },
