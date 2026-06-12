@@ -1,5 +1,7 @@
 # comfyui-daz-tools
 
+[![GitHub release](https://img.shields.io/github/v/release/denyazzolin/comfyui-daz-tools)](https://github.com/denyazzolin/comfyui-daz-tools/releases/latest)
+
 ComfyUI custom nodes by [deny azzolin](https://github.com/denyazzolin).
 
 ## Installation
