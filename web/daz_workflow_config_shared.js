@@ -732,7 +732,7 @@ export function buildWorkflowConfigExtension(cfg) {
             <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
               <button id="daz-positive-clear" style="${cb}">clear</button>
             </div>
-            <label style="${lbl}">Negative</label>
+            <label style="${lbl}">Negative<span id="daz-neg-cfg-warn" style="color:#f88;font-size:10px;margin-left:6px"></span></label>
             <textarea id="daz-negative-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.negative_prompt))}</textarea>
             <div style="display:flex;justify-content:space-between;margin-bottom:8px">
@@ -988,10 +988,20 @@ export function buildWorkflowConfigExtension(cfg) {
           if (sel) sel.value = ''
           updatePreview('')
         })
+        const _cfgWarnEl = panel.querySelector('#daz-neg-cfg-warn')
+        const _cfgIds    = cfg.cfgInputIds ?? []
+        const checkCfgWarn = () => {
+          if (!_cfgWarnEl) return
+          const atOne = _cfgIds.some(id => parseFloat(panel.querySelector(id)?.value) === 1)
+          _cfgWarnEl.textContent = atOne ? '(negative prompt is ineffective at CFG 1.0)' : ''
+        }
+        _cfgIds.forEach(id => panel.querySelector(id)?.addEventListener('input', checkCfgWarn))
+        checkCfgWarn()
         panel.querySelector('#daz-dims-clear')?.addEventListener('click', () => {
           dimsClearIds.forEach(id => {
             const el = panel.querySelector(id); if (el) el.value = '0'
           })
+          checkCfgWarn()
           const r = panel.querySelector('#daz-seed-randomize'); if (r) r.checked = false
         })
         panel.querySelector('#daz-master-clear')?.addEventListener('click', () => {
