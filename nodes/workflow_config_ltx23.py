@@ -172,9 +172,9 @@ class WorkflowConfigLtx23:
 
         return {
             "required": {
-                "config_file": (file_labels,),
-                "config":      (all_labels if all_labels else [_NO_CONFIGS],),
-                "version":     (all_versions,),
+                "movie":   (file_labels,),
+                "config":  (all_labels if all_labels else [_NO_CONFIGS],),
+                "version": (all_versions,),
             }
         }
 
@@ -221,8 +221,8 @@ class WorkflowConfigLtx23:
     OUTPUT_NODE = False
 
     @classmethod
-    def IS_CHANGED(cls, config_file: str, config: str, version: str):
-        file = None if config_file == _FILE_DEFAULT else config_file
+    def IS_CHANGED(cls, movie: str, config: str, version: str):
+        file = None if movie == _FILE_DEFAULT else movie
         try:
             path = _resolve_path(file)
             configs, _, _ = _load_file(path)
@@ -239,8 +239,8 @@ class WorkflowConfigLtx23:
             pass
         return config
 
-    def load_config(self, config_file: str, config: str, version: str):
-        file = None if config_file == _FILE_DEFAULT else config_file
+    def load_config(self, movie: str, config: str, version: str):
+        file = None if movie == _FILE_DEFAULT else movie
         path = _resolve_path(file)
         configs, meta_extra, effective = _load_file(path)
         name = next(

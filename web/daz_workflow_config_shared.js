@@ -1901,7 +1901,7 @@ export function buildWorkflowConfigExtension(cfg) {
         this._dazGroupFilter    = 'All'
         this._dazCurrentVersion = '1'
 
-        const cfWidget = this.widgets?.find(w => w.name === 'config_file')
+        const cfWidget = this.widgets?.find(w => w.name === 'movie')
         if (cfWidget) {
           if (_configFiles.length > 0) {
             cfWidget.options.values = _configFiles.map(f => f.file)
