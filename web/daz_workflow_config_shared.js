@@ -172,7 +172,7 @@ export function buildWorkflowConfigExtension(cfg) {
       function syncWidget(node) {
         const configs = node._dazAllConfigs || []
         const labels  = filteredLabels(configs, node._dazTypeFilter || 'All', node._dazGroupFilter || 'All')
-        const w = node.widgets?.find(w => w.name === 'config')
+        const w = node.widgets?.find(w => w.name === 'scene')
         if (!w) return
         w.options.values = labels.length ? labels : ['(no configs)']
         if (!labels.includes(w.value)) w.value = labels[0] ?? '(no configs)'
@@ -425,7 +425,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (span) span.style.color = e.target.checked ? '#ddd' : '#666'
             updateOutputLabels(node, detail)
             node.setDirtyCanvas(true, true)
-            const cw = node.widgets?.find(w => w.name === 'config')
+            const cw = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
             if (!label || label === '(no configs)') return
             try {
@@ -462,7 +462,7 @@ export function buildWorkflowConfigExtension(cfg) {
           detail.seed = { ...seed, randomize: e.target.checked }
           updateOutputLabels(node, detail)
           node.setDirtyCanvas(true, true)
-          const cw = node.widgets?.find(w => w.name === 'config')
+          const cw = node.widgets?.find(w => w.name === 'scene')
           const label = cw?.value
           if (!label || label === '(no configs)') return
           try {
@@ -499,7 +499,7 @@ export function buildWorkflowConfigExtension(cfg) {
             detail.flags[flagKey].value = e.target.checked
             updateOutputLabels(node, detail)
             node.setDirtyCanvas(true, true)
-            const cw = node.widgets?.find(w => w.name === 'config')
+            const cw = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
             if (!label || label === '(no configs)') return
             try {
@@ -962,7 +962,7 @@ export function buildWorkflowConfigExtension(cfg) {
         // Seed randomize (immediate save in edit mode)
         panel.querySelector('#daz-seed-randomize')?.addEventListener('change', async (e) => {
           if (isNew) return
-          const cw    = node.widgets?.find(w => w.name === 'config')
+          const cw    = node.widgets?.find(w => w.name === 'scene')
           const label = cw?.value
           if (!label || label === '(no configs)') return
           const detail  = node[keys.detail] || {}
@@ -1140,7 +1140,7 @@ export function buildWorkflowConfigExtension(cfg) {
           detail: node[keys.detail] || {},
           defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           onSave: async (updates) => {
-            const cw    = node.widgets?.find(w => w.name === 'config')
+            const cw    = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
             if (!label || label === '(no configs)') return
             const detail = node[keys.detail] || {}
@@ -1267,7 +1267,7 @@ export function buildWorkflowConfigExtension(cfg) {
             node._dazGroupFilter = newGroup
           }
           syncWidget(node)
-          const configWidget = node.widgets?.find(w => w.name === 'config')
+          const configWidget = node.widgets?.find(w => w.name === 'scene')
           if (configWidget) configWidget.value = result.label
 
           await reloadVersionWidget(node, result.label, result.version || '1')
@@ -1288,7 +1288,7 @@ export function buildWorkflowConfigExtension(cfg) {
       // ── Save existing config ──────────────────────────────────────────────
 
       async function saveConfig(node, wrap, saveMode = 'current', skipRescale = false, nameChangeConfirmed = false, keepPanelOpen = false, thenFn = null) {
-        const cw    = node.widgets?.find(w => w.name === 'config')
+        const cw    = node.widgets?.find(w => w.name === 'scene')
         const label = cw?.value
         if (!label || label === '(no configs)') return
 
@@ -1374,7 +1374,7 @@ export function buildWorkflowConfigExtension(cfg) {
             node._dazGroupFilter = saveGroup
           }
           syncWidget(node)
-          const configWidget = node.widgets?.find(w => w.name === 'config')
+          const configWidget = node.widgets?.find(w => w.name === 'scene')
           if (configWidget) configWidget.value = result.label
 
           await reloadVersionWidget(node, result.label, result.version)
@@ -1538,7 +1538,7 @@ export function buildWorkflowConfigExtension(cfg) {
       }
 
       async function duplicateConfigToNew(node, wrap, newName, duplicateMode) {
-        const cw    = node.widgets?.find(w => w.name === 'config')
+        const cw    = node.widgets?.find(w => w.name === 'scene')
         const label = cw?.value
         if (!label || label === '(no configs)') return
         const errDiv = wrap.querySelector('#daz-save-error')
@@ -1679,7 +1679,7 @@ export function buildWorkflowConfigExtension(cfg) {
       function showDeleteVersionConfirm(node, wrap) {
         const name    = node[keys.detail]?.name || '?'
         const version = node._dazCurrentVersion || '1'
-        const cw      = node.widgets?.find(w => w.name === 'config')
+        const cw      = node.widgets?.find(w => w.name === 'scene')
         const label   = cw?.value || ''
 
         const overlay = document.createElement('div')
@@ -1743,7 +1743,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
             node._dazGroupFilter = 'All'
             syncWidget(node)
-            const configWidget    = node.widgets?.find(w => w.name === 'config')
+            const configWidget    = node.widgets?.find(w => w.name === 'scene')
             const remainingLabels = filteredLabels(node._dazAllConfigs || [], 'All', 'All')
             if (remainingLabels.length > 0) {
               if (configWidget) configWidget.value = remainingLabels[0]
@@ -1756,7 +1756,7 @@ export function buildWorkflowConfigExtension(cfg) {
             }
           } else {
             syncWidget(node)
-            const configWidget = node.widgets?.find(w => w.name === 'config')
+            const configWidget = node.widgets?.find(w => w.name === 'scene')
             if (configWidget && configWidget.value !== '(no configs)') {
               await reloadVersionWidget(node, configWidget.value)
               loadDetail(node, configWidget.value, node._dazVersionWidget?.value)
@@ -1784,7 +1784,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function showDeleteConfigConfirm(node, wrap) {
         const name  = node[keys.detail]?.name || '?'
-        const cw    = node.widgets?.find(w => w.name === 'config')
+        const cw    = node.widgets?.find(w => w.name === 'scene')
         const label = cw?.value || ''
 
         const overlay = document.createElement('div')
@@ -1846,7 +1846,7 @@ export function buildWorkflowConfigExtension(cfg) {
           if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
           node._dazGroupFilter = 'All'
           syncWidget(node)
-          const configWidget    = node.widgets?.find(w => w.name === 'config')
+          const configWidget    = node.widgets?.find(w => w.name === 'scene')
           const remainingLabels = filteredLabels(node._dazAllConfigs || [], 'All', 'All')
 
           if (remainingLabels.length > 0) {
@@ -1933,7 +1933,7 @@ export function buildWorkflowConfigExtension(cfg) {
             updateGroupFilterWidget(this)
             syncWidget(this)
             if (!this[keys.editMode]) {
-              const cw = this.widgets?.find(w => w.name === 'config')
+              const cw = this.widgets?.find(w => w.name === 'scene')
               if (cw) {
                 await reloadVersionWidget(this, cw.value)
                 loadDetail(this, cw.value, this._dazVersionWidget?.value)
@@ -1942,7 +1942,7 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
-        const versionWidget = this.widgets?.find(w => w.name === 'version')
+        const versionWidget = this.widgets?.find(w => w.name === 'take')
         if (versionWidget) {
           this._dazVersionWidget = versionWidget
           const origVwCb = versionWidget.callback
@@ -1950,7 +1950,7 @@ export function buildWorkflowConfigExtension(cfg) {
             origVwCb?.call(this, value)
             this._dazCurrentVersion = rawVersion(value)
             if (!this[keys.editMode]) {
-              const cw = this.widgets?.find(w => w.name === 'config')
+              const cw = this.widgets?.find(w => w.name === 'scene')
               if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, rawVersion(value))
             }
           }
@@ -1961,7 +1961,7 @@ export function buildWorkflowConfigExtension(cfg) {
           updateGroupFilterWidget(this)
           syncWidget(this)
           if (!this[keys.editMode]) {
-            const cw = this.widgets?.find(w => w.name === 'config')
+            const cw = this.widgets?.find(w => w.name === 'scene')
             if (cw && cw.value !== '(no configs)') {
               const myGen = (this._dazVersionReloadGen || 0) + 1
               await reloadVersionWidget(this, cw.value)
@@ -1977,7 +1977,7 @@ export function buildWorkflowConfigExtension(cfg) {
           this._dazGroupFilter = value
           syncWidget(this)
           if (!this[keys.editMode]) {
-            const cw = this.widgets?.find(w => w.name === 'config')
+            const cw = this.widgets?.find(w => w.name === 'scene')
             if (cw && cw.value !== '(no configs)') {
               const myGen = (this._dazVersionReloadGen || 0) + 1
               await reloadVersionWidget(this, cw.value)
@@ -1988,11 +1988,11 @@ export function buildWorkflowConfigExtension(cfg) {
         }, { values: initialGroups })
         this._dazGroupFilterWidget = groupFilterWidget
 
-        const ci = this.widgets.findIndex(w => w.name === 'config')
+        const ci = this.widgets.findIndex(w => w.name === 'scene')
         if (ci >= 0) {
           ;[typeFilterWidget, groupFilterWidget].forEach(fw => {
             const fi = this.widgets.indexOf(fw)
-            const currentCi = this.widgets.findIndex(w => w.name === 'config')
+            const currentCi = this.widgets.findIndex(w => w.name === 'scene')
             if (fi > currentCi) {
               this.widgets.splice(fi, 1)
               this.widgets.splice(currentCi, 0, fw)
@@ -2024,7 +2024,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (this[keys.editMode]) return
             const labels = filteredLabels(this._dazAllConfigs || [], this._dazTypeFilter || 'All', this._dazGroupFilter || 'All')
             if (!labels.length) { renderUseMode(this, {}); return }
-            const cw = this.widgets?.find(w => w.name === 'config')
+            const cw = this.widgets?.find(w => w.name === 'scene')
             if (cw) {
               await reloadVersionWidget(this, cw.value)
               loadDetail(this, cw.value, this._dazVersionWidget?.value)
@@ -2050,7 +2050,7 @@ export function buildWorkflowConfigExtension(cfg) {
         this.size    = [NODE_W, NODE_H]
         this.minSize = [NODE_W, NODE_H]
 
-        const w = this.widgets?.find(w => w.name === 'config')
+        const w = this.widgets?.find(w => w.name === 'scene')
         if (w) {
           const origCb = w.callback
           w.callback = async (value) => {
@@ -2072,7 +2072,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const executedHandler = ({ detail }) => {
           if (String(detail.node) !== String(this.id)) return
           if (this[keys.editMode]) return
-          const cw = this.widgets?.find(w => w.name === 'config')
+          const cw = this.widgets?.find(w => w.name === 'scene')
           if (cw && cw.value && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
         }
         api.addEventListener('executed', executedHandler)
@@ -2110,7 +2110,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (!self[keys.editMode]) renderUseMode(self, {})
             return
           }
-          const w = self.widgets?.find(w => w.name === 'config')
+          const w = self.widgets?.find(w => w.name === 'scene')
           const configBefore = w?.value
           syncWidget(self)
           await reloadVersionWidget(self, w?.value, w?.value === configBefore ? savedVersion : null)

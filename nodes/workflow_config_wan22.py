@@ -173,9 +173,9 @@ class WorkflowConfigWan22:
 
         return {
             "required": {
-                "movie":   (file_labels,),
-                "config":  (all_labels if all_labels else [_NO_CONFIGS],),
-                "version": (all_versions,),
+                "movie":  (file_labels,),
+                "scene":  (all_labels if all_labels else [_NO_CONFIGS],),
+                "take":   (all_versions,),
             }
         }
 
@@ -223,39 +223,39 @@ class WorkflowConfigWan22:
     OUTPUT_NODE = False
 
     @classmethod
-    def IS_CHANGED(cls, movie: str, config: str, version: str):
+    def IS_CHANGED(cls, movie: str, scene: str, take: str):
         file = None if movie == _FILE_DEFAULT else movie[1:movie.index(')')] + '.json'
         try:
             path = _resolve_path(file)
             configs, _, _ = _load_file(path)
             name = next(
                 (n for n, e in configs.items()
-                 if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
+                 if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == scene),
                 None,
             )
             if name is not None:
-                active_set = _get_active_set(configs[name], version)
+                active_set = _get_active_set(configs[name], take)
                 if _get_seed_randomize(active_set.get("seed", {})):
                     return float("NaN")
         except Exception:
             pass
-        return config
+        return scene
 
-    def load_config(self, movie: str, config: str, version: str):
+    def load_config(self, movie: str, scene: str, take: str):
         file = None if movie == _FILE_DEFAULT else movie[1:movie.index(')')] + '.json'
         path = _resolve_path(file)
         configs, meta_extra, effective = _load_file(path)
         name = next(
             (n for n, e in configs.items()
-             if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
+             if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == scene),
             None,
         )
         if name is None:
             raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigWan22: '{config}' not found"
+                f"[DAZ TOOLS] WorkflowConfigWan22: '{scene}' not found"
             )
         entry      = configs[name]
-        active_set = _get_active_set(entry, version)
+        active_set = _get_active_set(entry, take)
         loras      = _get_loras(active_set)
 
         seed_obj = active_set.get("seed", {"value": 0})
@@ -263,9 +263,9 @@ class WorkflowConfigWan22:
         if _get_seed_randomize(seed_obj):
             seed_val = random.randint(1, 2**31 - 1)
             sets = entry.get("sets", [])
-            raw_version = str(version).split(" - ")[0].strip()
+            raw_take = str(take).split(" - ")[0].strip()
             for i, s in enumerate(sets):
-                if str(s.get("version", "")) == raw_version:
+                if str(s.get("version", "")) == raw_take:
                     sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
                     break
             else:
