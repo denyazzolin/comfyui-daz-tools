@@ -106,16 +106,16 @@ function renderDetailHtml(data, h) {
       </td>
     </tr>
     <tr>
-      <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:middle">Custom</td>
+      <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Custom</td>
       <td colspan="3" style="padding:3px 10px">
-        <div style="display:flex;align-items:center;gap:16px">
-          <div style="display:flex;align-items:center;gap:4px">
-            <span style="color:#999;font-size:11px;font-family:monospace">${esc(fFlagLabel(data.custom?.param_1, 'param 1'))}:</span>
-            <span style="color:#ddd;font-size:11px;font-family:monospace">${esc(fCustomValue(data.custom?.param_1) || '—')}</span>
+        <div style="display:flex;flex-direction:column;gap:2px;font-size:11px;font-family:monospace;overflow:hidden">
+          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            <span style="color:#999">${esc(fFlagLabel(data.custom?.param_1, 'param 1'))}:</span>
+            <span style="color:#ddd">${esc(trunc(fCustomValue(data.custom?.param_1) || '—', 28))}</span>
           </div>
-          <div style="display:flex;align-items:center;gap:4px">
-            <span style="color:#999;font-size:11px;font-family:monospace">${esc(fFlagLabel(data.custom?.param_2, 'param 2'))}:</span>
-            <span style="color:#ddd;font-size:11px;font-family:monospace">${esc(fCustomValue(data.custom?.param_2) || '—')}</span>
+          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            <span style="color:#999">${esc(fFlagLabel(data.custom?.param_2, 'param 2'))}:</span>
+            <span style="color:#ddd">${esc(trunc(fCustomValue(data.custom?.param_2) || '—', 28))}</span>
           </div>
         </div>
       </td>
