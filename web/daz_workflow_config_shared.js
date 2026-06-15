@@ -67,6 +67,15 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Per-node config file helpers ──────────────────────────────────────
 
+      function fileLabel(f) {
+        return `(${f.file.replace(/\.json$/, '')}) ${f.name}`
+      }
+      function labelToFile(label) {
+        if (!label || label === '(default)') return null
+        const m = label.match(/^\(([^)]+)\)/)
+        return m ? m[1] + '.json' : label
+      }
+
       function currentFile(node) { return node._dazConfigFile || null }
 
       function configsUrl(node, base) {
@@ -542,7 +551,10 @@ export function buildWorkflowConfigExtension(cfg) {
           if ('_source_file' in data) {
             const correctFile = data._source_file || null
             node._dazConfigFile = correctFile
-            if (node._dazConfigFileWidget) node._dazConfigFileWidget.value = correctFile || '(default)'
+            if (node._dazConfigFileWidget) {
+              const cf = _configFiles.find(f => f.file === correctFile)
+              node._dazConfigFileWidget.value = cf ? fileLabel(cf) : '(default)'
+            }
             delete data._source_file
             await reloadNodeConfigs(node)
             syncWidget(node)
@@ -1904,15 +1916,15 @@ export function buildWorkflowConfigExtension(cfg) {
         const cfWidget = this.widgets?.find(w => w.name === 'movie')
         if (cfWidget) {
           if (_configFiles.length > 0) {
-            cfWidget.options.values = _configFiles.map(f => f.file)
-            cfWidget.value          = _configFiles[0].file
+            cfWidget.options.values = _configFiles.map(f => fileLabel(f))
+            cfWidget.value          = fileLabel(_configFiles[0])
           }
           cfWidget.hidden = _configFiles.length <= 1
           this._dazConfigFileWidget = cfWidget
           const origCfCb = cfWidget.callback
           cfWidget.callback = async (value) => {
             origCfCb?.call(this, value)
-            this._dazConfigFile = value === '(default)' ? null : value
+            this._dazConfigFile = labelToFile(value)
             await reloadNodeConfigs(this)
             this._dazTypeFilter  = 'All'
             this._dazGroupFilter = 'All'
@@ -1997,11 +2009,11 @@ export function buildWorkflowConfigExtension(cfg) {
               _configFiles = await fr.json()
               if (cfWidget) {
                 cfWidget.options.values = _configFiles.length > 0
-                  ? _configFiles.map(f => f.file)
+                  ? _configFiles.map(f => fileLabel(f))
                   : ['(default)']
                 cfWidget.hidden = _configFiles.length <= 1
-                if (_configFiles.length > 0 && !_configFiles.find(f => f.file === cfWidget.value)) {
-                  cfWidget.value      = _configFiles[0].file
+                if (_configFiles.length > 0 && !_configFiles.find(f => fileLabel(f) === cfWidget.value)) {
+                  cfWidget.value      = fileLabel(_configFiles[0])
                   this._dazConfigFile = _configFiles[0].file
                 }
               }
@@ -2086,11 +2098,9 @@ export function buildWorkflowConfigExtension(cfg) {
         const self = this
         queueMicrotask(async () => {
           if (self._dazConfigFileWidget) {
-            const savedFile = self._dazConfigFileWidget.value
-            const isValidFile = savedFile && savedFile !== '(default)' &&
-              savedFile.startsWith('dx_') && savedFile.endsWith('.json')
-            self._dazConfigFile = isValidFile ? savedFile : null
-            if (!isValidFile) self._dazConfigFileWidget.value = '(default)'
+            const savedFile = labelToFile(self._dazConfigFileWidget.value)
+            self._dazConfigFile = savedFile
+            if (!savedFile) self._dazConfigFileWidget.value = '(default)'
             if (self._dazConfigFile !== null) await reloadNodeConfigs(self)
           }
           if (self._dazTypeFilterWidget)  self._dazTypeFilter  = self._dazTypeFilterWidget.value  || 'All'

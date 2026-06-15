@@ -155,7 +155,7 @@ class WorkflowConfigLtx23:
     @classmethod
     def INPUT_TYPES(cls):
         files       = scan_config_files(_CLASS)
-        file_labels = [f["file"] for f in files] if files else [_FILE_DEFAULT]
+        file_labels = [f"({os.path.splitext(f['file'])[0]}) {f['name']}" for f in files] if files else [_FILE_DEFAULT]
         if files and _FILE_DEFAULT not in file_labels:
             file_labels = file_labels + [_FILE_DEFAULT]
 
@@ -222,7 +222,7 @@ class WorkflowConfigLtx23:
 
     @classmethod
     def IS_CHANGED(cls, movie: str, config: str, version: str):
-        file = None if movie == _FILE_DEFAULT else movie
+        file = None if movie == _FILE_DEFAULT else movie[1:movie.index(')')] + '.json'
         try:
             path = _resolve_path(file)
             configs, _, _ = _load_file(path)
@@ -240,7 +240,7 @@ class WorkflowConfigLtx23:
         return config
 
     def load_config(self, movie: str, config: str, version: str):
-        file = None if movie == _FILE_DEFAULT else movie
+        file = None if movie == _FILE_DEFAULT else movie[1:movie.index(')')] + '.json'
         path = _resolve_path(file)
         configs, meta_extra, effective = _load_file(path)
         name = next(
