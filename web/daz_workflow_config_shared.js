@@ -194,6 +194,7 @@ export function buildWorkflowConfigExtension(cfg) {
       function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
       function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
       function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
+      function fCustomValue(val)         { return (val && typeof val === 'object') ? (val.value ?? '')   : ''    }
       function fNote(val)                { return (val && typeof val === 'object') ? (val.value ?? '')    : ''    }
 
       function loraEnabled(val) {
@@ -312,7 +313,7 @@ export function buildWorkflowConfigExtension(cfg) {
       // Helpers object passed to per-class config functions
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
-        fFlagLabel, fFlagValue, fNote, loraEnabled,
+        fFlagLabel, fFlagValue, fCustomValue, fNote, loraEnabled,
         row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
         box, selOpt, selOptImg, selOptAudio,
         fs, ns, tas, lbl, rw, cb,
@@ -798,6 +799,26 @@ export function buildWorkflowConfigExtension(cfg) {
                   style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
               </div>
             </div>
+            <div style="margin-bottom:4px"><label style="${lbl}">Custom 1</label>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input id="daz-custom-1-label" type="text"
+                  value="${esc(fFlagLabel(data.custom?.param_1, 'param 1'))}"
+                  placeholder="param 1" style="flex:1;${fs}">
+                <input id="daz-custom-1-value" type="text"
+                  value="${esc(fCustomValue(data.custom?.param_1))}"
+                  placeholder="" style="flex:2;${fs}">
+              </div>
+            </div>
+            <div style="margin-bottom:5px"><label style="${lbl}">Custom 2</label>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input id="daz-custom-2-label" type="text"
+                  value="${esc(fFlagLabel(data.custom?.param_2, 'param 2'))}"
+                  placeholder="param 2" style="flex:1;${fs}">
+                <input id="daz-custom-2-value" type="text"
+                  value="${esc(fCustomValue(data.custom?.param_2))}"
+                  placeholder="" style="flex:2;${fs}">
+              </div>
+            </div>
             <div style="display:flex;justify-content:flex-end">
               <button id="daz-other-clear" style="${cb}">clear</button>
             </div>
@@ -1051,6 +1072,10 @@ export function buildWorkflowConfigExtension(cfg) {
           const v2 = panel.querySelector('#daz-flag-2-value'); if (v2) v2.checked = false
           const l3 = panel.querySelector('#daz-flag-3-label'); if (l3) l3.value = 'flag 3'
           const v3 = panel.querySelector('#daz-flag-3-value'); if (v3) v3.checked = false
+          const cl1 = panel.querySelector('#daz-custom-1-label'); if (cl1) cl1.value = 'param 1'
+          const cv1 = panel.querySelector('#daz-custom-1-value'); if (cv1) cv1.value = ''
+          const cl2 = panel.querySelector('#daz-custom-2-label'); if (cl2) cl2.value = 'param 2'
+          const cv2 = panel.querySelector('#daz-custom-2-value'); if (cv2) cv2.value = ''
         })
 
         // Close panel helper

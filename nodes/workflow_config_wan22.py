@@ -6,7 +6,7 @@ from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
     all_versions_for_class,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_seed_randomize, _get_flag_value,
+    _get_seed_randomize, _get_flag_value, _get_custom_value,
     _get_active_set,
     _resolve_path, _load_file, _write_file,
 )
@@ -196,6 +196,7 @@ class WorkflowConfigWan22:
         "FLOAT", "FLOAT",
         "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
+        "STRING", "STRING",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -217,6 +218,7 @@ class WorkflowConfigWan22:
         "shift_high", "shift_low",
         "is_t2v",
         "flag_1", "flag_2", "flag_3",
+        "custom_1", "custom_2",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -346,4 +348,6 @@ class WorkflowConfigWan22:
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),
             _get_flag_value(active_set.get("flags", {}).get("flag_3")),
+            _get_custom_value(active_set.get("custom", {}).get("param_1")),
+            _get_custom_value(active_set.get("custom", {}).get("param_2")),
         )

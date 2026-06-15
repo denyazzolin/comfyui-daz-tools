@@ -1,12 +1,12 @@
 {
   "_meta": {
-    "schema_version": 3,                   // internal schema version; do not change
+    "schema_version": 4,                   // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
     "updated_at": "2026-06-02T00:00:00"    // file last-modified timestamp (ISO 8601)
   },
-  "My WAN2.2 Scene 01": {                    // "scene" name — shown in the node dropdown
+  "My WAN2.2 Scene 01": {                  // "scene" name — shown in the node dropdown
     "class": "Wan2.2",                     // node class this config targets
     "created_at": "2026-06-02T00:00:00",   // entry creation timestamp
     "updated_at": "2026-06-02T00:00:00",   // entry last-modified timestamp
@@ -57,6 +57,10 @@
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
           "flag_2": { "label": "flag 2", "value": false }, // custom boolean toggle 2
           "flag_3": { "label": "flag 3", "value": false }  // custom boolean toggle 3
+        },
+        "custom": {
+          "param_1": { "label": "param 1", "value": "" }, // custom string parameter 1; label is the display name
+          "param_2": { "label": "param 2", "value": "" } // custom string parameter 2
         }
       }
     ]
@@ -112,6 +116,10 @@
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
           "flag_2": { "label": "flag 2", "value": false },  // custom boolean toggle 2
           "flag_3": { "label": "flag 3", "value": false }  // custom boolean toggle 3
+        },
+        "custom": {
+          "param_1": { "label": "param 1", "value": "" }, // custom string parameter 1; label is the display name
+          "param_2": { "label": "param 2", "value": "" }  // custom string parameter 2
         }
       }
     ]

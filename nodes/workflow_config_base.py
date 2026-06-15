@@ -50,7 +50,7 @@ os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 _MGR_DIR    = os.path.join(_WORKFLOWS_DIR, ".dx_mgr")
 
-CURRENT_SCHEMA = 3
+CURRENT_SCHEMA = 4
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -246,6 +246,12 @@ def _get_flag_label(val, default: str = "") -> str:
 def _get_flag_value(val) -> bool:
     if isinstance(val, dict):
         return bool(val.get("value", False))
+
+def _get_custom_value(val, default: str = "") -> str:
+    if isinstance(val, dict):
+        v = val.get("value")
+        return str(v) if v is not None else default
+    return str(val) if val else default
     return False
 
 def _get_seed_randomize(val) -> bool:
@@ -361,6 +367,13 @@ def _apply_set_fields(target: dict, data: dict) -> None:
             if flag_key in data["flags"] and isinstance(data["flags"][flag_key], dict):
                 target["flags"][flag_key] = data["flags"][flag_key]
 
+    if "custom" in data and isinstance(data["custom"], dict):
+        if not isinstance(target.get("custom"), dict):
+            target["custom"] = {}
+        for param_key in ("param_1", "param_2"):
+            if param_key in data["custom"] and isinstance(data["custom"][param_key], dict):
+                target["custom"][param_key] = data["custom"][param_key]
+
     if "note" in data:
         v = data["note"]
         target["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
@@ -412,6 +425,13 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
                   else {"label": "flag 2", "value": False},
         "flag_3": flags_data.get("flag_3") if isinstance(flags_data.get("flag_3"), dict)
                   else {"label": "flag 3", "value": False},
+    }
+    custom_data = data.get("custom") if isinstance(data.get("custom"), dict) else {}
+    s["custom"] = {
+        "param_1": custom_data.get("param_1") if isinstance(custom_data.get("param_1"), dict)
+                   else {"label": "param 1", "value": ""},
+        "param_2": custom_data.get("param_2") if isinstance(custom_data.get("param_2"), dict)
+                   else {"label": "param 2", "value": ""},
     }
     v = data.get("note")
     s["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
@@ -500,6 +520,17 @@ def _normalize_set(set_obj: dict) -> dict:
             if not isinstance(flags.get(key), dict):
                 flags[key] = {"label": default_label, "value": False}
 
+    custom = result.get("custom")
+    if not isinstance(custom, dict):
+        result["custom"] = {
+            "param_1": {"label": "param 1", "value": ""},
+            "param_2": {"label": "param 2", "value": ""},
+        }
+    else:
+        for key, default_label in (("param_1", "param 1"), ("param_2", "param 2")):
+            if not isinstance(custom.get(key), dict):
+                custom[key] = {"label": default_label, "value": ""}
+
     v = result.get("note")
     if not isinstance(v, dict):
         result["note"] = {"value": str(v or "")}
@@ -535,6 +566,18 @@ def _migrate(configs: dict, from_version: int) -> dict:
                 flags = s.get("flags")
                 if isinstance(flags, dict) and "flag_3" not in flags:
                     flags["flag_3"] = {"label": "flag 3", "value": False}
+    if from_version < 4:
+        for entry in configs.values():
+            for s in entry.get("sets", []):
+                if not isinstance(s.get("custom"), dict):
+                    s["custom"] = {
+                        "param_1": {"label": "param 1", "value": ""},
+                        "param_2": {"label": "param 2", "value": ""},
+                    }
+                else:
+                    for key, default_label in (("param_1", "param 1"), ("param_2", "param 2")):
+                        if not isinstance(s["custom"].get(key), dict):
+                            s["custom"][key] = {"label": default_label, "value": ""}
     return configs
 
 
