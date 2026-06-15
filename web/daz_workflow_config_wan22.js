@@ -4,7 +4,7 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 // ── WAN2.2 — use-mode detail table ────────────────────────────────────────────
 
 function renderDetailHtml(data, h) {
-  const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fNote,
+  const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fCustomValue, fNote,
           row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
   if (data.error) {
     return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -97,6 +97,21 @@ function renderDetailHtml(data, h) {
         </div>
       </td>
     </tr>
+    <tr>
+      <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Custom</td>
+      <td colspan="3" style="padding:3px 10px">
+        <div style="display:flex;flex-direction:column;gap:2px;font-size:11px;font-family:monospace;overflow:hidden">
+          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            <span style="color:#999">${esc(fFlagLabel(data.custom?.param_1, 'param 1'))}:</span>
+            <span style="color:#ddd">${esc(trunc(fCustomValue(data.custom?.param_1) || '—', 28))}</span>
+          </div>
+          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            <span style="color:#999">${esc(fFlagLabel(data.custom?.param_2, 'param 2'))}:</span>
+            <span style="color:#ddd">${esc(trunc(fCustomValue(data.custom?.param_2) || '—', 28))}</span>
+          </div>
+        </div>
+      </td>
+    </tr>
   </table>`
 }
 
@@ -104,7 +119,7 @@ function renderDetailHtml(data, h) {
 
 function updateOutputLabels(node, data, h) {
   if (!node.outputs) return
-  const { fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, disp, trunc, loraEnabled } = h
+  const { fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fCustomValue, disp, trunc, loraEnabled } = h
   const loras  = data.loras ?? {}
   const values = [
     fName(data.unet_high), fName(data.unet_low),
@@ -137,6 +152,8 @@ function updateOutputLabels(node, data, h) {
     fFlagLabel(data.flags?.flag_1, 'flag 1') + ': ' + fFlagValue(data.flags?.flag_1),
     fFlagLabel(data.flags?.flag_2, 'flag 2') + ': ' + fFlagValue(data.flags?.flag_2),
     fFlagLabel(data.flags?.flag_3, 'flag 3') + ': ' + fFlagValue(data.flags?.flag_3),
+    fFlagLabel(data.custom?.param_1, 'param 1') + ': ' + fCustomValue(data.custom?.param_1),
+    fFlagLabel(data.custom?.param_2, 'param 2') + ': ' + fCustomValue(data.custom?.param_2),
   ]
   values.forEach((val, i) => {
     if (!node.outputs[i]) return
@@ -262,6 +279,10 @@ function buildPayload(wrap) {
       flag_1: { label: wrap.querySelector('#daz-flag-1-label')?.value ?? 'flag 1', value: wrap.querySelector('#daz-flag-1-value')?.checked ?? false },
       flag_2: { label: wrap.querySelector('#daz-flag-2-label')?.value ?? 'flag 2', value: wrap.querySelector('#daz-flag-2-value')?.checked ?? false },
       flag_3: { label: wrap.querySelector('#daz-flag-3-label')?.value ?? 'flag 3', value: wrap.querySelector('#daz-flag-3-value')?.checked ?? false },
+    },
+    custom: {
+      param_1: { label: wrap.querySelector('#daz-custom-1-label')?.value ?? 'param 1', value: wrap.querySelector('#daz-custom-1-value')?.value ?? '' },
+      param_2: { label: wrap.querySelector('#daz-custom-2-label')?.value ?? 'param 2', value: wrap.querySelector('#daz-custom-2-value')?.value ?? '' },
     },
     note: { value: (wrap.querySelector('#daz-note')?.value ?? '').substring(0, 900) },
   }

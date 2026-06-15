@@ -67,6 +67,15 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Per-node config file helpers ──────────────────────────────────────
 
+      function fileLabel(f) {
+        return `(${f.file.replace(/\.json$/, '')}) ${f.name}`
+      }
+      function labelToFile(label) {
+        if (!label || label === '(default)') return null
+        const m = label.match(/^\(([^)]+)\)/)
+        return m ? m[1] + '.json' : label
+      }
+
       function currentFile(node) { return node._dazConfigFile || null }
 
       function configsUrl(node, base) {
@@ -163,7 +172,7 @@ export function buildWorkflowConfigExtension(cfg) {
       function syncWidget(node) {
         const configs = node._dazAllConfigs || []
         const labels  = filteredLabels(configs, node._dazTypeFilter || 'All', node._dazGroupFilter || 'All')
-        const w = node.widgets?.find(w => w.name === 'config')
+        const w = node.widgets?.find(w => w.name === 'scene')
         if (!w) return
         w.options.values = labels.length ? labels : ['(no configs)']
         if (!labels.includes(w.value)) w.value = labels[0] ?? '(no configs)'
@@ -185,6 +194,7 @@ export function buildWorkflowConfigExtension(cfg) {
       function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
       function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
       function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
+      function fCustomValue(val)         { return (val && typeof val === 'object') ? (val.value ?? '')   : ''    }
       function fNote(val)                { return (val && typeof val === 'object') ? (val.value ?? '')    : ''    }
 
       function loraEnabled(val) {
@@ -303,7 +313,7 @@ export function buildWorkflowConfigExtension(cfg) {
       // Helpers object passed to per-class config functions
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
-        fFlagLabel, fFlagValue, fNote, loraEnabled,
+        fFlagLabel, fFlagValue, fCustomValue, fNote, loraEnabled,
         row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
         box, selOpt, selOptImg, selOptAudio,
         fs, ns, tas, lbl, rw, cb,
@@ -416,7 +426,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (span) span.style.color = e.target.checked ? '#ddd' : '#666'
             updateOutputLabels(node, detail)
             node.setDirtyCanvas(true, true)
-            const cw = node.widgets?.find(w => w.name === 'config')
+            const cw = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
             if (!label || label === '(no configs)') return
             try {
@@ -453,7 +463,7 @@ export function buildWorkflowConfigExtension(cfg) {
           detail.seed = { ...seed, randomize: e.target.checked }
           updateOutputLabels(node, detail)
           node.setDirtyCanvas(true, true)
-          const cw = node.widgets?.find(w => w.name === 'config')
+          const cw = node.widgets?.find(w => w.name === 'scene')
           const label = cw?.value
           if (!label || label === '(no configs)') return
           try {
@@ -490,7 +500,7 @@ export function buildWorkflowConfigExtension(cfg) {
             detail.flags[flagKey].value = e.target.checked
             updateOutputLabels(node, detail)
             node.setDirtyCanvas(true, true)
-            const cw = node.widgets?.find(w => w.name === 'config')
+            const cw = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
             if (!label || label === '(no configs)') return
             try {
@@ -542,7 +552,10 @@ export function buildWorkflowConfigExtension(cfg) {
           if ('_source_file' in data) {
             const correctFile = data._source_file || null
             node._dazConfigFile = correctFile
-            if (node._dazConfigFileWidget) node._dazConfigFileWidget.value = correctFile || '(default)'
+            if (node._dazConfigFileWidget) {
+              const cf = _configFiles.find(f => f.file === correctFile)
+              node._dazConfigFileWidget.value = cf ? fileLabel(cf) : '(default)'
+            }
             delete data._source_file
             await reloadNodeConfigs(node)
             syncWidget(node)
@@ -786,6 +799,26 @@ export function buildWorkflowConfigExtension(cfg) {
                   style="width:14px;height:14px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
               </div>
             </div>
+            <div style="margin-bottom:4px"><label style="${lbl}">Custom 1</label>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input id="daz-custom-1-label" type="text"
+                  value="${esc(fFlagLabel(data.custom?.param_1, 'param 1'))}"
+                  placeholder="param 1" style="flex:1;${fs}">
+                <input id="daz-custom-1-value" type="text"
+                  value="${esc(fCustomValue(data.custom?.param_1))}"
+                  placeholder="" style="flex:2;${fs}">
+              </div>
+            </div>
+            <div style="margin-bottom:5px"><label style="${lbl}">Custom 2</label>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input id="daz-custom-2-label" type="text"
+                  value="${esc(fFlagLabel(data.custom?.param_2, 'param 2'))}"
+                  placeholder="param 2" style="flex:1;${fs}">
+                <input id="daz-custom-2-value" type="text"
+                  value="${esc(fCustomValue(data.custom?.param_2))}"
+                  placeholder="" style="flex:2;${fs}">
+              </div>
+            </div>
             <div style="display:flex;justify-content:flex-end">
               <button id="daz-other-clear" style="${cb}">clear</button>
             </div>
@@ -950,7 +983,7 @@ export function buildWorkflowConfigExtension(cfg) {
         // Seed randomize (immediate save in edit mode)
         panel.querySelector('#daz-seed-randomize')?.addEventListener('change', async (e) => {
           if (isNew) return
-          const cw    = node.widgets?.find(w => w.name === 'config')
+          const cw    = node.widgets?.find(w => w.name === 'scene')
           const label = cw?.value
           if (!label || label === '(no configs)') return
           const detail  = node[keys.detail] || {}
@@ -1039,6 +1072,10 @@ export function buildWorkflowConfigExtension(cfg) {
           const v2 = panel.querySelector('#daz-flag-2-value'); if (v2) v2.checked = false
           const l3 = panel.querySelector('#daz-flag-3-label'); if (l3) l3.value = 'flag 3'
           const v3 = panel.querySelector('#daz-flag-3-value'); if (v3) v3.checked = false
+          const cl1 = panel.querySelector('#daz-custom-1-label'); if (cl1) cl1.value = 'param 1'
+          const cv1 = panel.querySelector('#daz-custom-1-value'); if (cv1) cv1.value = ''
+          const cl2 = panel.querySelector('#daz-custom-2-label'); if (cl2) cl2.value = 'param 2'
+          const cv2 = panel.querySelector('#daz-custom-2-value'); if (cv2) cv2.value = ''
         })
 
         // Close panel helper
@@ -1128,7 +1165,7 @@ export function buildWorkflowConfigExtension(cfg) {
           detail: node[keys.detail] || {},
           defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           onSave: async (updates) => {
-            const cw    = node.widgets?.find(w => w.name === 'config')
+            const cw    = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
             if (!label || label === '(no configs)') return
             const detail = node[keys.detail] || {}
@@ -1255,7 +1292,7 @@ export function buildWorkflowConfigExtension(cfg) {
             node._dazGroupFilter = newGroup
           }
           syncWidget(node)
-          const configWidget = node.widgets?.find(w => w.name === 'config')
+          const configWidget = node.widgets?.find(w => w.name === 'scene')
           if (configWidget) configWidget.value = result.label
 
           await reloadVersionWidget(node, result.label, result.version || '1')
@@ -1276,7 +1313,7 @@ export function buildWorkflowConfigExtension(cfg) {
       // ── Save existing config ──────────────────────────────────────────────
 
       async function saveConfig(node, wrap, saveMode = 'current', skipRescale = false, nameChangeConfirmed = false, keepPanelOpen = false, thenFn = null) {
-        const cw    = node.widgets?.find(w => w.name === 'config')
+        const cw    = node.widgets?.find(w => w.name === 'scene')
         const label = cw?.value
         if (!label || label === '(no configs)') return
 
@@ -1362,7 +1399,7 @@ export function buildWorkflowConfigExtension(cfg) {
             node._dazGroupFilter = saveGroup
           }
           syncWidget(node)
-          const configWidget = node.widgets?.find(w => w.name === 'config')
+          const configWidget = node.widgets?.find(w => w.name === 'scene')
           if (configWidget) configWidget.value = result.label
 
           await reloadVersionWidget(node, result.label, result.version)
@@ -1526,7 +1563,7 @@ export function buildWorkflowConfigExtension(cfg) {
       }
 
       async function duplicateConfigToNew(node, wrap, newName, duplicateMode) {
-        const cw    = node.widgets?.find(w => w.name === 'config')
+        const cw    = node.widgets?.find(w => w.name === 'scene')
         const label = cw?.value
         if (!label || label === '(no configs)') return
         const errDiv = wrap.querySelector('#daz-save-error')
@@ -1667,7 +1704,7 @@ export function buildWorkflowConfigExtension(cfg) {
       function showDeleteVersionConfirm(node, wrap) {
         const name    = node[keys.detail]?.name || '?'
         const version = node._dazCurrentVersion || '1'
-        const cw      = node.widgets?.find(w => w.name === 'config')
+        const cw      = node.widgets?.find(w => w.name === 'scene')
         const label   = cw?.value || ''
 
         const overlay = document.createElement('div')
@@ -1731,7 +1768,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
             node._dazGroupFilter = 'All'
             syncWidget(node)
-            const configWidget    = node.widgets?.find(w => w.name === 'config')
+            const configWidget    = node.widgets?.find(w => w.name === 'scene')
             const remainingLabels = filteredLabels(node._dazAllConfigs || [], 'All', 'All')
             if (remainingLabels.length > 0) {
               if (configWidget) configWidget.value = remainingLabels[0]
@@ -1744,7 +1781,7 @@ export function buildWorkflowConfigExtension(cfg) {
             }
           } else {
             syncWidget(node)
-            const configWidget = node.widgets?.find(w => w.name === 'config')
+            const configWidget = node.widgets?.find(w => w.name === 'scene')
             if (configWidget && configWidget.value !== '(no configs)') {
               await reloadVersionWidget(node, configWidget.value)
               loadDetail(node, configWidget.value, node._dazVersionWidget?.value)
@@ -1772,7 +1809,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function showDeleteConfigConfirm(node, wrap) {
         const name  = node[keys.detail]?.name || '?'
-        const cw    = node.widgets?.find(w => w.name === 'config')
+        const cw    = node.widgets?.find(w => w.name === 'scene')
         const label = cw?.value || ''
 
         const overlay = document.createElement('div')
@@ -1834,7 +1871,7 @@ export function buildWorkflowConfigExtension(cfg) {
           if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
           node._dazGroupFilter = 'All'
           syncWidget(node)
-          const configWidget    = node.widgets?.find(w => w.name === 'config')
+          const configWidget    = node.widgets?.find(w => w.name === 'scene')
           const remainingLabels = filteredLabels(node._dazAllConfigs || [], 'All', 'All')
 
           if (remainingLabels.length > 0) {
@@ -1901,18 +1938,18 @@ export function buildWorkflowConfigExtension(cfg) {
         this._dazGroupFilter    = 'All'
         this._dazCurrentVersion = '1'
 
-        const cfWidget = this.widgets?.find(w => w.name === 'config_file')
+        const cfWidget = this.widgets?.find(w => w.name === 'movie')
         if (cfWidget) {
           if (_configFiles.length > 0) {
-            cfWidget.options.values = _configFiles.map(f => f.file)
-            cfWidget.value          = _configFiles[0].file
+            cfWidget.options.values = _configFiles.map(f => fileLabel(f))
+            cfWidget.value          = fileLabel(_configFiles[0])
           }
           cfWidget.hidden = _configFiles.length <= 1
           this._dazConfigFileWidget = cfWidget
           const origCfCb = cfWidget.callback
           cfWidget.callback = async (value) => {
             origCfCb?.call(this, value)
-            this._dazConfigFile = value === '(default)' ? null : value
+            this._dazConfigFile = labelToFile(value)
             await reloadNodeConfigs(this)
             this._dazTypeFilter  = 'All'
             this._dazGroupFilter = 'All'
@@ -1921,7 +1958,7 @@ export function buildWorkflowConfigExtension(cfg) {
             updateGroupFilterWidget(this)
             syncWidget(this)
             if (!this[keys.editMode]) {
-              const cw = this.widgets?.find(w => w.name === 'config')
+              const cw = this.widgets?.find(w => w.name === 'scene')
               if (cw) {
                 await reloadVersionWidget(this, cw.value)
                 loadDetail(this, cw.value, this._dazVersionWidget?.value)
@@ -1930,7 +1967,7 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
-        const versionWidget = this.widgets?.find(w => w.name === 'version')
+        const versionWidget = this.widgets?.find(w => w.name === 'take')
         if (versionWidget) {
           this._dazVersionWidget = versionWidget
           const origVwCb = versionWidget.callback
@@ -1938,7 +1975,7 @@ export function buildWorkflowConfigExtension(cfg) {
             origVwCb?.call(this, value)
             this._dazCurrentVersion = rawVersion(value)
             if (!this[keys.editMode]) {
-              const cw = this.widgets?.find(w => w.name === 'config')
+              const cw = this.widgets?.find(w => w.name === 'scene')
               if (cw && cw.value !== '(no configs)') loadDetail(this, cw.value, rawVersion(value))
             }
           }
@@ -1949,7 +1986,7 @@ export function buildWorkflowConfigExtension(cfg) {
           updateGroupFilterWidget(this)
           syncWidget(this)
           if (!this[keys.editMode]) {
-            const cw = this.widgets?.find(w => w.name === 'config')
+            const cw = this.widgets?.find(w => w.name === 'scene')
             if (cw && cw.value !== '(no configs)') {
               const myGen = (this._dazVersionReloadGen || 0) + 1
               await reloadVersionWidget(this, cw.value)
@@ -1965,7 +2002,7 @@ export function buildWorkflowConfigExtension(cfg) {
           this._dazGroupFilter = value
           syncWidget(this)
           if (!this[keys.editMode]) {
-            const cw = this.widgets?.find(w => w.name === 'config')
+            const cw = this.widgets?.find(w => w.name === 'scene')
             if (cw && cw.value !== '(no configs)') {
               const myGen = (this._dazVersionReloadGen || 0) + 1
               await reloadVersionWidget(this, cw.value)
@@ -1976,11 +2013,11 @@ export function buildWorkflowConfigExtension(cfg) {
         }, { values: initialGroups })
         this._dazGroupFilterWidget = groupFilterWidget
 
-        const ci = this.widgets.findIndex(w => w.name === 'config')
+        const ci = this.widgets.findIndex(w => w.name === 'scene')
         if (ci >= 0) {
           ;[typeFilterWidget, groupFilterWidget].forEach(fw => {
             const fi = this.widgets.indexOf(fw)
-            const currentCi = this.widgets.findIndex(w => w.name === 'config')
+            const currentCi = this.widgets.findIndex(w => w.name === 'scene')
             if (fi > currentCi) {
               this.widgets.splice(fi, 1)
               this.widgets.splice(currentCi, 0, fw)
@@ -1997,11 +2034,11 @@ export function buildWorkflowConfigExtension(cfg) {
               _configFiles = await fr.json()
               if (cfWidget) {
                 cfWidget.options.values = _configFiles.length > 0
-                  ? _configFiles.map(f => f.file)
+                  ? _configFiles.map(f => fileLabel(f))
                   : ['(default)']
                 cfWidget.hidden = _configFiles.length <= 1
-                if (_configFiles.length > 0 && !_configFiles.find(f => f.file === cfWidget.value)) {
-                  cfWidget.value      = _configFiles[0].file
+                if (_configFiles.length > 0 && !_configFiles.find(f => fileLabel(f) === cfWidget.value)) {
+                  cfWidget.value      = fileLabel(_configFiles[0])
                   this._dazConfigFile = _configFiles[0].file
                 }
               }
@@ -2012,7 +2049,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (this[keys.editMode]) return
             const labels = filteredLabels(this._dazAllConfigs || [], this._dazTypeFilter || 'All', this._dazGroupFilter || 'All')
             if (!labels.length) { renderUseMode(this, {}); return }
-            const cw = this.widgets?.find(w => w.name === 'config')
+            const cw = this.widgets?.find(w => w.name === 'scene')
             if (cw) {
               await reloadVersionWidget(this, cw.value)
               loadDetail(this, cw.value, this._dazVersionWidget?.value)
@@ -2038,7 +2075,7 @@ export function buildWorkflowConfigExtension(cfg) {
         this.size    = [NODE_W, NODE_H]
         this.minSize = [NODE_W, NODE_H]
 
-        const w = this.widgets?.find(w => w.name === 'config')
+        const w = this.widgets?.find(w => w.name === 'scene')
         if (w) {
           const origCb = w.callback
           w.callback = async (value) => {
@@ -2060,7 +2097,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const executedHandler = ({ detail }) => {
           if (String(detail.node) !== String(this.id)) return
           if (this[keys.editMode]) return
-          const cw = this.widgets?.find(w => w.name === 'config')
+          const cw = this.widgets?.find(w => w.name === 'scene')
           if (cw && cw.value && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
         }
         api.addEventListener('executed', executedHandler)
@@ -2086,11 +2123,9 @@ export function buildWorkflowConfigExtension(cfg) {
         const self = this
         queueMicrotask(async () => {
           if (self._dazConfigFileWidget) {
-            const savedFile = self._dazConfigFileWidget.value
-            const isValidFile = savedFile && savedFile !== '(default)' &&
-              savedFile.startsWith('dx_') && savedFile.endsWith('.json')
-            self._dazConfigFile = isValidFile ? savedFile : null
-            if (!isValidFile) self._dazConfigFileWidget.value = '(default)'
+            const savedFile = labelToFile(self._dazConfigFileWidget.value)
+            self._dazConfigFile = savedFile
+            if (!savedFile) self._dazConfigFileWidget.value = '(default)'
             if (self._dazConfigFile !== null) await reloadNodeConfigs(self)
           }
           if (self._dazTypeFilterWidget)  self._dazTypeFilter  = self._dazTypeFilterWidget.value  || 'All'
@@ -2100,7 +2135,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (!self[keys.editMode]) renderUseMode(self, {})
             return
           }
-          const w = self.widgets?.find(w => w.name === 'config')
+          const w = self.widgets?.find(w => w.name === 'scene')
           const configBefore = w?.value
           syncWidget(self)
           await reloadVersionWidget(self, w?.value, w?.value === configBefore ? savedVersion : null)

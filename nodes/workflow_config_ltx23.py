@@ -6,7 +6,7 @@ from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
     all_versions_for_class,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_seed_randomize, _get_flag_value,
+    _get_seed_randomize, _get_flag_value, _get_custom_value,
     _get_active_set,
     _resolve_path, _load_file, _write_file,
 )
@@ -155,7 +155,7 @@ class WorkflowConfigLtx23:
     @classmethod
     def INPUT_TYPES(cls):
         files       = scan_config_files(_CLASS)
-        file_labels = [f["file"] for f in files] if files else [_FILE_DEFAULT]
+        file_labels = [f"({os.path.splitext(f['file'])[0]}) {f['name']}" for f in files] if files else [_FILE_DEFAULT]
         if files and _FILE_DEFAULT not in file_labels:
             file_labels = file_labels + [_FILE_DEFAULT]
 
@@ -172,9 +172,9 @@ class WorkflowConfigLtx23:
 
         return {
             "required": {
-                "config_file": (file_labels,),
-                "config":      (all_labels if all_labels else [_NO_CONFIGS],),
-                "version":     (all_versions,),
+                "movie":  (file_labels,),
+                "scene":  (all_labels if all_labels else [_NO_CONFIGS],),
+                "take":   (all_versions,),
             }
         }
 
@@ -196,6 +196,7 @@ class WorkflowConfigLtx23:
         "MODEL", "MODEL",
         "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
+        "STRING", "STRING",
     )
     RETURN_NAMES = (
         "checkpoint_model", "checkpoint_vae", "checkpoint_clip",
@@ -215,45 +216,46 @@ class WorkflowConfigLtx23:
         "transformer_stack", "checkpoint_stack",
         "is_t2v",
         "flag_1", "flag_2", "flag_3",
+        "custom_1", "custom_2",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
     OUTPUT_NODE = False
 
     @classmethod
-    def IS_CHANGED(cls, config_file: str, config: str, version: str):
-        file = None if config_file == _FILE_DEFAULT else config_file
+    def IS_CHANGED(cls, movie: str, scene: str, take: str):
+        file = None if movie == _FILE_DEFAULT else movie[1:movie.index(')')] + '.json'
         try:
             path = _resolve_path(file)
             configs, _, _ = _load_file(path)
             name = next(
                 (n for n, e in configs.items()
-                 if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
+                 if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == scene),
                 None,
             )
             if name is not None:
-                active_set = _get_active_set(configs[name], version)
+                active_set = _get_active_set(configs[name], take)
                 if _get_seed_randomize(active_set.get("seed", {})):
                     return float("NaN")
         except Exception:
             pass
-        return config
+        return scene
 
-    def load_config(self, config_file: str, config: str, version: str):
-        file = None if config_file == _FILE_DEFAULT else config_file
+    def load_config(self, movie: str, scene: str, take: str):
+        file = None if movie == _FILE_DEFAULT else movie[1:movie.index(')')] + '.json'
         path = _resolve_path(file)
         configs, meta_extra, effective = _load_file(path)
         name = next(
             (n for n, e in configs.items()
-             if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == config),
+             if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == scene),
             None,
         )
         if name is None:
             raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigLtx23: '{config}' not found"
+                f"[DAZ TOOLS] WorkflowConfigLtx23: '{scene}' not found"
             )
         entry      = configs[name]
-        active_set = _get_active_set(entry, version)
+        active_set = _get_active_set(entry, take)
         loras      = _get_loras(active_set)
 
         seed_obj = active_set.get("seed", {"value": 0})
@@ -261,9 +263,9 @@ class WorkflowConfigLtx23:
         if _get_seed_randomize(seed_obj):
             seed_val = random.randint(1, 2**31 - 1)
             sets = entry.get("sets", [])
-            raw_version = str(version).split(" - ")[0].strip()
+            raw_take = str(take).split(" - ")[0].strip()
             for i, s in enumerate(sets):
-                if str(s.get("version", "")) == raw_version:
+                if str(s.get("version", "")) == raw_take:
                     sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
                     break
             else:
@@ -345,4 +347,6 @@ class WorkflowConfigLtx23:
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),
             _get_flag_value(active_set.get("flags", {}).get("flag_3")),
+            _get_custom_value(active_set.get("custom", {}).get("param_1")),
+            _get_custom_value(active_set.get("custom", {}).get("param_2")),
         )
