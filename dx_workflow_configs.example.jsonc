@@ -1,12 +1,12 @@
 {
   "_meta": {
     "schema_version": 3,                   // internal schema version; do not change
-    "name": "dx_workflow_configs",          // file identifier
-    "version": "1.0",                       // file format version string
+    "name": "dx_movie_default",            // file/"movie" identifier
+    "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
     "updated_at": "2026-06-02T00:00:00"    // file last-modified timestamp (ISO 8601)
   },
-  "My WAN2.2 Config": {                    // config name — shown in the node dropdown
+  "My WAN2.2 Scene 01": {                    // "scene" name — shown in the node dropdown
     "class": "Wan2.2",                     // node class this config targets
     "created_at": "2026-06-02T00:00:00",   // entry creation timestamp
     "updated_at": "2026-06-02T00:00:00",   // entry last-modified timestamp
@@ -26,8 +26,8 @@
         "audio_vae": { "name": "" },       // audio VAE filename (leave empty if unused)
         "checkpoint": { "name": "" },      // full checkpoint filename (empty for WAN)
         "clip_2": { "name": "" },          // second text encoder slot (empty for WAN)
-        "shift_high": { "value": 5 },       // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
-        "shift_low": { "value": 5 },        // low-pass unet timestep
+        "shift_high": { "value": 5.0 },       // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
+        "shift_low": { "value": 5.0 },        // low-pass unet timestep
         "image_path": { "path": "C:/path/to/input_image.png" }, // absolute path to input image (for I2V)
         "audio_path": { "path": "" },      // absolute path to input reference audio file
         "width": { "value": 1280 },        // output width in pixels
@@ -81,8 +81,8 @@
         "audio_vae": { "name": "" },       // audio VAE filename (leave empty if unused)
         "clip_2": { "name": "t5xxl_fp8_e4m3fn.safetensors" }, // primary text encoder (T5 for LTX)
         "clip": { "name": "" },            // second text encoder slot (optional)
-        "shift_high": { "value": 5 },       // NOT USED by LTX node
-        "shift_low": { "value": 5 },        // NOT USED by LTX node
+        "shift_high": { "value": 5.0 },       // NOT USED by LTX node
+        "shift_low": { "value": 5.0 },        // NOT USED by LTX node
         "image_path": { "path": "" },      // input image path (empty for T2V)
         "audio_path": { "path": "" },      // absolute path to input reference audio file
         "width": { "value": 768 },         // output width in pixels
