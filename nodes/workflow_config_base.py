@@ -586,6 +586,16 @@ def _migrate(configs: dict, from_version: int) -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def parse_movie_file(movie: str) -> str | None:
+    """Convert the movie widget value to a config filename.
+    Handles both the current formatted label '(stem) name' and the legacy raw filename format."""
+    if movie == "(default)":
+        return None
+    if movie.startswith('(') and ')' in movie:
+        return movie[1:movie.index(')')] + '.json'
+    return movie  # legacy: raw filename stored in workflow
+
+
 def load_configs(file: str = None) -> dict:
     path = _resolve_path(file)
     configs, _, _ = _load_file(path)

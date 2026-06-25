@@ -4,7 +4,7 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
-    all_versions_for_class,
+    all_versions_for_class, parse_movie_file,
     _get_name, _get_text, _get_file, _get_int, _get_float,
     _get_seed_randomize, _get_flag_value, _get_custom_value,
     _get_active_set,
@@ -113,8 +113,18 @@ class WorkflowConfigImage:
     OUTPUT_NODE = False
 
     @classmethod
+    def VALIDATE_INPUTS(cls, movie: str, scene: str, take: str):
+        if movie == _FILE_DEFAULT:
+            return True
+        files = scan_config_files(_CLASS)
+        valid = {f"({os.path.splitext(f['file'])[0]}) {f['name']}" for f in files} | {f['file'] for f in files}
+        if movie not in valid:
+            return f"Value not in list: movie: '{movie}' not in valid options"
+        return True
+
+    @classmethod
     def IS_CHANGED(cls, movie: str, scene: str, take: str):
-        file = None if movie == _FILE_DEFAULT else movie[1:movie.index(')')] + '.json'
+        file = parse_movie_file(movie)
         try:
             path = _resolve_path(file)
             configs, _, _ = _load_file(path)
@@ -132,7 +142,7 @@ class WorkflowConfigImage:
         return scene
 
     def load_config(self, movie: str, scene: str, take: str):
-        file = None if movie == _FILE_DEFAULT else movie[1:movie.index(')')] + '.json'
+        file = parse_movie_file(movie)
         path = _resolve_path(file)
         configs, meta_extra, effective = _load_file(path)
         name = next(
