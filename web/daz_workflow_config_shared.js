@@ -660,7 +660,7 @@ export function buildWorkflowConfigExtension(cfg) {
                 placeholder="Optional group…" style="${fs}">
             </div>
             ${hideType
-              ? `<input type="hidden" id="daz-type" value="all">`
+              ? `<input type="hidden" id="daz-type" value="${esc(data.type || '')}">`
               : `<div style="${rw}"><label style="${lbl}">Type</label>
               <select id="daz-type" style="${fs}">
                 <option value=""${!data.type ? ' selected' : ''}>— no type —</option>

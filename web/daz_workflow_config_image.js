@@ -193,7 +193,6 @@ function buildDimsHtml(data, h) {
 
 function buildPayload(wrap) {
   return {
-    type:            'all',
     checkpoint:      { name:  wrap.querySelector('#daz-checkpoint')?.value    ?? '' },
     unet_high:       { name:  wrap.querySelector('#daz-unet-high')?.value     ?? '' },
     vae:             { name:  wrap.querySelector('#daz-vae')?.value           ?? '' },
