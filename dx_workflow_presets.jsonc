@@ -1,0 +1,188 @@
+{
+    "_meta": {
+        "preset_schema_version": 1, // internal schema version; do not change
+        "name": "General Presets", // file/"movie" identifier
+        "version": "1.0", // file format version string
+        "created_at": "2026-06-02T00:00:00", // file creation timestamp (ISO 8601)
+        "updated_at": "2026-06-02T00:00:00", // file last-modified timestamp (ISO 8601)
+        "profiles": {
+            "Wan2.2": [
+                "class",
+                "version",
+                "label",
+                "created_at",
+                "updated_at",
+                "type",
+                "note",
+                "unet_high",
+                "unet_low",
+                "vae",
+                "clip",
+                "width",
+                "height",
+                "shift_high",
+                "shift_low",
+                "steps",
+                "split_step",
+                "cfg_high",
+                "cfg_low"
+            ],
+            "ltx2.3": [
+                "class",
+                "version",
+                "label",
+                "created_at",
+                "updated_at",
+                "type",
+                "note",
+                "checkpoint",
+                "unet_high",
+                "vae",
+                "audio_vae",
+                "clip_2",
+                "clip",
+                "width",
+                "height",
+                "steps",
+                "cfg_high"
+            ],
+            "ImageInference": [
+                "class",
+                "version",
+                "label",
+                "created_at",
+                "updated_at",
+                "note",
+                "checkpoint",
+                "unet_high",
+                "vae",
+                "audio_vae",
+                "clip",
+                "clip_type",
+                "width",
+                "height",
+                "steps",
+                "cfg_high"
+            ]
+        }
+    },
+    "presets": [
+        {
+            "class": "Wan2.2",
+            "version": "1", // set version number (auto-incremented on save)
+            "label": "My First Version", // optional user-friendly label for this set version
+            "created_at": "2026-06-02T00:00:00", // set creation timestamp
+            "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
+            "type": "I2V", // generation mode (e.g. I2V, T2V)
+            "note": "This is a sample preset for WAN2.2", // optional user note
+            "unet_high": {
+                "name": "wan2.2_14B_vace_highpass.safetensors"
+            }, // high-pass diffusion model filename
+            "unet_low": {
+                "name": "wan2.2_14B_vace_lowpass.safetensors"
+            }, // low-pass diffusion model filename
+            "vae": {
+                "name": "wan2.2_vae.safetensors"
+            }, // VAE model filename
+            "clip": {
+                "name": "umt5xxl_fp8_e4m3fn.safetensors"
+            }, // text encoder filename
+            "shift_high": {
+                "value": 5.0
+            }, // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
+            "shift_low": {
+                "value": 5.0
+            }, // low-pass unet timestep
+            "width": {
+                "value": 1280
+            }, // output width in pixels
+            "height": {
+                "value": 720
+            }, // output height in pixels
+            "steps": {
+                "value": 30
+            }, // number of denoising steps
+            "split_step": {
+                "value": 15
+            }, // step at which high/low-pass unet split occurs
+            "cfg_high": {
+                "value": 6.0
+            }, // guidance scale for the high-pass unet
+            "cfg_low": {
+                "value": 3.5
+            } // guidance scale for the low-pass unet
+        },
+        {
+            "class": "ltx2.3",
+            "version": "1",
+            "label": "My First Version",
+            "created_at": "2026-06-02T00:00:00",
+            "updated_at": "2026-06-02T00:00:00",
+            "type": "T2V",
+            "note": "This is a sample preset for LTX2.3",
+            "checkpoint": {
+                "name": "ltx_video_0.9.7_distilled_fp8.safetensors"
+            }, // primary checkpoint (loads model + clip + vae together)
+            "unet_high": {
+                "name": ""
+            }, // standalone transformer model (optional; overrides checkpoint model)
+            "vae": {
+                "name": "ltx_video_0.9.7_vae.safetensors"
+            }, // standalone video VAE (overrides checkpoint VAE)
+            "audio_vae": {
+                "name": ""
+            }, // audio VAE filename (leave empty if unused)
+            "clip_2": {
+                "name": "t5xxl_fp8_e4m3fn.safetensors"
+            }, // primary text encoder (T5 for LTX)
+            "clip": {
+                "name": ""
+            }, // second text encoder slot (optional)
+            "width": {
+                "value": 768
+            }, // output width in pixels
+            "height": {
+                "value": 512
+            }, // output height in pixels
+            "steps": {
+                "value": 8
+            }, // number of denoising steps
+            "cfg_high": {
+                "value": 1.0
+            } // guidance scale (distilled models use low values near 1)
+        },
+        {
+            "class": "ImageInference",
+            "version": "1",
+            "label": "My First Version",
+            "created_at": "2026-06-02T00:00:00",
+            "updated_at": "2026-06-02T00:00:00",
+            "note": "This is a sample preset for Image Inference",
+            "checkpoint": {
+                "name": "flux1-dev.safetensors"
+            }, // primary checkpoint (loads model + clip + vae together)
+            "unet_high": {
+                "name": ""
+            }, // standalone diffusion model (optional; labeled "diffuser")
+            "vae": {
+                "name": ""
+            }, // standalone VAE (optional; overrides checkpoint VAE)
+            "clip": {
+                "name": ""
+            }, // standalone text encoder (optional; overrides checkpoint CLIP)
+            "clip_type": "stable_diffusion", // clip loader type (e.g. stable_diffusion, flux2, sd3, hidream)
+            "width": {
+                "value": 1024
+            }, // output width in pixels
+            "height": {
+                "value": 1024
+            }, // output height in pixels
+            "steps": {
+                "value": 20
+            }, // number of denoising steps
+            "cfg_high": {
+                "value": 3.5
+            } // guidance scale (labeled "CFG" in the UI)
+        }
+    ]
+}
