@@ -8,6 +8,7 @@ import { api } from '../../scripts/api.js'
 //   keys: { detail, editMode, editOverlay, wrap, executedHandler, domWidget }
 //   uidPrefix, folderNames, loraLabels, loraLabelWidth, useModeLoraCount
 //   dimsClearIds, modelsClearIds
+//   hideType, hideAudioPath, hideLorasBox
 //   renderDetailHtml(data, h), updateOutputLabels(node, data, h),
 //   buildModelsHtml(folderMap, data, h), buildDimsHtml(data, h),
 //   buildPayload(wrap)
@@ -24,6 +25,9 @@ export function buildWorkflowConfigExtension(cfg) {
         keys, uidPrefix, folderNames,
         loraLabels, loraLabelWidth, useModeLoraCount,
         dimsClearIds, modelsClearIds,
+        hideType      = false,
+        hideAudioPath = false,
+        hideLorasBox  = false,
         renderDetailHtml:   renderDetailHtmlFn,
         updateOutputLabels: updateOutputLabelsFn,
         buildModelsHtml:    buildModelsHtmlFn,
@@ -123,7 +127,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const typeFilter  = node._dazTypeFilter  || 'All'
           const groupFilter = node._dazGroupFilter || 'All'
           let visible = versions
-          if (typeFilter  !== 'All') visible = visible.filter(v => (v.type  || '') === typeFilter)
+          if (typeFilter  !== 'All') visible = visible.filter(v => v.type === 'all' || (v.type  || '') === typeFilter)
           if (groupFilter !== 'All') visible = visible.filter(v => (v.group || '') === groupFilter)
           if (!visible.length) visible = versions
           const makeDisplay = v => v.label ? `${v.version} - ${v.label}` : String(v.version)
@@ -147,7 +151,10 @@ export function buildWorkflowConfigExtension(cfg) {
       function filteredLabels(configs, typeFilter, groupFilter) {
         let filtered = configs
         if (typeFilter && typeFilter !== 'All')
-          filtered = filtered.filter(c => (c.types ?? [c.type]).includes(typeFilter))
+          filtered = filtered.filter(c => {
+            const types = c.types ?? [c.type]
+            return types.includes(typeFilter) || types.includes('all')
+          })
         if (groupFilter && groupFilter !== 'All')
           filtered = filtered.filter(c => (c.groups ?? [c.group]).includes(groupFilter))
         return filtered.map(c => c.label)
@@ -158,7 +165,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const configs    = node._dazAllConfigs || []
         const typeFilter = node._dazTypeFilter || 'All'
         const base = typeFilter === 'All' ? configs
-          : configs.filter(c => (c.types ?? [c.type]).includes(typeFilter))
+          : configs.filter(c => { const types = c.types ?? [c.type]; return types.includes(typeFilter) || types.includes('all') })
         const groups = ['All', ...Array.from(new Set(
           base.flatMap(c => c.groups ?? [c.group]).filter(Boolean)
         )).sort()]
@@ -652,14 +659,16 @@ export function buildWorkflowConfigExtension(cfg) {
               <input id="daz-group" type="text" value="${esc(fName(data.group))}"
                 placeholder="Optional group…" style="${fs}">
             </div>
-            <div style="${rw}"><label style="${lbl}">Type</label>
+            ${hideType
+              ? `<input type="hidden" id="daz-type" value="all">`
+              : `<div style="${rw}"><label style="${lbl}">Type</label>
               <select id="daz-type" style="${fs}">
                 <option value=""${!data.type ? ' selected' : ''}>— no type —</option>
                 <option value="I2V"${data.type === 'I2V' ? ' selected' : ''}>I2V</option>
                 <option value="T2V"${data.type === 'T2V' ? ' selected' : ''}>T2V</option>
                 <option value="MULTI"${data.type === 'MULTI' ? ' selected' : ''}>MULTI</option>
               </select>
-            </div>
+            </div>`}
             <div style="${rw}"><label style="${lbl}">Note</label>
               <textarea id="daz-note" maxlength="900"
                 style="${tas};height:60px;resize:none">${esc(fNote(data.note))}</textarea>
@@ -693,7 +702,7 @@ export function buildWorkflowConfigExtension(cfg) {
               <span id="daz-img-preview-ph"
                 style="color:#555;font-size:11px${imageName ? ';display:none' : ''}">Image preview here</span>
             </div>
-            <div style="display:flex;gap:4px;align-items:center;margin-top:6px">
+            ${hideAudioPath ? '' : `<div style="display:flex;gap:4px;align-items:center;margin-top:6px">
               <select id="daz-audio-path" style="flex:1;background:#111;color:#ddd;border:1px solid #555;
                 border-radius:4px;font-size:11px;font-family:monospace;padding:1px 3px;min-width:0">
                 ${selOptAudio(inputFiles, audioName)}
@@ -706,7 +715,7 @@ export function buildWorkflowConfigExtension(cfg) {
               <button id="daz-audio-play-btn"
                 style="font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;
                        border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">play</button>
-            </div>
+            </div>`}
           `)}
           ${box('Dimensions and More', buildDimsHtml(data))}
         `
@@ -762,7 +771,7 @@ export function buildWorkflowConfigExtension(cfg) {
         // ── Right column ──────────────────────────────────────────────────
         const colRight = `
           ${box('Models', buildModelsHtml(folderMap, data))}
-          ${box('LoRAs', buildLorasHtml(loraFiles, data))}
+          ${hideLorasBox ? '' : box('LoRAs', buildLorasHtml(loraFiles, data))}
           ${box('Other', `
             <div style="${rw}">
               <div style="display:flex;align-items:flex-end;gap:4px">
@@ -1275,7 +1284,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const result = await r.json()
           if (!r.ok || result.error) throw new Error(result.error || r.statusText)
 
-          const newType  = payload.type        || 'All'
+          const newType  = (!payload.type || payload.type === 'all') ? 'All' : payload.type
           const newGroup = payload.group?.name || 'All'
 
           if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
@@ -1387,7 +1396,7 @@ export function buildWorkflowConfigExtension(cfg) {
           }
 
           await reloadNodeConfigs(node)
-          const saveType  = payload.type        || 'All'
+          const saveType  = (!payload.type || payload.type === 'all') ? 'All' : payload.type
           const saveGroup = payload.group?.name || 'All'
           if (node._dazTypeFilter !== 'All') {
             if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = saveType
@@ -1571,7 +1580,7 @@ export function buildWorkflowConfigExtension(cfg) {
         if (dupBtn) { dupBtn.textContent = 'Duplicating…'; dupBtn.disabled = true }
         if (errDiv) errDiv.textContent = ''
 
-        const srcType  = node[keys.detail]?.type        || 'All'
+        const srcType  = (!node[keys.detail]?.type || node[keys.detail]?.type === 'all') ? 'All' : node[keys.detail].type
         const srcGroup = fName(node[keys.detail]?.group) || 'All'
 
         try {

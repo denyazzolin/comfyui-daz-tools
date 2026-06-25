@@ -50,7 +50,7 @@ os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 _MGR_DIR    = os.path.join(_WORKFLOWS_DIR, ".dx_mgr")
 
-CURRENT_SCHEMA = 4
+CURRENT_SCHEMA = 5
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
