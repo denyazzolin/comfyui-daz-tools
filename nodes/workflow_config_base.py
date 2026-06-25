@@ -558,6 +558,149 @@ def load_checkpoint(name: str):
     return out[0], out[1], out[2]
 
 
+# ── Preset file I/O ───────────────────────────────────────────────────────────
+
+PRESET_SCHEMA = 1
+_PRESET_SKIP_APPLY  = {"class", "version", "created_at", "updated_at"}
+_PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
+_PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
+_PRESET_FLOAT_FIELDS = {"cfg_high", "cfg_low", "fps", "shift_high", "shift_low"}
+
+
+def _resolve_preset_path(file: str = None) -> str:
+    if not file:
+        return os.path.join(_MGR_DIR, "dx_workflow_presets.json")
+    basename = os.path.basename(file)
+    if not (basename.startswith("dx_") and basename.endswith(".json")):
+        raise ValueError(f"[DAZ TOOLS] Invalid preset file name: {file!r}")
+    return os.path.join(_MGR_DIR, basename)
+
+
+def _load_preset_file(path: str) -> tuple[list, dict]:
+    """Load a preset file. Returns (presets, meta). Returns ([], {}) if not a preset file."""
+    if not os.path.exists(path):
+        return [], {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception as e:
+        print(f"[DAZ TOOLS] WorkflowPresets: could not read {os.path.basename(path)} — {e}")
+        return [], {}
+    if not isinstance(raw, dict):
+        return [], {}
+    meta = raw.get(_META_KEY, {})
+    if "preset_schema_version" not in meta:
+        return [], {}
+    presets = raw.get("presets", [])
+    return presets if isinstance(presets, list) else [], meta
+
+
+def _write_preset_file(path: str, presets: list, meta: dict) -> None:
+    now = datetime.now().isoformat()
+    out_meta = {
+        "preset_schema_version": meta.get("preset_schema_version", PRESET_SCHEMA),
+        "name":       meta.get("name", "presets"),
+        "version":    meta.get("version", "1.0"),
+        "created_at": meta.get("created_at", now),
+        "updated_at": now,
+        "profiles":   meta.get("profiles", {}),
+    }
+    data = {_META_KEY: out_meta, "presets": presets}
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def scan_preset_files() -> list[dict]:
+    """Return all dx_*.json files in _MGR_DIR that are preset files (have preset_schema_version)."""
+    os.makedirs(_MGR_DIR, exist_ok=True)
+    results = []
+    try:
+        candidates = sorted(f for f in os.listdir(_MGR_DIR) if f.startswith("dx_") and f.endswith(".json"))
+    except OSError:
+        return results
+    for filename in candidates:
+        path = os.path.join(_MGR_DIR, filename)
+        _, meta = _load_preset_file(path)
+        if not meta:
+            continue
+        results.append({
+            "file":     filename,
+            "name":     meta.get("name") or os.path.splitext(filename)[0],
+            "path":     path,
+            "profiles": meta.get("profiles", {}),
+        })
+    return results
+
+
+def get_presets_for_class(cls: str, file: str = None) -> list[dict]:
+    """Return all presets for cls. Scans all preset files, or just the given one."""
+    results = []
+    if file:
+        path = _resolve_preset_path(file)
+        presets, meta = _load_preset_file(path)
+        sources = [{"file": file, "path": path, "presets": presets, "meta": meta}]
+    else:
+        sources = []
+        for pf in scan_preset_files():
+            presets, meta = _load_preset_file(pf["path"])
+            sources.append({"file": pf["file"], "path": pf["path"], "presets": presets, "meta": meta})
+    for src in sources:
+        profile = src["meta"].get("profiles", {}).get(cls, [])
+        for p in src["presets"]:
+            if p.get("class") != cls:
+                continue
+            item = dict(p)
+            item["_file"]    = src["file"]
+            item["_profile"] = profile
+            results.append(item)
+    return results
+
+
+def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
+    """Copy profile-listed fields from preset into target set dict, in place."""
+    for field in profile:
+        if field in _PRESET_SKIP_APPLY or field not in preset:
+            continue
+        val = preset[field]
+        if field == "clip_type":
+            target["clip_type"] = str(val or "stable_diffusion")
+        elif field in ("label", "type"):
+            target[field] = str(val or "")
+        elif field == "note":
+            target["note"] = val if isinstance(val, dict) else {"value": str(val or "")}
+        elif field in _PRESET_NAME_FIELDS:
+            target[field] = val if isinstance(val, dict) else {"name": str(val or "")}
+        elif field in _PRESET_INT_FIELDS:
+            if isinstance(val, dict):
+                target[field] = val
+            else:
+                try:
+                    target[field] = {"value": int(val or 0)}
+                except (ValueError, TypeError):
+                    pass
+        elif field in _PRESET_FLOAT_FIELDS:
+            if isinstance(val, dict):
+                target[field] = val
+            else:
+                try:
+                    target[field] = {"value": float(val or 0.0)}
+                except (ValueError, TypeError):
+                    pass
+
+
+def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
+    """Read profile-listed fields from a config set to form a preset dict."""
+    preset: dict = {"class": cls}
+    for field in profile:
+        if field == "class":
+            continue
+        val = set_obj.get(field)
+        if val is not None:
+            preset[field] = val
+    return preset
+
+
 # ── Schema migration ──────────────────────────────────────────────────────────
 
 def _migrate(configs: dict, from_version: int) -> dict:
@@ -1050,6 +1193,196 @@ try:
         result_ver  = str(result_sets[0].get("version", "1")) if result_sets else "1"
         new_label   = make_label(new_name, new_entry["created_at"])
         return web.json_response({"ok": True, "label": new_label, "version": result_ver})
+
+    @PromptServer.instance.routes.get("/daz/preset-files")
+    async def _daz_preset_files(request):
+        files = scan_preset_files()
+        return web.json_response([{"file": f["file"], "name": f["name"]} for f in files])
+
+    @PromptServer.instance.routes.get("/daz/presets")
+    async def _daz_presets(request):
+        cls  = request.rel_url.query.get("class", "")
+        file = request.rel_url.query.get("file") or None
+        if not cls:
+            return web.json_response({"error": "class is required"}, status=400)
+        return web.json_response(get_presets_for_class(cls, file=file))
+
+    @PromptServer.instance.routes.post("/daz/preset-save")
+    async def _daz_preset_save(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        cls            = data.get("class", "")
+        preset_file    = data.get("preset_file") or None
+        preset_label   = str(data.get("preset_label", "")).strip()
+        preset_version = str(data.get("preset_version", "1")).strip() or "1"
+        config_file    = data.get("config_file") or None
+        config_label   = data.get("config_label", "")
+        config_version = data.get("config_version") or None
+
+        if not cls or not preset_label:
+            return web.json_response({"error": "class and preset_label are required"}, status=400)
+
+        try:
+            config_path = _resolve_path(config_file)
+        except ValueError:
+            config_path = CONFIG_FILE
+        configs, _, _ = _load_file(config_path)
+        config_name = next(
+            (n for n, e in configs.items()
+             if e.get("class") == cls and make_label(n, e.get("created_at", "")) == config_label),
+            None,
+        )
+        if config_name is None:
+            return web.json_response({"error": f"Config '{config_label}' not found."}, status=404)
+
+        active_set = _get_active_set(configs[config_name], config_version)
+
+        try:
+            ppath = _resolve_preset_path(preset_file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        presets, meta = _load_preset_file(ppath)
+        if not meta:
+            return web.json_response(
+                {"error": f"Preset file '{os.path.basename(ppath)}' not found or is not a valid preset file."},
+                status=404,
+            )
+        profile = meta.get("profiles", {}).get(cls, [])
+
+        now = datetime.now().isoformat()
+        new_preset = _extract_preset_from_set(active_set, cls, profile)
+        new_preset["label"]   = preset_label
+        new_preset["version"] = preset_version
+
+        idx = next(
+            (i for i, p in enumerate(presets)
+             if p.get("class") == cls and p.get("label") == preset_label
+             and str(p.get("version", "")) == preset_version),
+            None,
+        )
+        if idx is not None:
+            new_preset["created_at"] = presets[idx].get("created_at", now)
+            new_preset["updated_at"] = now
+            presets[idx] = new_preset
+        else:
+            new_preset["created_at"] = now
+            new_preset["updated_at"] = now
+            presets.append(new_preset)
+
+        try:
+            _write_preset_file(ppath, presets, meta)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write preset file: {e}"}, status=500)
+
+        return web.json_response({"ok": True, "label": preset_label, "version": preset_version})
+
+    @PromptServer.instance.routes.post("/daz/preset-apply")
+    async def _daz_preset_apply(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        cls            = data.get("class", "")
+        preset_file    = data.get("preset_file") or None
+        preset_label   = data.get("preset_label", "")
+        preset_version = str(data.get("preset_version", "1")).strip() or "1"
+        config_file    = data.get("config_file") or None
+        config_label   = data.get("config_label", "")
+        config_version = data.get("config_version") or None
+
+        if not cls or not preset_label or not config_label:
+            return web.json_response(
+                {"error": "class, preset_label, and config_label are required"}, status=400)
+
+        try:
+            ppath = _resolve_preset_path(preset_file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        presets, meta = _load_preset_file(ppath)
+        profile = meta.get("profiles", {}).get(cls, [])
+        preset = next(
+            (p for p in presets
+             if p.get("class") == cls and p.get("label") == preset_label
+             and str(p.get("version", "")) == preset_version),
+            None,
+        )
+        if preset is None:
+            return web.json_response(
+                {"error": f"Preset '{preset_label}' v{preset_version} not found."}, status=404)
+
+        try:
+            config_path = _resolve_path(config_file)
+        except ValueError:
+            config_path = CONFIG_FILE
+        configs, meta_extra, effective = _load_file(config_path)
+        config_name = next(
+            (n for n, e in configs.items()
+             if e.get("class") == cls and make_label(n, e.get("created_at", "")) == config_label),
+            None,
+        )
+        if config_name is None:
+            return web.json_response({"error": f"Config '{config_label}' not found."}, status=404)
+
+        entry      = configs[config_name]
+        target_set = _get_active_set(entry, config_version)
+        if not target_set:
+            return web.json_response({"error": "No active set found."}, status=404)
+
+        _apply_preset_to_set(target_set, preset, profile)
+        now = datetime.now().isoformat()
+        target_set["updated_at"] = now
+        entry["updated_at"]      = now
+
+        try:
+            _write_file(config_path, configs, meta_extra, effective)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
+
+        result = _normalize_set(target_set)
+        result["name"]    = config_name
+        result["version"] = str(target_set.get("version", "1"))
+        return web.json_response({"ok": True, "set": result})
+
+    @PromptServer.instance.routes.post("/daz/preset-delete")
+    async def _daz_preset_delete(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        cls            = data.get("class", "")
+        preset_file    = data.get("preset_file") or None
+        preset_label   = data.get("preset_label", "")
+        preset_version = str(data.get("preset_version", "")).strip()
+
+        if not cls or not preset_label:
+            return web.json_response({"error": "class and preset_label are required"}, status=400)
+
+        try:
+            ppath = _resolve_preset_path(preset_file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        presets, meta = _load_preset_file(ppath)
+
+        before  = len(presets)
+        presets = [
+            p for p in presets
+            if not (p.get("class") == cls and p.get("label") == preset_label
+                    and (not preset_version or str(p.get("version", "")) == preset_version))
+        ]
+        if len(presets) == before:
+            return web.json_response({"error": "Preset not found."}, status=404)
+
+        try:
+            _write_preset_file(ppath, presets, meta)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write preset file: {e}"}, status=500)
+
+        return web.json_response({"ok": True})
 
 except Exception:
     pass

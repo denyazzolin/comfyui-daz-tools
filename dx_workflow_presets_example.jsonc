@@ -56,7 +56,6 @@
                 "checkpoint",
                 "unet_high",
                 "vae",
-                "audio_vae",
                 "clip",
                 "clip_type",
                 "width",

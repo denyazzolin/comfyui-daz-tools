@@ -846,13 +846,20 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // Footer
         const btnBase = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
+        const presetBtns = `
+             <button id="daz-apply-preset-btn"   style="${btnBase} #2a8050;background:#1a5c35;color:#9dc">Apply a Preset</button>
+             <button id="daz-save-preset-btn"    style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">Save as a Preset</button>
+             <button id="daz-manage-presets-btn" style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Manage Presets</button>`
+
         panelFooter.innerHTML = isNew
           ? `<span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
+             ${presetBtns}
              <button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
              <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>`
           : `<button id="daz-duplicate-btn"  style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
              <button id="daz-del-config-btn"  style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Del All</button>
              <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px;min-width:0"></span>
+             ${presetBtns}
              <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
              <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Version</button>
              <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
@@ -1163,7 +1170,410 @@ export function buildWorkflowConfigExtension(cfg) {
           openPromptEditorFromEdit(node, panel, isNew)
         })
 
+        // Preset buttons (handlers implemented individually)
+        panel.querySelector('#daz-apply-preset-btn')?.addEventListener('click', () => openApplyPresetModal(node, panel, isNew))
+        panel.querySelector('#daz-save-preset-btn')?.addEventListener('click', () => openSavePresetModal(node, panel, isNew))
+        panel.querySelector('#daz-manage-presets-btn')?.addEventListener('click', () => {})
+
         node.setDirtyCanvas(true, true)
+      }
+
+      // ── Preset field writer ───────────────────────────────────────────────────
+
+      const PRESET_FIELD_MAP = {
+        unet_high:  { sel: '#daz-unet-high',              kind: 'name'  },
+        unet_low:   { sel: '#daz-unet-low',               kind: 'name'  },
+        vae:        { sel: '#daz-vae',                    kind: 'name'  },
+        clip:       { sel: '#daz-clip',                   kind: 'name'  },
+        clip_2:     { sel: '#daz-clip-2',                 kind: 'name'  },
+        audio_vae:  { sel: '#daz-audio-vae',              kind: 'name'  },
+        checkpoint: { sel: '#daz-checkpoint',             kind: 'name'  },
+        clip_type:  { sel: '#daz-clip-type',              kind: 'raw'   },
+        type:       { sel: '#daz-type',                   kind: 'raw'   },
+        label:      { sel: '#daz-version-label',          kind: 'raw'   },
+        note:       { sel: '#daz-note',                   kind: 'note'  },
+        width:      { sel: '#daz-width',                  kind: 'int'   },
+        height:     { sel: '#daz-height',                 kind: 'int'   },
+        steps:      { sel: '#daz-steps',                  kind: 'int'   },
+        split_step: { sel: '#daz-split-step',             kind: 'int'   },
+        cfg_high:   { sel: ['#daz-cfg-high', '#daz-cfg'], kind: 'float' },
+        cfg_low:    { sel: '#daz-cfg-low',                kind: 'float' },
+        shift_high: { sel: '#daz-shift-high',             kind: 'float' },
+        shift_low:  { sel: '#daz-shift-low',              kind: 'float' },
+        fps:        { sel: '#daz-fps',                    kind: 'float' },
+      }
+
+      function applyPresetToPanel(panel, preset, profile) {
+        for (const field of profile) {
+          const map = PRESET_FIELD_MAP[field]
+          if (!map || !(field in preset)) continue
+          const val  = preset[field]
+          const sels = Array.isArray(map.sel) ? map.sel : [map.sel]
+          let el = null
+          for (const s of sels) { el = panel.querySelector(s); if (el) break }
+          if (!el) continue
+          const v = (val && typeof val === 'object') ? val : {}
+          switch (map.kind) {
+            case 'name':  el.value = String(v.name  ?? val ?? ''); break
+            case 'raw':   el.value = String(val ?? '');             break
+            case 'note':  el.value = String(v.value ?? val ?? ''); break
+            case 'int':   el.value = String(v.value ?? val ?? 0);  break
+            case 'float': el.value = String(v.value ?? val ?? 0);  break
+          }
+        }
+      }
+
+      // ── Apply Preset modal ────────────────────────────────────────────────────
+
+      async function openApplyPresetModal(node, panel, isNew) {
+        let presets
+        try {
+          const r = await fetch(`/daz/presets?class=${encodeURIComponent(CLASS)}`)
+          if (!r.ok) throw new Error(r.statusText)
+          presets = await r.json()
+        } catch (e) {
+          presets = []
+        }
+
+        const mo = document.createElement('div')
+        mo.style.cssText =
+          'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10001;' +
+          'display:flex;align-items:center;justify-content:center'
+
+        const mb = document.createElement('div')
+        mb.style.cssText =
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px;' +
+          'padding:20px 24px;width:440px;font-family:monospace'
+
+        const types = ['All', ...Array.from(new Set(presets.map(p => p.type).filter(Boolean))).sort()]
+
+        function makePresetOptions(typeFilter) {
+          const visible = typeFilter === 'All' ? presets
+            : presets.filter(p => (p.type || '') === typeFilter)
+          if (!visible.length)
+            return `<option value="" disabled>— no presets for this type —</option>`
+          return visible.map(p => {
+            const idx = presets.indexOf(p)
+            return `<option value="${idx}">${esc(`${p.label} (version ${p.version})`)}</option>`
+          }).join('')
+        }
+
+        const noPresets = !presets.length
+
+        mb.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 16px;font-weight:bold">Apply a Preset</p>
+          ${!hideType ? `
+          <div style="margin-bottom:10px">
+            <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Type</label>
+            <select id="daz-pmodal-type" style="${fs}" ${noPresets ? 'disabled' : ''}>
+              ${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+            </select>
+          </div>` : ''}
+          <div style="margin-bottom:20px">
+            <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset</label>
+            <select id="daz-pmodal-preset" style="${fs}" ${noPresets ? 'disabled' : ''}>
+              ${noPresets
+                ? `<option value="" disabled>— no presets found for this class —</option>`
+                : makePresetOptions('All')}
+            </select>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button id="daz-pmodal-cancel"
+              style="font-family:monospace;font-size:11px;padding:4px 14px;
+                     background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">
+              Cancel
+            </button>
+            <button id="daz-pmodal-apply"
+              style="font-family:monospace;font-size:11px;padding:4px 14px;
+                     background:#1a5c35;color:#cde;border:1px solid #2a8050;
+                     border-radius:3px;cursor:pointer" ${noPresets ? 'disabled' : ''}>
+              Apply
+            </button>
+          </div>`
+
+        mo.appendChild(mb)
+        document.body.appendChild(mo)
+
+        const typeSelect   = mb.querySelector('#daz-pmodal-type')
+        const presetSelect = mb.querySelector('#daz-pmodal-preset')
+        const applyBtn     = mb.querySelector('#daz-pmodal-apply')
+
+        typeSelect?.addEventListener('change', () => {
+          presetSelect.innerHTML = makePresetOptions(typeSelect.value)
+        })
+
+        mb.querySelector('#daz-pmodal-cancel').addEventListener('click', () => mo.remove())
+        mo.addEventListener('click', e => { if (e.target === mo) mo.remove() })
+
+        applyBtn?.addEventListener('click', async () => {
+          const idx    = parseInt(presetSelect.value, 10)
+          const preset = presets[idx]
+          if (!preset) return
+
+          applyPresetToPanel(panel, preset, preset._profile ?? [])
+          node._dazEditPanelDirty = true
+          mo.remove()
+
+          if (!isNew) {
+            await saveConfig(node, panel, 'current', true, false, true)
+          }
+        })
+      }
+
+      // ── Save as Preset modal ──────────────────────────────────────────────────
+
+      async function openSavePresetModal(node, panel, isNew) {
+        const cw          = node.widgets?.find(w => w.name === 'scene')
+        const configLabel = cw?.value
+
+        const mo = document.createElement('div')
+        mo.style.cssText =
+          'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10001;' +
+          'display:flex;align-items:center;justify-content:center'
+
+        const mb = document.createElement('div')
+        mb.style.cssText =
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px;' +
+          'padding:20px 24px;width:460px;font-family:monospace'
+
+        mo.appendChild(mb)
+        document.body.appendChild(mo)
+        mo.addEventListener('click', e => { if (e.target === mo) mo.remove() })
+
+        const bBlue = 'font-family:monospace;font-size:11px;padding:4px 14px;border-radius:3px;' +
+                      'background:#1a3a5c;color:#9cd;border:1px solid #2a5080;cursor:pointer'
+        const bGray = 'font-family:monospace;font-size:11px;padding:4px 14px;border-radius:3px;' +
+                      'background:#444;color:#ccc;border:1px solid #666;cursor:pointer'
+
+        if (isNew || !configLabel || configLabel === '(no configs)') {
+          mb.innerHTML = `
+            <p style="font-size:13px;color:#ddd;margin:0 0 12px;font-weight:bold">Save as a Preset</p>
+            <p style="color:#888;font-size:12px;margin:0 0 20px">
+              Save the config first before saving it as a preset.
+            </p>
+            <div style="display:flex;justify-content:flex-end">
+              <button id="daz-sp-cancel" style="${bGray}">Close</button>
+            </div>`
+          mb.querySelector('#daz-sp-cancel').addEventListener('click', () => mo.remove())
+          return
+        }
+
+        let presets = []
+        try {
+          const r = await fetch(`/daz/presets?class=${encodeURIComponent(CLASS)}`)
+          if (r.ok) presets = await r.json()
+        } catch (e) {}
+
+        const types     = ['All', ...Array.from(new Set(presets.map(p => p.type).filter(Boolean))).sort()]
+        const noPresets = !presets.length
+
+        function makePresetOptions(typeFilter) {
+          const visible = typeFilter === 'All' ? presets
+            : presets.filter(p => (p.type || '') === typeFilter)
+          if (!visible.length)
+            return `<option value="" disabled selected>— no presets for this type —</option>`
+          return visible.map(p => {
+            const idx = presets.indexOf(p)
+            return `<option value="${idx}">${esc(`${p.label} (version ${p.version})`)}</option>`
+          }).join('')
+        }
+
+        mb.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 16px;font-weight:bold">Save as a Preset</p>
+          ${!hideType ? `
+          <div style="margin-bottom:10px">
+            <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Type</label>
+            <select id="daz-spmodal-type" style="${fs}" ${noPresets ? 'disabled' : ''}>
+              ${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+            </select>
+          </div>` : ''}
+          <div style="margin-bottom:16px">
+            <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset</label>
+            <select id="daz-spmodal-preset" style="${fs}" ${noPresets ? 'disabled' : ''}>
+              ${noPresets
+                ? `<option value="" disabled>— no presets found for this class —</option>`
+                : makePresetOptions('All')}
+            </select>
+          </div>
+          <div id="daz-spmodal-error"
+            style="color:#f88;font-size:11px;min-height:16px;margin-bottom:8px"></div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;gap:6px">
+              <button id="daz-sp-update" style="${bBlue};flex:1">Update the Version</button>
+              <button id="daz-sp-newver" style="${bBlue};flex:1">Save as new Version</button>
+              <button id="daz-sp-new"    style="${bBlue};flex:1">Save as New Preset</button>
+            </div>
+            <div style="display:flex;justify-content:flex-end">
+              <button id="daz-sp-cancel" style="${bGray}">Cancel</button>
+            </div>
+          </div>`
+
+        const typeSelect   = mb.querySelector('#daz-spmodal-type')
+        const presetSelect = mb.querySelector('#daz-spmodal-preset')
+        const updateBtn    = mb.querySelector('#daz-sp-update')
+        const newVerBtn    = mb.querySelector('#daz-sp-newver')
+        const newBtn       = mb.querySelector('#daz-sp-new')
+        const errorEl      = mb.querySelector('#daz-spmodal-error')
+
+        function getSelectedPreset() {
+          const idx = parseInt(presetSelect?.value, 10)
+          return isNaN(idx) ? null : (presets[idx] ?? null)
+        }
+
+        function syncBtns() {
+          const has = !!getSelectedPreset()
+          ;[updateBtn, newVerBtn].forEach(btn => {
+            if (!btn) return
+            btn.disabled      = !has
+            btn.style.opacity = has ? '1' : '0.4'
+            btn.style.cursor  = has ? 'pointer' : 'default'
+          })
+        }
+
+        typeSelect?.addEventListener('change', () => {
+          presetSelect.innerHTML = makePresetOptions(typeSelect.value)
+          syncBtns()
+        })
+        presetSelect?.addEventListener('change', syncBtns)
+        syncBtns()
+
+        mb.querySelector('#daz-sp-cancel').addEventListener('click', () => mo.remove())
+
+        async function doSave(btn, presetFile, presetLabel, presetVersion) {
+          const orig = btn.textContent
+          btn.textContent = 'Saving…'
+          btn.disabled    = true
+          if (errorEl) errorEl.textContent = ''
+          try {
+            const r = await fetch('/daz/preset-save', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                class:          CLASS,
+                preset_file:    presetFile,
+                preset_label:   presetLabel,
+                preset_version: presetVersion,
+                config_file:    currentFile(node),
+                config_label:   configLabel,
+                config_version: node._dazCurrentVersion || '1',
+              }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            mo.remove()
+          } catch (e) {
+            if (errorEl) errorEl.textContent = `Error: ${e.message}`
+            btn.textContent = orig
+            btn.disabled    = false
+            syncBtns()
+          }
+        }
+
+        updateBtn?.addEventListener('click', async () => {
+          const p = getSelectedPreset()
+          if (!p) return
+          await doSave(updateBtn, p._file, p.label, String(p.version))
+        })
+
+        newVerBtn?.addEventListener('click', async () => {
+          const p = getSelectedPreset()
+          if (!p) return
+          const maxVer = Math.max(0, ...presets
+            .filter(q => q.label === p.label)
+            .map(q => parseInt(q.version, 10) || 0))
+          await doSave(newVerBtn, p._file, p.label, String(maxVer + 1))
+        })
+
+        newBtn?.addEventListener('click', async () => {
+          let presetFiles = []
+          try {
+            const r = await fetch('/daz/preset-files')
+            if (r.ok) presetFiles = await r.json()
+          } catch (e) {}
+
+          const subMo = document.createElement('div')
+          subMo.style.cssText =
+            'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10002;' +
+            'display:flex;align-items:center;justify-content:center'
+          const subMb = document.createElement('div')
+          subMb.style.cssText =
+            'background:#2a2a2a;border:1px solid #555;border-radius:6px;' +
+            'padding:20px 24px;width:380px;font-family:monospace'
+          subMo.appendChild(subMb)
+          document.body.appendChild(subMo)
+          subMo.addEventListener('click', e => { if (e.target === subMo) subMo.remove() })
+
+          const noFiles = !presetFiles.length
+          subMb.innerHTML = `
+            <p style="font-size:13px;color:#ddd;margin:0 0 16px;font-weight:bold">Save as New Preset</p>
+            ${noFiles
+              ? `<p style="color:#888;font-size:12px;margin:0 0 20px">
+                   No preset files found. Use <strong style="color:#ddd">Manage Presets</strong> to create one first.
+                 </p>`
+              : `${presetFiles.length > 1
+                  ? `<div style="margin-bottom:10px">
+                       <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset File</label>
+                       <select id="daz-spnew-file" style="${fs}">
+                         ${presetFiles.map(f => `<option value="${esc(f.file)}">${esc(f.name)}</option>`).join('')}
+                       </select>
+                     </div>`
+                  : `<input type="hidden" id="daz-spnew-file" value="${esc(presetFiles[0].file)}">`}
+                <div style="margin-bottom:16px">
+                  <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Name</label>
+                  <input id="daz-spnew-name" type="text" placeholder="Preset name…"
+                    style="${fs}" autocomplete="off">
+                </div>`}
+            <div id="daz-spnew-error"
+              style="color:#f88;font-size:11px;min-height:16px;margin-bottom:8px"></div>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
+              <button id="daz-spnew-cancel" style="${bGray}">Cancel</button>
+              ${!noFiles
+                ? `<button id="daz-spnew-save" style="${bBlue}">Save</button>`
+                : ''}
+            </div>`
+
+          subMb.querySelector('#daz-spnew-cancel').addEventListener('click', () => subMo.remove())
+
+          const nameInput  = subMb.querySelector('#daz-spnew-name')
+          const saveSubBtn = subMb.querySelector('#daz-spnew-save')
+          const errSubEl   = subMb.querySelector('#daz-spnew-error')
+          nameInput?.focus()
+
+          saveSubBtn?.addEventListener('click', async () => {
+            const name    = (nameInput?.value ?? '').trim()
+            const fileVal = subMb.querySelector('#daz-spnew-file')?.value ?? ''
+            if (!name) {
+              if (errSubEl) errSubEl.textContent = 'Name is required.'
+              nameInput?.focus()
+              return
+            }
+            const orig = saveSubBtn.textContent
+            saveSubBtn.textContent = 'Saving…'
+            saveSubBtn.disabled    = true
+            if (errSubEl) errSubEl.textContent = ''
+            try {
+              const r = await fetch('/daz/preset-save', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  class:          CLASS,
+                  preset_file:    fileVal,
+                  preset_label:   name,
+                  preset_version: '1',
+                  config_file:    currentFile(node),
+                  config_label:   configLabel,
+                  config_version: node._dazCurrentVersion || '1',
+                }),
+              })
+              const result = await r.json()
+              if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+              subMo.remove()
+              mo.remove()
+            } catch (e) {
+              if (errSubEl) errSubEl.textContent = `Error: ${e.message}`
+              saveSubBtn.textContent = orig
+              saveSubBtn.disabled    = false
+            }
+          })
+        })
       }
 
       // ── Prompt editor integration ─────────────────────────────────────────
