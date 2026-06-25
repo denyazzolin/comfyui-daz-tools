@@ -41,16 +41,17 @@ def _load_vae(name: str):
     return comfy.sd.VAE(sd=sd, metadata=metadata)
 
 
-def _load_clip(name: str):
+def _load_clip(name: str, clip_type: str = "stable_diffusion"):
     if not name:
         return None
     path = folder_paths.get_full_path("text_encoders", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigImage: text encoder '{name}' not found")
+    ct = getattr(comfy.sd.CLIPType, clip_type.upper(), comfy.sd.CLIPType.STABLE_DIFFUSION)
     return comfy.sd.load_clip(
         ckpt_paths=[path],
         embedding_directory=folder_paths.get_folder_paths("embeddings"),
-        clip_type=comfy.sd.CLIPType.STABLE_DIFFUSION,
+        clip_type=ct,
     )
 
 
@@ -185,8 +186,9 @@ class WorkflowConfigImage:
             vae = _load_vae(vae_name)
         except Exception as e:
             raise RuntimeError(f"[DAZ TOOLS] ImageInference: VAE load failed ('{vae_name}'): {e}") from e
+        clip_type_str = active_set.get("clip_type", "stable_diffusion") or "stable_diffusion"
         try:
-            clip = _load_clip(_get_name(active_set.get("clip")))
+            clip = _load_clip(_get_name(active_set.get("clip")), clip_type_str)
         except Exception as e:
             raise RuntimeError(f"[DAZ TOOLS] ImageInference: CLIP load failed: {e}") from e
 

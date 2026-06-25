@@ -1,6 +1,13 @@
 import { app } from '../../scripts/app.js'
 import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 
+const CLIP_TYPES = [
+  'stable_diffusion', 'stable_cascade', 'sd3', 'stable_audio', 'mochi', 'ltxv',
+  'pixart', 'cosmos', 'lumina2', 'wan', 'hidream', 'chroma', 'ace', 'omnigen2',
+  'qwen_image', 'hunyuan_image', 'flux2', 'ovis', 'longcat_image', 'cogvideox',
+  'lens', 'pixeldit', 'ideogram4', 'boogu', 'krea2',
+]
+
 // ── Image — use-mode detail table ─────────────────────────────────────────────
 
 function renderDetailHtml(data, h) {
@@ -28,6 +35,7 @@ function renderDetailHtml(data, h) {
     ${row('Diffuser',   disp(fName(data.unet_high)))}
     ${row('VAE',        disp(fName(data.vae)))}
     ${row('CLIP',       disp(fName(data.clip)))}
+    ${row('CLIP Type',  esc(data.clip_type || 'stable_diffusion'))}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
@@ -147,6 +155,11 @@ function buildModelsHtml(folderMap, data, h) {
     <div style="${rw}"><label style="${lbl}">CLIP</label>
       <select id="daz-clip" style="${fs}">${selOpt(clipFiles, fName(data.clip))}</select>
     </div>
+    <div style="${rw}"><label style="${lbl}">CLIP Type</label>
+      <select id="daz-clip-type" style="${fs}">
+        ${CLIP_TYPES.map(t => `<option value="${t}"${t === (data.clip_type || 'stable_diffusion') ? ' selected' : ''}>${t}</option>`).join('')}
+      </select>
+    </div>
     <div style="display:flex;justify-content:flex-end">
       <button id="daz-models-clear" style="${cb}">clear</button>
     </div>`
@@ -197,6 +210,7 @@ function buildPayload(wrap) {
     unet_high:       { name:  wrap.querySelector('#daz-unet-high')?.value     ?? '' },
     vae:             { name:  wrap.querySelector('#daz-vae')?.value           ?? '' },
     clip:            { name:  wrap.querySelector('#daz-clip')?.value          ?? '' },
+    clip_type:                wrap.querySelector('#daz-clip-type')?.value      ?? 'stable_diffusion',
     image_path:      { path:  wrap.querySelector('#daz-image-path')?.value    ?? '' },
     master_prompt:   { text:  wrap.querySelector('#daz-master-prompt')?.value ?? '' },
     positive_prompt: {
