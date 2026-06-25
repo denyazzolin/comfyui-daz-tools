@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 4,                   // internal schema version; do not change
+    "schema_version": 6,                   // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -25,6 +25,7 @@
         "clip": { "name": "umt5xxl_fp8_e4m3fn.safetensors" },            // text encoder filename
         "audio_vae": { "name": "" },       // audio VAE filename (leave empty if unused)
         "checkpoint": { "name": "" },      // full checkpoint filename (empty for WAN)
+        "clip_type": "stable_diffusion",   // NOT USED by WAN node
         "clip_2": { "name": "" },          // second text encoder slot (empty for WAN)
         "shift_high": { "value": 5.0 },       // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
         "shift_low": { "value": 5.0 },        // low-pass unet timestep
@@ -85,6 +86,7 @@
         "audio_vae": { "name": "" },       // audio VAE filename (leave empty if unused)
         "clip_2": { "name": "t5xxl_fp8_e4m3fn.safetensors" }, // primary text encoder (T5 for LTX)
         "clip": { "name": "" },            // second text encoder slot (optional)
+        "clip_type": "stable_diffusion",   // NOT USED by LTX node
         "shift_high": { "value": 5.0 },       // NOT USED by LTX node
         "shift_low": { "value": 5.0 },        // NOT USED by LTX node
         "image_path": { "path": "" },      // input image path (empty for T2V)
@@ -110,6 +112,66 @@
           "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
           "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // NOT USED by LTX node
           "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // NOT USED by LTX node
+        },
+        "filename": { "file": "" },        // output filename (without extension)
+        "flags": {
+          "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
+          "flag_2": { "label": "flag 2", "value": false },  // custom boolean toggle 2
+          "flag_3": { "label": "flag 3", "value": false }  // custom boolean toggle 3
+        },
+        "custom": {
+          "param_1": { "label": "param 1", "value": "" }, // custom string parameter 1; label is the display name
+          "param_2": { "label": "param 2", "value": "" }  // custom string parameter 2
+        }
+      }
+    ]
+  },
+  "My Image Config": {                    // config name — shown in the node dropdown
+    "class": "ImageInference",           // node class this config targets
+    "created_at": "2026-06-02T00:00:00",   // entry creation timestamp
+    "updated_at": "2026-06-02T00:00:00",   // entry last-modified timestamp
+    "sets": [                              // array of versioned parameter sets
+      {
+        "version": "1",                    // set version number (auto-incremented on save)
+        "label": "My First Version",       // optional user-friendly label for this set version
+        "created_at": "2026-06-02T00:00:00", // set creation timestamp
+        "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
+        "type": "all",                     // always "all" for ImageInference; hidden in UI
+        "group": { "name": "" },           // optional UI grouping label
+        "note": { "value": "" },           // free-text note for this set
+        "checkpoint": { "name": "flux1-dev.safetensors" }, // primary checkpoint (loads model + clip + vae together)
+        "unet_high": { "name": "" },       // standalone diffusion model (optional; labeled "diffuser")
+        "unet_low": { "name": "" },        // NOT USED by Image node
+        "vae": { "name": "" },             // standalone VAE (optional; overrides checkpoint VAE)
+        "audio_vae": { "name": "" },       // NOT USED by Image node
+        "clip": { "name": "" },            // standalone text encoder (optional; overrides checkpoint CLIP)
+        "clip_type": "stable_diffusion",   // clip loader type (e.g. stable_diffusion, flux2, sd3, hidream)
+        "clip_2": { "name": "" },          // NOT USED by Image node
+        "shift_high": { "value": 0.0 },       // NOT USED by Image node
+        "shift_low": { "value": 0.0 },        // NOT USED by Image node
+        "image_path": { "path": "" },      // input image path (for img2img workflows)
+        "audio_path": { "path": "" },      // NOT USED by Image node
+        "width": { "value": 1024 },        // output width in pixels
+        "height": { "value": 1024 },       // output height in pixels
+        "steps": { "value": 20 },          // number of denoising steps
+        "split_step": { "value": 0 },      // NOT USED by Image node
+        "seed": { "value": 0, "randomize": false }, // seed value; randomize: re-rolls each run
+        "cfg_high": { "value": 3.5 },      // guidance scale (labeled "CFG" in the UI)
+        "cfg_low": { "value": 0.0 },       // NOT USED by Image node
+        "total_frames": { "value": 0 },    // NOT USED by Image node
+        "fps": { "value": 0.0 },           // NOT USED by Image node
+        "master_prompt": { "text": "" },   // base prompt; combined with positive when type is not "smart"
+        "positive_prompt": { "text": "A photo of ...", "type": "smart" }, // type "smart" forwards only this text to the relay node
+        "negative_prompt": { "text": "" }, // negative prompt text
+        "loras": {
+          "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // NOT USED by Image node
+          "lora_2": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_3": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_4": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_5": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_6": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_7": { "name": "", "strength": 1.0, "enabled": true },
+          "lora_8": { "name": "", "strength": 1.0, "enabled": true }
         },
         "filename": { "file": "" },        // output filename (without extension)
         "flags": {
