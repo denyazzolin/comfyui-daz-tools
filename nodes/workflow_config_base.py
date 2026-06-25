@@ -566,6 +566,28 @@ _PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "cl
 _PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
 _PRESET_FLOAT_FIELDS = {"cfg_high", "cfg_low", "fps", "shift_high", "shift_low"}
 
+_DEFAULT_PRESET_PROFILES: dict = {
+    "Wan2.2": [
+        "class", "version", "label", "created_at", "updated_at",
+        "type", "note",
+        "unet_high", "unet_low", "vae", "clip",
+        "width", "height", "shift_high", "shift_low",
+        "steps", "split_step", "cfg_high", "cfg_low",
+    ],
+    "ltx2.3": [
+        "class", "version", "label", "created_at", "updated_at",
+        "type", "note",
+        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip",
+        "width", "height", "steps", "cfg_high",
+    ],
+    "ImageInference": [
+        "class", "version", "label", "created_at", "updated_at",
+        "note",
+        "checkpoint", "unet_high", "vae", "clip", "clip_type",
+        "width", "height", "steps", "cfg_high",
+    ],
+}
+
 
 def _resolve_preset_path(file: str = None) -> str:
     if not file:
@@ -1246,10 +1268,20 @@ try:
             return web.json_response({"error": str(e)}, status=400)
         presets, meta = _load_preset_file(ppath)
         if not meta:
-            return web.json_response(
-                {"error": f"Preset file '{os.path.basename(ppath)}' not found or is not a valid preset file."},
-                status=404,
-            )
+            if os.path.exists(ppath):
+                return web.json_response(
+                    {"error": f"'{os.path.basename(ppath)}' exists but is not a valid preset file."},
+                    status=400,
+                )
+            display_name = str(data.get("file_display_name") or "").strip() \
+                           or os.path.splitext(os.path.basename(ppath))[0]
+            meta = {
+                "preset_schema_version": PRESET_SCHEMA,
+                "name":     display_name,
+                "version":  "1.0",
+                "profiles": _DEFAULT_PRESET_PROFILES,
+            }
+            presets = []
         profile = meta.get("profiles", {}).get(cls, [])
 
         now = datetime.now().isoformat()

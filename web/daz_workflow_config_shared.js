@@ -1502,13 +1502,21 @@ export function buildWorkflowConfigExtension(cfg) {
           document.body.appendChild(subMo)
           subMo.addEventListener('click', e => { if (e.target === subMo) subMo.remove() })
 
+          function toFileSlug(s) {
+            return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'presets'
+          }
+
           const noFiles = !presetFiles.length
           subMb.innerHTML = `
             <p style="font-size:13px;color:#ddd;margin:0 0 16px;font-weight:bold">Save as New Preset</p>
             ${noFiles
-              ? `<p style="color:#888;font-size:12px;margin:0 0 20px">
-                   No preset files found. Use <strong style="color:#ddd">Manage Presets</strong> to create one first.
-                 </p>`
+              ? `<div style="margin-bottom:10px">
+                   <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset File Name</label>
+                   <input id="daz-spnew-fname" type="text" placeholder="e.g. General Presets"
+                     style="${fs}" autocomplete="off">
+                   <span id="daz-spnew-fhint"
+                     style="color:#555;font-size:10px;display:block;margin-top:3px">→ dx_presets.json</span>
+                 </div>`
               : `${presetFiles.length > 1
                   ? `<div style="margin-bottom:10px">
                        <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset File</label>
@@ -1516,33 +1524,50 @@ export function buildWorkflowConfigExtension(cfg) {
                          ${presetFiles.map(f => `<option value="${esc(f.file)}">${esc(f.name)}</option>`).join('')}
                        </select>
                      </div>`
-                  : `<input type="hidden" id="daz-spnew-file" value="${esc(presetFiles[0].file)}">`}
-                <div style="margin-bottom:16px">
-                  <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Name</label>
-                  <input id="daz-spnew-name" type="text" placeholder="Preset name…"
-                    style="${fs}" autocomplete="off">
-                </div>`}
+                  : `<input type="hidden" id="daz-spnew-file" value="${esc(presetFiles[0].file)}">`}`}
+            <div style="margin-bottom:16px">
+              <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset Name</label>
+              <input id="daz-spnew-name" type="text" placeholder="Preset name…"
+                style="${fs}" autocomplete="off">
+            </div>
             <div id="daz-spnew-error"
               style="color:#f88;font-size:11px;min-height:16px;margin-bottom:8px"></div>
             <div style="display:flex;justify-content:flex-end;gap:8px">
               <button id="daz-spnew-cancel" style="${bGray}">Cancel</button>
-              ${!noFiles
-                ? `<button id="daz-spnew-save" style="${bBlue}">Save</button>`
-                : ''}
+              <button id="daz-spnew-save" style="${bBlue}">Save</button>
             </div>`
 
           subMb.querySelector('#daz-spnew-cancel').addEventListener('click', () => subMo.remove())
 
+          const fnameInput = subMb.querySelector('#daz-spnew-fname')
+          const fhint      = subMb.querySelector('#daz-spnew-fhint')
           const nameInput  = subMb.querySelector('#daz-spnew-name')
           const saveSubBtn = subMb.querySelector('#daz-spnew-save')
           const errSubEl   = subMb.querySelector('#daz-spnew-error')
-          nameInput?.focus()
+
+          fnameInput?.addEventListener('input', () => {
+            if (fhint) fhint.textContent = `→ dx_${toFileSlug(fnameInput.value)}.json`
+          })
+
+          ;(fnameInput ?? nameInput)?.focus()
 
           saveSubBtn?.addEventListener('click', async () => {
-            const name    = (nameInput?.value ?? '').trim()
-            const fileVal = subMb.querySelector('#daz-spnew-file')?.value ?? ''
+            let fileVal, fileDisplayName
+            if (noFiles) {
+              const rawFname = (fnameInput?.value ?? '').trim()
+              if (!rawFname) {
+                if (errSubEl) errSubEl.textContent = 'Preset file name is required.'
+                fnameInput?.focus()
+                return
+              }
+              fileVal         = `dx_${toFileSlug(rawFname)}.json`
+              fileDisplayName = rawFname
+            } else {
+              fileVal = subMb.querySelector('#daz-spnew-file')?.value ?? ''
+            }
+            const name = (nameInput?.value ?? '').trim()
             if (!name) {
-              if (errSubEl) errSubEl.textContent = 'Name is required.'
+              if (errSubEl) errSubEl.textContent = 'Preset name is required.'
               nameInput?.focus()
               return
             }
@@ -1551,17 +1576,19 @@ export function buildWorkflowConfigExtension(cfg) {
             saveSubBtn.disabled    = true
             if (errSubEl) errSubEl.textContent = ''
             try {
+              const body = {
+                class:          CLASS,
+                preset_file:    fileVal,
+                preset_label:   name,
+                preset_version: '1',
+                config_file:    currentFile(node),
+                config_label:   configLabel,
+                config_version: node._dazCurrentVersion || '1',
+              }
+              if (fileDisplayName) body.file_display_name = fileDisplayName
               const r = await fetch('/daz/preset-save', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  class:          CLASS,
-                  preset_file:    fileVal,
-                  preset_label:   name,
-                  preset_version: '1',
-                  config_file:    currentFile(node),
-                  config_label:   configLabel,
-                  config_version: node._dazCurrentVersion || '1',
-                }),
+                body: JSON.stringify(body),
               })
               const result = await r.json()
               if (!r.ok || result.error) throw new Error(result.error || r.statusText)
