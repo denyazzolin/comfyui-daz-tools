@@ -297,6 +297,8 @@ def _apply_set_fields(target: dict, data: dict) -> None:
     """Apply typed-object field updates from request data onto a set dict in place."""
     if "type" in data:
         target["type"] = data["type"]
+    if "clip_type" in data:
+        target["clip_type"] = str(data["clip_type"] or "stable_diffusion")
 
     for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
         if f in data:
@@ -383,6 +385,7 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
     """Build a new set object from request data."""
     s: dict = {"version": version, "label": str(data.get("version_label") or ""), "created_at": now, "updated_at": now}
     s["type"] = data.get("type", "")
+    s["clip_type"] = str(data.get("clip_type") or "stable_diffusion")
     for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
         v = data.get(f)
         s[f] = v if isinstance(v, dict) else {"name": str(v or "")}
