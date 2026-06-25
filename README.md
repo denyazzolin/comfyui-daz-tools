@@ -70,7 +70,7 @@ Scans `models/loras`, reads safetensors metadata, and caches results to `models/
 
 ---
 
-### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`)
+### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`)
 
 These nodes let you store named workflow presets — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a preset, the node loads all the models and sends every value downstream automatically. There is no need to rewire anything when switching between setups.
 
@@ -139,6 +139,20 @@ LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be appli
 | **CFG** | CFG scale |
 
 You can fill in either the checkpoint path or the standalone model paths — both sets of outputs are available on the node. The node outputs a ready-to-use model stack with all enabled LoRAs already applied for both the standalone transformer and the checkpoint model.
+
+**Workflow Config Image** is designed for still-image pipelines. It has no LoRA slots, no audio field, and no video parameters (frames / FPS). The Type filter is also not shown — all presets are listed regardless of type.
+
+| Field | What it controls |
+|---|---|
+| **Checkpoint** | A combined model file that includes the diffusion model, CLIP, and VAE in one |
+| **Diffuser** | Standalone diffusion model, used when not loading from a checkpoint |
+| **VAE** | Standalone VAE |
+| **CLIP** | Standalone text encoder |
+| **CLIP Type** | The encoder family used when loading the standalone CLIP — one of `stable_diffusion`, `flux`, `sd3`, `wan`, `hidream`, `chroma`, and many others |
+| **CFG** | CFG scale |
+| **Custom param 1 / 2** | Two free-form string outputs (`custom_1`, `custom_2`), each with a configurable label. Useful for passing arbitrary values downstream (e.g. style names, scheduler identifiers, preprocessor flags) |
+
+You can fill in either the checkpoint path or the standalone model paths — all outputs are available on the node regardless of which set is populated.
 
 #### Versioned presets
 
