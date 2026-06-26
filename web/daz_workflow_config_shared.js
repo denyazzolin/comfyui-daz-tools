@@ -1253,6 +1253,7 @@ export function buildWorkflowConfigExtension(cfg) {
         mo.addEventListener('click', e => { if (e.target === mo) mo.remove() })
 
         const noPresets = !presets.length
+        const types     = ['All', ...Array.from(new Set(presets.map(p => p.type).filter(Boolean))).sort()]
 
         function presetLabel(p) {
           const vl = (p.version_label || '').trim()
@@ -1261,16 +1262,25 @@ export function buildWorkflowConfigExtension(cfg) {
             : `${p.name} (version ${p.version})`
         }
 
-        function makeOptions() {
-          if (!presets.length)
-            return `<option value="" disabled selected>— no presets found for this class —</option>`
-          return presets.map((p, idx) =>
-            `<option value="${idx}">${esc(presetLabel(p))}</option>`
+        function makeOptions(typeFilter = 'All') {
+          const visible = typeFilter === 'All' ? presets
+            : presets.filter(p => (p.type || '') === typeFilter)
+          if (!visible.length)
+            return `<option value="" disabled selected>— no presets for this type —</option>`
+          return visible.map(p =>
+            `<option value="${presets.indexOf(p)}">${esc(presetLabel(p))}</option>`
           ).join('')
         }
 
         mb.innerHTML = `
           <p style="font-size:13px;color:#ddd;margin:0 0 16px;font-weight:bold">${title}</p>
+          ${!hideType ? `
+          <div style="margin-bottom:10px">
+            <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Type</label>
+            <select id="daz-pm-type" style="${fs}" ${noPresets ? 'disabled' : ''}>
+              ${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+            </select>
+          </div>` : ''}
           <div style="margin-bottom:10px">
             <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset</label>
             <select id="daz-pm-sel" style="${fs}" ${noPresets ? 'disabled' : ''}>${makeOptions()}</select>
@@ -1283,6 +1293,7 @@ export function buildWorkflowConfigExtension(cfg) {
           <div id="daz-pm-error" style="color:#f88;font-size:11px;min-height:16px;margin-bottom:8px"></div>
           <div id="daz-pm-actions"></div>`
 
+        const typeSel   = mb.querySelector('#daz-pm-type')
         const presetSel = mb.querySelector('#daz-pm-sel')
         const noteEl    = mb.querySelector('#daz-pm-note')
         const errorEl   = mb.querySelector('#daz-pm-error')
@@ -1293,10 +1304,16 @@ export function buildWorkflowConfigExtension(cfg) {
           return isNaN(idx) ? null : (presets[idx] ?? null)
         }
 
-        presetSel?.addEventListener('change', () => {
+        function updateNote() {
           if (noteEl) noteEl.value = getSelected()?.note || ''
+        }
+
+        typeSel?.addEventListener('change', () => {
+          presetSel.innerHTML = makeOptions(typeSel.value)
+          presetSel.dispatchEvent(new Event('change'))
         })
-        if (noteEl) noteEl.value = getSelected()?.note || ''
+        presetSel?.addEventListener('change', updateNote)
+        updateNote()
 
         renderActions({ mo, mb, actionsEl, presets, noPresets, getSelected, errorEl, presetSel })
       }
