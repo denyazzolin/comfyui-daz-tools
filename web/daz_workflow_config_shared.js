@@ -1185,6 +1185,16 @@ export function buildWorkflowConfigExtension(cfg) {
         panel.querySelector('#daz-manage-presets-btn')?.addEventListener('click', () => openManagePresetsModal(node, panel))
 
         node.setDirtyCanvas(true, true)
+
+        if (isNew) {
+          try {
+            const r = await fetch(`/daz/presets?class=${encodeURIComponent(CLASS)}`)
+            if (r.ok) {
+              const ps = await r.json()
+              if (ps.length) openApplyPresetModal(node, panel, isNew)
+            }
+          } catch (e) {}
+        }
       }
 
       // ── Preset field writer ───────────────────────────────────────────────────
