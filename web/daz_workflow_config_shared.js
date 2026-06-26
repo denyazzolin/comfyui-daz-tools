@@ -846,7 +846,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // Footer
         const btnBase = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
-        const sep     = '<div style="width:1px;height:16px;background:#444;flex-shrink:0"></div>'
+        const sep     = '<div style="width:1px;height:16px;background:#444;flex-shrink:0;margin:0 8px"></div>'
         const errSpan = '<span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px;min-width:0"></span>'
         const presetBtns = `<div style="display:flex;gap:4px;align-items:center">
                <button id="daz-apply-preset-btn"   style="${btnBase} #2a8050;background:#1a5c35;color:#9dc">Apply Preset</button>
