@@ -1491,6 +1491,7 @@ export function buildWorkflowConfigExtension(cfg) {
                 <div style="margin-bottom:10px">
                   <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Type</label>
                   <select id="daz-spnew-type" style="${fs}">
+                    <option value="">— no type —</option>
                     <option value="I2V">I2V</option>
                     <option value="T2V">T2V</option>
                     <option value="MULTI">MULTI</option>
@@ -1521,6 +1522,10 @@ export function buildWorkflowConfigExtension(cfg) {
               subMb.querySelector('#daz-spnew-cancel').addEventListener('click', () => subMo.remove())
 
               const typeInput  = subMb.querySelector('#daz-spnew-type')
+              if (typeInput) {
+                const panelType = panel.querySelector('#daz-type')?.value || ''
+                if (['I2V', 'T2V', 'MULTI'].includes(panelType)) typeInput.value = panelType
+              }
               const nameInput  = subMb.querySelector('#daz-spnew-name')
               const labelInput = subMb.querySelector('#daz-spnew-label')
               const noteInput  = subMb.querySelector('#daz-spnew-note')
