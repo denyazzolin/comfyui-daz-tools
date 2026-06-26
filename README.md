@@ -217,3 +217,18 @@ The panel has three columns:
 **Use mode** — when not in edit mode, the node shows a summary of the active version. LoRA enabled toggles and flag toggles can be changed directly from use mode without opening the edit panel, and save immediately.
 
 When no presets exist yet, the node shows an empty state with a centred **Create** button.
+
+#### Preset library
+
+The preset library is a shared collection of model-and-parameter templates (`dx_workflow_presets.json` inside `.dx_mgr/`). Presets are not tied to any single workflow — they capture a node's key settings (models, dimensions, CFG, type, etc.) and can be applied to any config of the same class. This makes spinning up a new scene significantly faster: instead of filling in every field from scratch, you pick a preset and the edit panel is pre-filled in one click.
+
+Three buttons in the edit panel footer give access to the library:
+
+**Apply Preset** — opens a browser showing all saved presets for this node class (WAN2.2 and LTX2.3 include a type filter). Select a preset and click **Apply** to write its values into the current edit panel. When you create a new config and presets already exist for that class, this browser opens automatically.
+
+**Save / Update Preset** — opens the same browser with three actions:
+- **Update the Version** — overwrites the selected preset version with the current config's values.
+- **Save as new Version** — saves the current config as an additional numbered version under the same preset name.
+- **Save as New Preset** — opens a form to name the new preset, choose its type (WAN2.2 and LTX2.3 only), add an optional version label and note. All model and parameter values are captured from the current config automatically. Saving is blocked if a preset with the same name already exists at version 1 for this class.
+
+**Manage Presets** — opens the browser in delete mode. You can remove a single version or the entire preset and all its versions.
