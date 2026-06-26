@@ -47,8 +47,19 @@ except Exception:
 
 os.makedirs(_WORKFLOWS_DIR, exist_ok=True)
 
-CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
 _MGR_DIR    = os.path.join(_WORKFLOWS_DIR, ".dx_mgr")
+CONFIG_FILE = os.path.join(_MGR_DIR, "dx_workflow_configs.json")
+
+# One-time migration: move dx_workflow_configs.json from the old root location into .dx_mgr/
+_OLD_CONFIG_FILE = os.path.join(_WORKFLOWS_DIR, "dx_workflow_configs.json")
+if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
+    try:
+        os.makedirs(_MGR_DIR, exist_ok=True)
+        import shutil
+        shutil.move(_OLD_CONFIG_FILE, CONFIG_FILE)
+        print(f"[DAZ TOOLS] WorkflowConfig: migrated dx_workflow_configs.json → .dx_mgr/")
+    except Exception as _e:
+        print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
 CURRENT_SCHEMA = 6
 _META_KEY      = "_meta"
@@ -140,7 +151,10 @@ def scan_config_files(cls: str = None) -> list[dict]:
     except OSError:
         return results
 
+    preset_filename = os.path.basename(_resolve_preset_path())
     for filename in candidates:
+        if filename == preset_filename:
+            continue
         path = os.path.join(_MGR_DIR, filename)
         try:
             configs, meta_extra, _ = _load_file(path)
