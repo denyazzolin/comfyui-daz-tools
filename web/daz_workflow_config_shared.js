@@ -846,24 +846,33 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // Footer
         const btnBase = 'font-family:monospace;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;border:1px solid'
-        const presetBtns = `
-             <button id="daz-apply-preset-btn"   style="${btnBase} #2a8050;background:#1a5c35;color:#9dc">Apply a Preset</button>
-             <button id="daz-save-preset-btn"    style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">Save as a Preset</button>
-             <button id="daz-manage-presets-btn" style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Manage Presets</button>`
+        const sep     = '<div style="width:1px;height:16px;background:#444;flex-shrink:0"></div>'
+        const errSpan = '<span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px;min-width:0"></span>'
+        const presetBtns = `<div style="display:flex;gap:4px;align-items:center">
+               <button id="daz-apply-preset-btn"   style="${btnBase} #2a8050;background:#1a5c35;color:#9dc">Apply Preset</button>
+               <button id="daz-save-preset-btn"    style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">Save/Update Preset</button>
+               <button id="daz-manage-presets-btn" style="${btnBase} #555;background:#333;color:#ddd">Manage Presets</button>
+             </div>`
 
         panelFooter.innerHTML = isNew
-          ? `<span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace"></span>
-             ${presetBtns}
-             <button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
-             <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>`
-          : `<button id="daz-duplicate-btn"  style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
-             <button id="daz-del-config-btn"  style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Del All</button>
-             <span id="daz-save-error" style="flex:1;color:#f88;font-size:11px;font-family:monospace;padding:0 4px;min-width:0"></span>
-             ${presetBtns}
-             <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
-             <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Version</button>
-             <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
-             <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>`
+          ? `<div style="display:flex;gap:4px;align-items:center;flex:1;min-width:0">${errSpan}</div>
+             ${sep}${presetBtns}${sep}
+             <div style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;justify-content:flex-end">
+               <button id="daz-cancel-btn" style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
+               <button id="daz-create-btn" style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Create</button>
+             </div>`
+          : `<div style="display:flex;gap:4px;align-items:center;flex:1;min-width:0">
+               <button id="daz-duplicate-btn" style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
+               <button id="daz-del-config-btn" style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Del All</button>
+               ${errSpan}
+             </div>
+             ${sep}${presetBtns}${sep}
+             <div style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;justify-content:flex-end">
+               <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
+               <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Version</button>
+               <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
+               <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
+             </div>`
 
         // Initial image preview
         if (imageName) {
