@@ -1190,7 +1190,6 @@ export function buildWorkflowConfigExtension(cfg) {
         checkpoint: { sel: '#daz-checkpoint',             kind: 'name'  },
         clip_type:  { sel: '#daz-clip-type',              kind: 'raw'   },
         type:       { sel: '#daz-type',                   kind: 'raw'   },
-        label:      { sel: '#daz-version-label',          kind: 'raw'   },
         note:       { sel: '#daz-note',                   kind: 'note'  },
         width:      { sel: '#daz-width',                  kind: 'int'   },
         height:     { sel: '#daz-height',                 kind: 'int'   },
@@ -1254,7 +1253,7 @@ export function buildWorkflowConfigExtension(cfg) {
             return `<option value="" disabled>— no presets for this type —</option>`
           return visible.map(p => {
             const idx = presets.indexOf(p)
-            return `<option value="${idx}">${esc(`${p.label} (version ${p.version})`)}</option>`
+            return `<option value="${idx}">${esc(`${p.name} (version ${p.version})`)}</option>`
           }).join('')
         }
 
@@ -1374,7 +1373,7 @@ export function buildWorkflowConfigExtension(cfg) {
             return `<option value="" disabled selected>— no presets for this type —</option>`
           return visible.map(p => {
             const idx = presets.indexOf(p)
-            return `<option value="${idx}">${esc(`${p.label} (version ${p.version})`)}</option>`
+            return `<option value="${idx}">${esc(`${p.name} (version ${p.version})`)}</option>`
           }).join('')
         }
 
@@ -1439,7 +1438,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         mb.querySelector('#daz-sp-cancel').addEventListener('click', () => mo.remove())
 
-        async function doSave(btn, presetFile, presetLabel, presetVersion) {
+        async function doSave(btn, presetName, presetVersion) {
           const orig = btn.textContent
           btn.textContent = 'Saving…'
           btn.disabled    = true
@@ -1449,8 +1448,7 @@ export function buildWorkflowConfigExtension(cfg) {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 class:          CLASS,
-                preset_file:    presetFile,
-                preset_label:   presetLabel,
+                preset_name:    presetName,
                 preset_version: presetVersion,
                 config_file:    currentFile(node),
                 config_label:   configLabel,
@@ -1471,25 +1469,19 @@ export function buildWorkflowConfigExtension(cfg) {
         updateBtn?.addEventListener('click', async () => {
           const p = getSelectedPreset()
           if (!p) return
-          await doSave(updateBtn, p._file, p.label, String(p.version))
+          await doSave(updateBtn, p.name, String(p.version))
         })
 
         newVerBtn?.addEventListener('click', async () => {
           const p = getSelectedPreset()
           if (!p) return
           const maxVer = Math.max(0, ...presets
-            .filter(q => q.label === p.label)
+            .filter(q => q.name === p.name)
             .map(q => parseInt(q.version, 10) || 0))
-          await doSave(newVerBtn, p._file, p.label, String(maxVer + 1))
+          await doSave(newVerBtn, p.name, String(maxVer + 1))
         })
 
         newBtn?.addEventListener('click', async () => {
-          let presetFiles = []
-          try {
-            const r = await fetch('/daz/preset-files')
-            if (r.ok) presetFiles = await r.json()
-          } catch (e) {}
-
           const subMo = document.createElement('div')
           subMo.style.cssText =
             'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10002;' +
@@ -1502,29 +1494,8 @@ export function buildWorkflowConfigExtension(cfg) {
           document.body.appendChild(subMo)
           subMo.addEventListener('click', e => { if (e.target === subMo) subMo.remove() })
 
-          function toFileSlug(s) {
-            return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'presets'
-          }
-
-          const noFiles = !presetFiles.length
           subMb.innerHTML = `
             <p style="font-size:13px;color:#ddd;margin:0 0 16px;font-weight:bold">Save as New Preset</p>
-            ${noFiles
-              ? `<div style="margin-bottom:10px">
-                   <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset File Name</label>
-                   <input id="daz-spnew-fname" type="text" placeholder="e.g. General Presets"
-                     style="${fs}" autocomplete="off">
-                   <span id="daz-spnew-fhint"
-                     style="color:#555;font-size:10px;display:block;margin-top:3px">→ dx_presets.json</span>
-                 </div>`
-              : `${presetFiles.length > 1
-                  ? `<div style="margin-bottom:10px">
-                       <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset File</label>
-                       <select id="daz-spnew-file" style="${fs}">
-                         ${presetFiles.map(f => `<option value="${esc(f.file)}">${esc(f.name)}</option>`).join('')}
-                       </select>
-                     </div>`
-                  : `<input type="hidden" id="daz-spnew-file" value="${esc(presetFiles[0].file)}">`}`}
             <div style="margin-bottom:16px">
               <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset Name</label>
               <input id="daz-spnew-name" type="text" placeholder="Preset name…"
@@ -1539,32 +1510,13 @@ export function buildWorkflowConfigExtension(cfg) {
 
           subMb.querySelector('#daz-spnew-cancel').addEventListener('click', () => subMo.remove())
 
-          const fnameInput = subMb.querySelector('#daz-spnew-fname')
-          const fhint      = subMb.querySelector('#daz-spnew-fhint')
           const nameInput  = subMb.querySelector('#daz-spnew-name')
           const saveSubBtn = subMb.querySelector('#daz-spnew-save')
           const errSubEl   = subMb.querySelector('#daz-spnew-error')
 
-          fnameInput?.addEventListener('input', () => {
-            if (fhint) fhint.textContent = `→ dx_${toFileSlug(fnameInput.value)}.json`
-          })
-
-          ;(fnameInput ?? nameInput)?.focus()
+          nameInput?.focus()
 
           saveSubBtn?.addEventListener('click', async () => {
-            let fileVal, fileDisplayName
-            if (noFiles) {
-              const rawFname = (fnameInput?.value ?? '').trim()
-              if (!rawFname) {
-                if (errSubEl) errSubEl.textContent = 'Preset file name is required.'
-                fnameInput?.focus()
-                return
-              }
-              fileVal         = `dx_${toFileSlug(rawFname)}.json`
-              fileDisplayName = rawFname
-            } else {
-              fileVal = subMb.querySelector('#daz-spnew-file')?.value ?? ''
-            }
             const name = (nameInput?.value ?? '').trim()
             if (!name) {
               if (errSubEl) errSubEl.textContent = 'Preset name is required.'
@@ -1576,19 +1528,16 @@ export function buildWorkflowConfigExtension(cfg) {
             saveSubBtn.disabled    = true
             if (errSubEl) errSubEl.textContent = ''
             try {
-              const body = {
-                class:          CLASS,
-                preset_file:    fileVal,
-                preset_label:   name,
-                preset_version: '1',
-                config_file:    currentFile(node),
-                config_label:   configLabel,
-                config_version: node._dazCurrentVersion || '1',
-              }
-              if (fileDisplayName) body.file_display_name = fileDisplayName
               const r = await fetch('/daz/preset-save', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: JSON.stringify({
+                  class:          CLASS,
+                  preset_name:    name,
+                  preset_version: '1',
+                  config_file:    currentFile(node),
+                  config_label:   configLabel,
+                  config_version: node._dazCurrentVersion || '1',
+                }),
               })
               const result = await r.json()
               if (!r.ok || result.error) throw new Error(result.error || r.statusText)
@@ -1641,7 +1590,7 @@ export function buildWorkflowConfigExtension(cfg) {
             return `<option value="" disabled selected>— no presets for this type —</option>`
           return visible.map(p => {
             const idx = presets.indexOf(p)
-            return `<option value="${idx}">${esc(`${p.label} (version ${p.version})`)}</option>`
+            return `<option value="${idx}">${esc(`${p.name} (version ${p.version})`)}</option>`
           }).join('')
         }
 
@@ -1704,13 +1653,13 @@ export function buildWorkflowConfigExtension(cfg) {
 
         mb.querySelector('#daz-mp-cancel').addEventListener('click', () => mo.remove())
 
-        async function doDelete(btn, presetFile, presetLabel, presetVersion) {
+        async function doDelete(btn, presetName, presetVersion) {
           const orig = btn.textContent
           btn.textContent = 'Deleting…'
           btn.disabled    = true
           if (errorEl) errorEl.textContent = ''
           try {
-            const body = { class: CLASS, preset_file: presetFile, preset_label: presetLabel }
+            const body = { class: CLASS, preset_name: presetName }
             if (presetVersion !== undefined) body.preset_version = presetVersion
             const r = await fetch('/daz/preset-delete', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1730,13 +1679,13 @@ export function buildWorkflowConfigExtension(cfg) {
         delPresetBtn?.addEventListener('click', async () => {
           const p = getSelectedPreset()
           if (!p) return
-          await doDelete(delPresetBtn, p._file, p.label)
+          await doDelete(delPresetBtn, p.name)
         })
 
         delVerBtn?.addEventListener('click', async () => {
           const p = getSelectedPreset()
           if (!p) return
-          await doDelete(delVerBtn, p._file, p.label, String(p.version))
+          await doDelete(delVerBtn, p.name, String(p.version))
         })
       }
 
