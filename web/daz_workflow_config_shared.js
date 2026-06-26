@@ -1233,7 +1233,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Shared preset modal base ──────────────────────────────────────────────
 
-      async function openPresetModal({ title, renderActions }) {
+      async function openPresetModal({ title, subtitle, renderActions }) {
         let presets = []
         try {
           const r = await fetch(`/daz/presets?class=${encodeURIComponent(CLASS)}`)
@@ -1273,7 +1273,8 @@ export function buildWorkflowConfigExtension(cfg) {
         }
 
         mb.innerHTML = `
-          <p style="font-size:13px;color:#ddd;margin:0 0 16px;font-weight:bold">${title}</p>
+          <p style="font-size:13px;color:#ddd;margin:0 0 ${subtitle ? '6px' : '16px'};font-weight:bold">${title}</p>
+          ${subtitle ? `<p style="color:#888;font-size:11px;margin:0 0 14px">${subtitle}</p>` : ''}
           ${!hideType ? `
           <div style="margin-bottom:10px">
             <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Type</label>
@@ -1328,15 +1329,26 @@ export function buildWorkflowConfigExtension(cfg) {
 
         await openPresetModal({
           title: 'Apply Preset',
-          renderActions({ mo, actionsEl, noPresets, getSelected }) {
+          renderActions({ mo, actionsEl, getSelected, presetSel }) {
             actionsEl.innerHTML = `
               <div style="display:flex;justify-content:flex-end;gap:8px">
                 <button id="daz-pa-cancel" style="${bGray}">Cancel</button>
-                <button id="daz-pa-apply" style="${bGreen}" ${noPresets ? 'disabled' : ''}>Apply</button>
+                <button id="daz-pa-apply" style="${bGreen}">Apply</button>
               </div>`
 
+            const applyBtn = actionsEl.querySelector('#daz-pa-apply')
+
+            function syncBtn() {
+              const has = !!getSelected()
+              applyBtn.disabled      = !has
+              applyBtn.style.opacity = has ? '1' : '0.4'
+              applyBtn.style.cursor  = has ? 'pointer' : 'default'
+            }
+            presetSel?.addEventListener('change', syncBtn)
+            syncBtn()
+
             actionsEl.querySelector('#daz-pa-cancel').addEventListener('click', () => mo.remove())
-            actionsEl.querySelector('#daz-pa-apply')?.addEventListener('click', async () => {
+            applyBtn.addEventListener('click', async () => {
               const p = getSelected()
               if (!p) return
               applyPresetToPanel(panel, p, p._profile ?? [])
@@ -1385,6 +1397,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         await openPresetModal({
           title: 'Save / Update Preset',
+          subtitle: 'Find a preset to save or update, or click "Save as New Preset" for a new one.',
           renderActions({ mo, actionsEl, presets, noPresets, getSelected, errorEl, presetSel }) {
             actionsEl.innerHTML = `
               <div style="display:flex;flex-direction:column;gap:6px">
@@ -1467,17 +1480,36 @@ export function buildWorkflowConfigExtension(cfg) {
               const subMb = document.createElement('div')
               subMb.style.cssText =
                 'background:#2a2a2a;border:1px solid #555;border-radius:6px;' +
-                'padding:20px 24px;width:380px;font-family:monospace'
+                'padding:20px 24px;width:400px;font-family:monospace'
               subMo.appendChild(subMb)
               document.body.appendChild(subMo)
               subMo.addEventListener('click', e => { if (e.target === subMo) subMo.remove() })
 
               subMb.innerHTML = `
                 <p style="font-size:13px;color:#ddd;margin:0 0 16px;font-weight:bold">Save as New Preset</p>
-                <div style="margin-bottom:16px">
+                ${!hideType ? `
+                <div style="margin-bottom:10px">
+                  <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Type</label>
+                  <select id="daz-spnew-type" style="${fs}">
+                    <option value="I2V">I2V</option>
+                    <option value="T2V">T2V</option>
+                    <option value="MULTI">MULTI</option>
+                  </select>
+                </div>` : ''}
+                <div style="margin-bottom:10px">
                   <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Preset Name</label>
                   <input id="daz-spnew-name" type="text" placeholder="Preset name…"
                     style="${fs}" autocomplete="off">
+                </div>
+                <div style="margin-bottom:10px">
+                  <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Version Label</label>
+                  <input id="daz-spnew-label" type="text" placeholder="Optional label…"
+                    style="${fs}" autocomplete="off">
+                </div>
+                <div style="margin-bottom:16px">
+                  <label style="color:#888;font-size:10px;display:block;margin-bottom:3px">Note</label>
+                  <textarea id="daz-spnew-note" placeholder="Optional note…"
+                    style="${fs};resize:none;height:60px"></textarea>
                 </div>
                 <div id="daz-spnew-error"
                   style="color:#f88;font-size:11px;min-height:16px;margin-bottom:8px"></div>
@@ -1488,7 +1520,10 @@ export function buildWorkflowConfigExtension(cfg) {
 
               subMb.querySelector('#daz-spnew-cancel').addEventListener('click', () => subMo.remove())
 
+              const typeInput  = subMb.querySelector('#daz-spnew-type')
               const nameInput  = subMb.querySelector('#daz-spnew-name')
+              const labelInput = subMb.querySelector('#daz-spnew-label')
+              const noteInput  = subMb.querySelector('#daz-spnew-note')
               const saveSubBtn = subMb.querySelector('#daz-spnew-save')
               const errSubEl   = subMb.querySelector('#daz-spnew-error')
 
@@ -1501,21 +1536,33 @@ export function buildWorkflowConfigExtension(cfg) {
                   nameInput?.focus()
                   return
                 }
+                const clash = presets.some(
+                  p => p.class === CLASS && p.name === name && String(p.version) === '1'
+                )
+                if (clash) {
+                  if (errSubEl) errSubEl.textContent = `A preset named "${name}" (version 1) already exists.`
+                  nameInput?.focus()
+                  return
+                }
                 const orig = saveSubBtn.textContent
                 saveSubBtn.textContent = 'Saving…'
                 saveSubBtn.disabled    = true
                 if (errSubEl) errSubEl.textContent = ''
                 try {
+                  const body = {
+                    class:                CLASS,
+                    preset_name:          name,
+                    preset_version:       '1',
+                    preset_version_label: (labelInput?.value ?? '').trim(),
+                    preset_note:          (noteInput?.value  ?? '').trim(),
+                    config_file:          currentFile(node),
+                    config_label:         configLabel,
+                    config_version:       node._dazCurrentVersion || '1',
+                  }
+                  if (typeInput) body.preset_type = typeInput.value
                   const r = await fetch('/daz/preset-save', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      class:          CLASS,
-                      preset_name:    name,
-                      preset_version: '1',
-                      config_file:    currentFile(node),
-                      config_label:   configLabel,
-                      config_version: node._dazCurrentVersion || '1',
-                    }),
+                    body: JSON.stringify(body),
                   })
                   const result = await r.json()
                   if (!r.ok || result.error) throw new Error(result.error || r.statusText)

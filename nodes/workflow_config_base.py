@@ -1229,6 +1229,8 @@ try:
         preset_version       = str(data.get("preset_version", "1")).strip() or "1"
         preset_version_label = str(data.get("preset_version_label") or "").strip()
         config_file          = data.get("config_file") or None
+        preset_note          = data["preset_note"]  if "preset_note"  in data else None
+        preset_type          = data["preset_type"]  if "preset_type"  in data else None
         config_label         = data.get("config_label", "")
         config_version       = data.get("config_version") or None
 
@@ -1261,6 +1263,10 @@ try:
         new_preset["name"]          = preset_name
         new_preset["version"]       = preset_version
         new_preset["version_label"] = preset_version_label
+        if preset_note is not None:
+            new_preset["note"] = str(preset_note)
+        if preset_type is not None:
+            new_preset["type"] = str(preset_type)
 
         idx = next(
             (i for i, p in enumerate(presets)
