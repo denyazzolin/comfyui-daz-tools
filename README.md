@@ -72,7 +72,14 @@ Scans `models/loras`, reads safetensors metadata, and caches results to `models/
 
 ### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`)
 
-These nodes let you store named workflow presets — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a preset, the node loads all the models and sends every value downstream automatically. There is no need to rewire anything when switching between setups.
+These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically fo ryou to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
+
+The configs are mapped in this way:
+
+-**Movies** are actual json files holding the configurations (see more below)
+- Each movie file can have multiple **scenes**, they are the mnain data with all loras, models, prompts, etc
+- Each scene can have multiple **takes**, with their own prompts, models, etc. They are effectively "versions" of a given scene. Each scene has at least one take.
+
 
 ![Sample nodes](content/sample_nodes_v1.png)
 
@@ -80,18 +87,21 @@ These nodes let you store named workflow presets — models, prompts, dimensions
 
 Presets are stored in `dx_*.json` files inside `ComfyUI/user/default/workflows/.dx_mgr/`. The default file (`dx_workflow_configs.json`) is created automatically the first time you add a preset through the node UI.
 
-You can have as many config files as you like — any `dx_*.json` file in that folder is picked up automatically, and a **Config file** dropdown appears when more than one file exists. Each file can hold presets for any node class (WAN2.2, LTX2.3, etc.), and each node shows only its own class entries. Use multiple files to organise presets by project, client, style, or any other grouping.
+You can have as many config files (references as *movies* on the nodes) as you like — any `dx_*.json` file in that folder is picked up automatically, and a **movie** dropdown appears when more than one file exists. Each file can hold scenes for any node class (WAN2.2, LTX2.3, etc.), and each node shows only its own class entries. Use multiple files to organise moves and scenes by project, client, style, or any other grouping.
 
 > **Custom location:** To store config files somewhere else, create `dx_root_dir_config.json` in the plugin folder (`custom_nodes/comfyui-daz-tools/`) with the key `"workflows_root_dir"` pointing to your preferred path. An annotated example is included as `dx_root_dir_config.example.jsonc`.
 
 #### Filters
 
-Two filters at the top of the node let you narrow down which presets are shown:
+Five possible filters at the top of the node let you narrow down which scenes/takes are shown:
 
-- **Type** — filter by workflow type: `All`, `I2V` (image-to-video), `T2V` (text-to-video), or `MULTI`.
+- **Movie** - filter among movie files found (only visible if more than one file with secens for the node's class are found)
+- **Type** — filter by workflow type: `All`, `I2V` (image-to-video), `T2V` (text-to-video), or `MULTI`, or none.
 - **Group** — filter by a custom group name you assign to presets, or `All` to show everything.
+- **Scene** - Selects wich scene to load
+- **Take** - selects which take of the selected scene to load.
 
-Filters check across all versions of a preset, so a preset that has both an I2V and a T2V version appears under both type filters. The version dropdown also updates to show only matching versions.
+Filters check across all takes of a scene, so a scene that has both an I2V and a T2V version (in the case of videos) appears under both type filters. The take dropdown also updates to show only matching versions.
 
 #### What each node stores
 
@@ -140,7 +150,7 @@ LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be appli
 
 You can fill in either the checkpoint path or the standalone model paths — both sets of outputs are available on the node. The node outputs a ready-to-use model stack with all enabled LoRAs already applied for both the standalone transformer and the checkpoint model.
 
-**Workflow Config Image** is designed for still-image pipelines. It has no LoRA slots, no audio field, and no video parameters (frames / FPS). The Type filter is also not shown — all presets are listed regardless of type.
+**Workflow Config Image** is designed for still-image pipelines. It has no LoRA slots, no audio field, and no video parameters (frames / FPS). The Type filter is also not shown — all scenes/takes are listed regardless of type.
 
 | Field | What it controls |
 |---|---|
@@ -154,17 +164,23 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 
 You can fill in either the checkpoint path or the standalone model paths — all outputs are available on the node regardless of which set is populated.
 
-#### Versioned presets
+**How to start?"** : hit the **NEW** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
+
+As you create scenes and takes, you may easily just **duplicate** one to keep working on a separate scene or to bootstrap the creation of a new scene.
+
+Below is a picture of the scene editor.
 
 ![Sample editor](content/sample_editor_v1.png)
 
-Each named preset can hold multiple **versions** — independent snapshots of all settings, numbered from 1. Switch between them with the **Version** dropdown without affecting other versions. The active version is saved in the workflow file and restored the next time you open it. If a version is missing at load time, the node falls back to the last available version.
+#### Versioned takes
 
-Each version can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). When you create a new version with **+ Version** and the label hasn't been changed, `alt ` is prepended automatically to distinguish it.
+In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes only cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everythig, experiment with new prompts, add othe reference images, other loras, etc, all in teh content of the same scene.
+
+Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "+ Version" button.
 
 #### Managing prompts
 
-Each version stores three prompt fields — **Master**, **Positive**, and **Negative** — along with a **Prompt Type** that controls how the positive prompt is structured.
+Each scene/take stores three prompt fields — **Master**, **Positive**, and **Negative** — along with a **Prompt Type** that controls how the positive prompt is structured.
 
 | Type | How it works |
 |---|---|
