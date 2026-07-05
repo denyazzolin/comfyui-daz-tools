@@ -1223,6 +1223,20 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function applyPresetToPanel(panel, preset, profile) {
         for (const field of profile) {
+          if (field === 'loras') {
+            if (!(field in preset)) continue
+            const loras = (preset.loras && typeof preset.loras === 'object') ? preset.loras : {}
+            for (let n = 1; n <= 8; n++) {
+              const lora   = loras[`lora_${n}`] ?? {}
+              const nameEl = panel.querySelector(`#daz-lora-${n}`)
+              const strEl  = panel.querySelector(`#daz-lora-${n}-strength`)
+              const enEl   = panel.querySelector(`#daz-lora-${n}-enabled`)
+              if (nameEl) nameEl.value   = String(lora.name ?? '')
+              if (strEl)  strEl.value    = String(lora.strength ?? 1.0)
+              if (enEl)   enEl.checked   = lora.enabled ?? true
+            }
+            continue
+          }
           const map = PRESET_FIELD_MAP[field]
           if (!map || !(field in preset)) continue
           const val  = preset[field]

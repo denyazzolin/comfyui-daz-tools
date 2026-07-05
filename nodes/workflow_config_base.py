@@ -574,7 +574,7 @@ def load_checkpoint(name: str):
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
 
-PRESET_SCHEMA = 1
+PRESET_SCHEMA = 2
 _PRESET_SKIP_APPLY  = {"class", "name", "version", "version_label", "created_at", "updated_at"}
 _PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
 _PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
@@ -584,14 +584,14 @@ _DEFAULT_PRESET_PROFILES: dict = {
     "Wan2.2": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "unet_high", "unet_low", "vae", "clip",
+        "unet_high", "unet_low", "vae", "clip", "loras",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
     ],
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip",
+        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
         "width", "height", "steps", "cfg_high",
     ],
     "ImageInference": [
@@ -623,7 +623,40 @@ def _load_preset_file(path: str) -> tuple[list, dict]:
     if "preset_schema_version" not in meta:
         return [], {}
     presets = raw.get("presets", [])
-    return presets if isinstance(presets, list) else [], meta
+    presets = presets if isinstance(presets, list) else []
+
+    file_version = meta.get("preset_schema_version", 1)
+    effective    = max(file_version, PRESET_SCHEMA)
+    meta["preset_schema_version"] = effective
+
+    if file_version > PRESET_SCHEMA:
+        print(f"[DAZ TOOLS] WorkflowPresets: {os.path.basename(path)} is schema v{file_version} "
+              f"(node understands v{PRESET_SCHEMA}) — skipping migration")
+    elif file_version < PRESET_SCHEMA:
+        print(f"[DAZ TOOLS] WorkflowPresets: migrating {os.path.basename(path)} "
+              f"v{file_version} → v{PRESET_SCHEMA}")
+        presets, meta["profiles"] = _migrate_presets(presets, meta.get("profiles", {}), file_version)
+        try:
+            _write_preset_file(path, presets, meta)
+        except Exception as e:
+            print(f"[DAZ TOOLS] WorkflowPresets: could not write migrated preset file — {e}")
+
+    return presets, meta
+
+
+def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[list, dict]:
+    """Migrate a preset file's presets list and profiles dict forward. Additive only."""
+    if from_version < 2:
+        for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
+            if "loras" not in default_profile:
+                continue
+            profile = profiles.get(cls)
+            if isinstance(profile, list) and "loras" not in profile:
+                profile.append("loras")
+            for preset in presets:
+                if preset.get("class") == cls and "loras" not in preset:
+                    preset["loras"] = {key: _lora_obj() for key in _LORA_FIELDS}
+    return presets, profiles
 
 
 def _write_preset_file(path: str, presets: list, meta: dict) -> None:
@@ -701,6 +734,9 @@ def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
                     target[field] = {"value": float(val or 0.0)}
                 except (ValueError, TypeError):
                     pass
+        elif field == "loras":
+            if isinstance(val, dict):
+                target["loras"] = {key: _coerce_lora(val.get(key, "")) for key in _LORA_FIELDS}
 
 
 def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
@@ -708,6 +744,9 @@ def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
     preset: dict = {"class": cls}
     for field in profile:
         if field in ("class", "name"):
+            continue
+        if field == "loras":
+            preset["loras"] = _get_loras(set_obj)
             continue
         val = set_obj.get(field)
         if val is not None:
