@@ -1,6 +1,6 @@
 {
     "_meta": {
-        "preset_schema_version": 1, // internal schema version; do not change
+        "preset_schema_version": 2, // internal schema version; do not change
         "name": "General Presets", // display name for this preset file
         "version": "1.0", // file format version string
         "created_at": "2026-06-02T00:00:00", // file creation timestamp (ISO 8601)
@@ -15,10 +15,14 @@
                 "updated_at",
                 "type",
                 "note",
+                "master_prompt",
+                "positive_prompt",
+                "negative_prompt",
                 "unet_high",
                 "unet_low",
                 "vae",
                 "clip",
+                "loras",
                 "width",
                 "height",
                 "shift_high",
@@ -37,12 +41,16 @@
                 "updated_at",
                 "type",
                 "note",
+                "master_prompt",
+                "positive_prompt",
+                "negative_prompt",
                 "checkpoint",
                 "unet_high",
                 "vae",
                 "audio_vae",
                 "clip_2",
                 "clip",
+                "loras",
                 "width",
                 "height",
                 "steps",
@@ -56,6 +64,9 @@
                 "created_at",
                 "updated_at",
                 "note",
+                "master_prompt",
+                "positive_prompt",
+                "negative_prompt",
                 "checkpoint",
                 "unet_high",
                 "vae",
@@ -78,6 +89,16 @@
             "updated_at": "2026-06-02T00:00:00", // last-modified timestamp
             "type": "I2V", // generation mode (e.g. I2V, T2V)
             "note": "This is a sample preset for WAN2.2", // optional user note
+            "master_prompt": {
+                "text": ""
+            }, // base text combined with the positive prompt; empty is saved/applied as-is
+            "positive_prompt": {
+                "text": "",
+                "type": "smart"
+            }, // conditioning text; "type" selects smart/beats/simple prompt mode
+            "negative_prompt": {
+                "text": ""
+            }, // negative conditioning text
             "unet_high": {
                 "name": "wan2.2_14B_vace_highpass.safetensors"
             }, // high-pass diffusion model filename
@@ -90,6 +111,16 @@
             "clip": {
                 "name": "umt5xxl_fp8_e4m3fn.safetensors"
             }, // text encoder filename
+            "loras": {
+                "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1: filename, weight multiplier, active toggle
+                "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2: 1 and 2 will be seen as high and low loras
+                "lora_3": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 3: 3 and 4 will be seen as high and low loras
+                "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
+                "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5: 5 and 6 will be seen as high and low loras
+                "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
+                "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7: 7 and 8 will be seen as high and low loras
+                "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
+            }, // all 8 lora slots are saved/applied as a whole, including empty ones
             "shift_high": {
                 "value": 5.0
             }, // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
@@ -124,6 +155,16 @@
             "updated_at": "2026-06-02T00:00:00",
             "type": "T2V",
             "note": "This is a sample preset for LTX2.3",
+            "master_prompt": {
+                "text": ""
+            }, // base text combined with the positive prompt; empty is saved/applied as-is
+            "positive_prompt": {
+                "text": "",
+                "type": "smart"
+            }, // conditioning text; "type" selects smart/beats/simple prompt mode
+            "negative_prompt": {
+                "text": ""
+            }, // negative conditioning text
             "checkpoint": {
                 "name": "ltx_video_0.9.7_distilled_fp8.safetensors"
             }, // primary checkpoint (loads model + clip + vae together)
@@ -142,6 +183,16 @@
             "clip": {
                 "name": ""
             }, // second text encoder slot (optional)
+            "loras": {
+                "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1 (typically the distillation LoRA)
+                "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
+                "lora_3": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 3
+                "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
+                "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5
+                "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
+                "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // NOT USED by LTX node
+                "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // NOT USED by LTX node
+            }, // all 8 lora slots are saved/applied as a whole, including empty ones
             "width": {
                 "value": 768
             }, // output width in pixels
@@ -163,6 +214,16 @@
             "created_at": "2026-06-02T00:00:00",
             "updated_at": "2026-06-02T00:00:00",
             "note": "This is a sample preset for Image Inference",
+            "master_prompt": {
+                "text": ""
+            }, // base text combined with the positive prompt; empty is saved/applied as-is
+            "positive_prompt": {
+                "text": "",
+                "type": "smart"
+            }, // conditioning text; "type" selects smart/beats/simple prompt mode
+            "negative_prompt": {
+                "text": ""
+            }, // negative conditioning text
             "checkpoint": {
                 "name": "flux1-dev.safetensors"
             }, // primary checkpoint (loads model + clip + vae together)

@@ -574,29 +574,34 @@ def load_checkpoint(name: str):
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
 
-PRESET_SCHEMA = 1
+PRESET_SCHEMA = 2
 _PRESET_SKIP_APPLY  = {"class", "name", "version", "version_label", "created_at", "updated_at"}
 _PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
 _PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
 _PRESET_FLOAT_FIELDS = {"cfg_high", "cfg_low", "fps", "shift_high", "shift_low"}
 
+_PRESET_TEXT_FIELDS = {"master_prompt", "negative_prompt"}
+
 _DEFAULT_PRESET_PROFILES: dict = {
     "Wan2.2": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "unet_high", "unet_low", "vae", "clip",
+        "master_prompt", "positive_prompt", "negative_prompt",
+        "unet_high", "unet_low", "vae", "clip", "loras",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
     ],
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip",
+        "master_prompt", "positive_prompt", "negative_prompt",
+        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
         "width", "height", "steps", "cfg_high",
     ],
     "ImageInference": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "note",
+        "master_prompt", "positive_prompt", "negative_prompt",
         "checkpoint", "unet_high", "vae", "clip", "clip_type",
         "width", "height", "steps", "cfg_high",
     ],
@@ -623,7 +628,67 @@ def _load_preset_file(path: str) -> tuple[list, dict]:
     if "preset_schema_version" not in meta:
         return [], {}
     presets = raw.get("presets", [])
-    return presets if isinstance(presets, list) else [], meta
+    presets = presets if isinstance(presets, list) else []
+
+    file_version = meta.get("preset_schema_version", 1)
+    effective    = max(file_version, PRESET_SCHEMA)
+    meta["preset_schema_version"] = effective
+
+    if file_version > PRESET_SCHEMA:
+        print(f"[DAZ TOOLS] WorkflowPresets: {os.path.basename(path)} is schema v{file_version} "
+              f"(node understands v{PRESET_SCHEMA}) — skipping migration")
+        return presets, meta
+
+    if file_version < PRESET_SCHEMA:
+        print(f"[DAZ TOOLS] WorkflowPresets: migrating {os.path.basename(path)} "
+              f"v{file_version} → v{PRESET_SCHEMA}")
+        presets, meta["profiles"] = _migrate_presets(presets, meta.get("profiles", {}), file_version)
+
+    before = json.dumps([presets, meta.get("profiles", {})], sort_keys=True)
+    presets, meta["profiles"] = _backfill_preset_fields(presets, meta.get("profiles", {}))
+    after = json.dumps([presets, meta.get("profiles", {})], sort_keys=True)
+
+    if file_version < PRESET_SCHEMA or before != after:
+        try:
+            _write_preset_file(path, presets, meta)
+        except Exception as e:
+            print(f"[DAZ TOOLS] WorkflowPresets: could not write migrated preset file — {e}")
+
+    return presets, meta
+
+
+def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[list, dict]:
+    """Migrate a preset file's presets list and profiles dict forward. Additive only."""
+    if from_version < 2:
+        for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
+            if "loras" not in default_profile:
+                continue
+            profile = profiles.get(cls)
+            if isinstance(profile, list) and "loras" not in profile:
+                profile.append("loras")
+            for preset in presets:
+                if preset.get("class") == cls and "loras" not in preset:
+                    preset["loras"] = {key: _lora_obj() for key in _LORA_FIELDS}
+    return presets, profiles
+
+
+def _backfill_preset_fields(presets: list, profiles: dict) -> tuple[list, dict]:
+    """Ensure presets/profiles include fields added to the preset schema without a version
+    bump. Additive and idempotent — safe to run on every load regardless of file version."""
+    for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
+        profile = profiles.get(cls)
+        if not isinstance(profile, list):
+            continue
+        for field in ("master_prompt", "positive_prompt", "negative_prompt"):
+            if field not in default_profile:
+                continue
+            if field not in profile:
+                profile.append(field)
+            default_val = {"text": "", "type": "smart"} if field == "positive_prompt" else {"text": ""}
+            for preset in presets:
+                if preset.get("class") == cls and field not in preset:
+                    preset[field] = dict(default_val)
+    return presets, profiles
 
 
 def _write_preset_file(path: str, presets: list, meta: dict) -> None:
@@ -683,6 +748,14 @@ def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
             target[field] = str(val or "")
         elif field == "note":
             target["note"] = val if isinstance(val, dict) else {"value": str(val or "")}
+        elif field in _PRESET_TEXT_FIELDS:
+            target[field] = val if isinstance(val, dict) else {"text": str(val or "")}
+        elif field == "positive_prompt":
+            if isinstance(val, dict):
+                target["positive_prompt"] = {"text": str(val.get("text", "") or ""),
+                                              "type": val.get("type", "smart")}
+            else:
+                target["positive_prompt"] = {"text": str(val or ""), "type": "smart"}
         elif field in _PRESET_NAME_FIELDS:
             target[field] = val if isinstance(val, dict) else {"name": str(val or "")}
         elif field in _PRESET_INT_FIELDS:
@@ -701,6 +774,9 @@ def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
                     target[field] = {"value": float(val or 0.0)}
                 except (ValueError, TypeError):
                     pass
+        elif field == "loras":
+            if isinstance(val, dict):
+                target["loras"] = {key: _coerce_lora(val.get(key, "")) for key in _LORA_FIELDS}
 
 
 def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
@@ -708,6 +784,9 @@ def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
     preset: dict = {"class": cls}
     for field in profile:
         if field in ("class", "name"):
+            continue
+        if field == "loras":
+            preset["loras"] = _get_loras(set_obj)
             continue
         val = set_obj.get(field)
         if val is not None:

@@ -21,6 +21,7 @@ Each class gets its own self-contained node file (e.g. `nodes/workflow_config_wa
 ## what do do after you finish a writing code task
 
 Ask me if I want you to check for errors and issues
+Never commit or push to remote automatically. Ask first
 
 ## what to do when commiting and pushing to repositories
 

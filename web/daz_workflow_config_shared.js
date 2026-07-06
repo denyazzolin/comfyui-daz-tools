@@ -1223,6 +1223,43 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function applyPresetToPanel(panel, preset, profile) {
         for (const field of profile) {
+          if (field === 'master_prompt' || field === 'negative_prompt') {
+            if (!(field in preset)) continue
+            const val = preset[field]
+            const el = panel.querySelector(field === 'master_prompt' ? '#daz-master-prompt' : '#daz-negative-prompt')
+            if (el) el.value = String((val && typeof val === 'object') ? (val.text ?? '') : (val ?? ''))
+            continue
+          }
+          if (field === 'positive_prompt') {
+            if (!(field in preset)) continue
+            const val = preset.positive_prompt
+            const v   = (val && typeof val === 'object') ? val : {}
+            const posTA = panel.querySelector('#daz-positive-prompt')
+            if (posTA) posTA.value = String(v.text ?? val ?? '')
+            const newType = v.type ?? 'smart'
+            const posTypeInput = panel.querySelector('#daz-positive-prompt-type')
+            if (posTypeInput) posTypeInput.value = newType
+            panel.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === newType })
+            const posHint = panel.querySelector('#daz-pos-type-hint')
+            if (posHint) posHint.textContent = newType === 'smart'
+              ? 'Warning! Prompt Relays work better with CFG 1.0'
+              : newType === 'beats' ? 'Beats will coerce frame count into full seconds' : 'Simple prompt will remove all segments'
+            continue
+          }
+          if (field === 'loras') {
+            if (!(field in preset)) continue
+            const loras = (preset.loras && typeof preset.loras === 'object') ? preset.loras : {}
+            for (let n = 1; n <= 8; n++) {
+              const lora   = loras[`lora_${n}`] ?? {}
+              const nameEl = panel.querySelector(`#daz-lora-${n}`)
+              const strEl  = panel.querySelector(`#daz-lora-${n}-strength`)
+              const enEl   = panel.querySelector(`#daz-lora-${n}-enabled`)
+              if (nameEl) nameEl.value   = String(lora.name ?? '')
+              if (strEl)  strEl.value    = String(lora.strength ?? 1.0)
+              if (enEl)   enEl.checked   = lora.enabled ?? true
+            }
+            continue
+          }
           const map = PRESET_FIELD_MAP[field]
           if (!map || !(field in preset)) continue
           const val  = preset[field]
