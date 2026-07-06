@@ -580,10 +580,13 @@ _PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "cl
 _PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
 _PRESET_FLOAT_FIELDS = {"cfg_high", "cfg_low", "fps", "shift_high", "shift_low"}
 
+_PRESET_TEXT_FIELDS = {"master_prompt", "negative_prompt"}
+
 _DEFAULT_PRESET_PROFILES: dict = {
     "Wan2.2": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
+        "master_prompt", "positive_prompt", "negative_prompt",
         "unet_high", "unet_low", "vae", "clip", "loras",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
@@ -591,12 +594,14 @@ _DEFAULT_PRESET_PROFILES: dict = {
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
+        "master_prompt", "positive_prompt", "negative_prompt",
         "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
         "width", "height", "steps", "cfg_high",
     ],
     "ImageInference": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "note",
+        "master_prompt", "positive_prompt", "negative_prompt",
         "checkpoint", "unet_high", "vae", "clip", "clip_type",
         "width", "height", "steps", "cfg_high",
     ],
@@ -632,10 +637,18 @@ def _load_preset_file(path: str) -> tuple[list, dict]:
     if file_version > PRESET_SCHEMA:
         print(f"[DAZ TOOLS] WorkflowPresets: {os.path.basename(path)} is schema v{file_version} "
               f"(node understands v{PRESET_SCHEMA}) — skipping migration")
-    elif file_version < PRESET_SCHEMA:
+        return presets, meta
+
+    if file_version < PRESET_SCHEMA:
         print(f"[DAZ TOOLS] WorkflowPresets: migrating {os.path.basename(path)} "
               f"v{file_version} → v{PRESET_SCHEMA}")
         presets, meta["profiles"] = _migrate_presets(presets, meta.get("profiles", {}), file_version)
+
+    before = json.dumps([presets, meta.get("profiles", {})], sort_keys=True)
+    presets, meta["profiles"] = _backfill_preset_fields(presets, meta.get("profiles", {}))
+    after = json.dumps([presets, meta.get("profiles", {})], sort_keys=True)
+
+    if file_version < PRESET_SCHEMA or before != after:
         try:
             _write_preset_file(path, presets, meta)
         except Exception as e:
@@ -656,6 +669,25 @@ def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[
             for preset in presets:
                 if preset.get("class") == cls and "loras" not in preset:
                     preset["loras"] = {key: _lora_obj() for key in _LORA_FIELDS}
+    return presets, profiles
+
+
+def _backfill_preset_fields(presets: list, profiles: dict) -> tuple[list, dict]:
+    """Ensure presets/profiles include fields added to the preset schema without a version
+    bump. Additive and idempotent — safe to run on every load regardless of file version."""
+    for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
+        profile = profiles.get(cls)
+        if not isinstance(profile, list):
+            continue
+        for field in ("master_prompt", "positive_prompt", "negative_prompt"):
+            if field not in default_profile:
+                continue
+            if field not in profile:
+                profile.append(field)
+            default_val = {"text": "", "type": "smart"} if field == "positive_prompt" else {"text": ""}
+            for preset in presets:
+                if preset.get("class") == cls and field not in preset:
+                    preset[field] = dict(default_val)
     return presets, profiles
 
 
@@ -716,6 +748,14 @@ def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
             target[field] = str(val or "")
         elif field == "note":
             target["note"] = val if isinstance(val, dict) else {"value": str(val or "")}
+        elif field in _PRESET_TEXT_FIELDS:
+            target[field] = val if isinstance(val, dict) else {"text": str(val or "")}
+        elif field == "positive_prompt":
+            if isinstance(val, dict):
+                target["positive_prompt"] = {"text": str(val.get("text", "") or ""),
+                                              "type": val.get("type", "smart")}
+            else:
+                target["positive_prompt"] = {"text": str(val or ""), "type": "smart"}
         elif field in _PRESET_NAME_FIELDS:
             target[field] = val if isinstance(val, dict) else {"name": str(val or "")}
         elif field in _PRESET_INT_FIELDS:
