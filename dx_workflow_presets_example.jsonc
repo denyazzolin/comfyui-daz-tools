@@ -100,11 +100,13 @@
                 "text": ""
             }, // negative conditioning text
             "unet_high": {
-                "name": "wan2.2_14B_vace_highpass.safetensors"
-            }, // high-pass diffusion model filename
+                "name": "wan2.2_14B_vace_highpass.safetensors",
+                "gguf": false
+            }, // high-pass diffusion model filename; "gguf" selects the GGUF unet loader
             "unet_low": {
-                "name": "wan2.2_14B_vace_lowpass.safetensors"
-            }, // low-pass diffusion model filename
+                "name": "wan2.2_14B_vace_lowpass.safetensors",
+                "gguf": false
+            }, // low-pass diffusion model filename; "gguf" selects the GGUF unet loader
             "vae": {
                 "name": "wan2.2_vae.safetensors"
             }, // VAE model filename
@@ -169,8 +171,9 @@
                 "name": "ltx_video_0.9.7_distilled_fp8.safetensors"
             }, // primary checkpoint (loads model + clip + vae together)
             "unet_high": {
-                "name": ""
-            }, // standalone transformer model (optional; overrides checkpoint model)
+                "name": "",
+                "gguf": false
+            }, // standalone transformer model (optional; overrides checkpoint model); "gguf" selects the GGUF unet loader
             "vae": {
                 "name": "ltx_video_0.9.7_vae.safetensors"
             }, // standalone video VAE (overrides checkpoint VAE)
@@ -228,8 +231,9 @@
                 "name": "flux1-dev.safetensors"
             }, // primary checkpoint (loads model + clip + vae together)
             "unet_high": {
-                "name": ""
-            }, // standalone diffusion model (optional; labeled "diffuser")
+                "name": "",
+                "gguf": false
+            }, // standalone diffusion model (optional; labeled "diffuser"); "gguf" selects the GGUF unet loader
             "vae": {
                 "name": ""
             }, // standalone VAE (optional; overrides checkpoint VAE)

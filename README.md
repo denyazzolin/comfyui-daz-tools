@@ -128,8 +128,8 @@ Both nodes share a common set of configurable fields:
 
 | Field | What it controls |
 |---|---|
-| **UNet High** | Diffusion model used for the high-quality pass |
-| **UNet Low** | Diffusion model used for the low/draft pass |
+| **UNet High** | Diffusion model used for the high-quality pass (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
+| **UNet Low** | Diffusion model used for the low/draft pass (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
 | **VAE** | Video VAE |
 | **CLIP** | Text encoder |
 | **Split step** | The step at which the sampler switches from the high to the low model |
@@ -143,7 +143,7 @@ LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be appli
 | Field | What it controls |
 |---|---|
 | **Checkpoint** | A combined model file that includes the diffusion model, CLIP, and VAE in one |
-| **UNet / Transformer** | Standalone diffusion model, used when not loading from a checkpoint |
+| **UNet / Transformer** | Standalone diffusion model, used when not loading from a checkpoint (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio |
 | **CLIP / CLIP 2** | Primary and secondary text encoders |
 | **CFG** | CFG scale |
@@ -155,7 +155,7 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 | Field | What it controls |
 |---|---|
 | **Checkpoint** | A combined model file that includes the diffusion model, CLIP, and VAE in one |
-| **Diffuser** | Standalone diffusion model, used when not loading from a checkpoint |
+| **Diffuser** | Standalone diffusion model, used when not loading from a checkpoint (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
 | **VAE** | Standalone VAE |
 | **CLIP** | Standalone text encoder |
 | **CLIP Type** | The encoder family used when loading the standalone CLIP — one of `stable_diffusion`, `flux`, `sd3`, `wan`, `hidream`, `chroma`, and many others |
@@ -163,6 +163,16 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 | **Custom param 1 / 2** | Two free-form string outputs (`custom_1`, `custom_2`), each with a configurable label. Useful for passing arbitrary values downstream (e.g. style names, scheduler identifiers, preprocessor flags) |
 
 You can fill in either the checkpoint path or the standalone model paths — all outputs are available on the node regardless of which set is populated.
+
+#### GGUF unet loading
+
+The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Diffuser** on Image) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
+
+Requires the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) custom node package. Without it installed, `.gguf` files won't be listed, and running a scene configured for GGUF raises a clear error instead of silently falling back.
+
+LoRAs and the timestep-shift model patch (WAN2.2) are fully supported on GGUF-loaded unets, same as regular models.
+
+Presets carry the `gguf` flag along with the model name, so applying a preset with a GGUF model correctly sets the loader to use.
 
 **How to start?"** : hit the **NEW** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
 

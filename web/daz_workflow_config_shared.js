@@ -8,6 +8,8 @@ import { api } from '../../scripts/api.js'
 //   keys: { detail, editMode, editOverlay, wrap, executedHandler, domWidget }
 //   uidPrefix, folderNames, loraLabels, loraLabelWidth, useModeLoraCount
 //   dimsClearIds, modelsClearIds
+//   unetGgufFields: [{ select, checkbox }] — pairs whose select should swap
+//     between the 'diffusion_models' and 'unet_gguf' folder listings
 //   hideType, hideAudioPath, hideLorasBox
 //   renderDetailHtml(data, h), updateOutputLabels(node, data, h),
 //   buildModelsHtml(folderMap, data, h), buildDimsHtml(data, h),
@@ -25,6 +27,7 @@ export function buildWorkflowConfigExtension(cfg) {
         keys, uidPrefix, folderNames,
         loraLabels, loraLabelWidth, useModeLoraCount,
         dimsClearIds, modelsClearIds,
+        unetGgufFields = [],
         hideType      = false,
         hideAudioPath = false,
         hideLorasBox  = false,
@@ -317,12 +320,29 @@ export function buildWorkflowConfigExtension(cfg) {
           files.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
       }
 
+      function isGgufFilename(name) { return /\.gguf$/i.test(name || '') }
+
+      function unetRow(label, selectId, checkboxId, files, curName) {
+        const curGguf = isGgufFilename(curName)
+        return `<div style="${rw}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <label style="${lbl};margin-bottom:2px">${label}</label>
+            <span style="color:#888;font-size:10px">gguf</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <select id="${selectId}" style="flex:1;min-width:0;${fs}">${selOpt(files, curName)}</select>
+            <input type="checkbox" id="${checkboxId}"${curGguf ? ' checked' : ''} disabled
+              style="width:13px;height:13px;cursor:not-allowed;accent-color:#54af7b;flex-shrink:0">
+          </div>
+        </div>`
+      }
+
       // Helpers object passed to per-class config functions
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
         fFlagLabel, fFlagValue, fCustomValue, fNote, loraEnabled,
         row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
-        box, selOpt, selOptImg, selOptAudio,
+        box, selOpt, selOptImg, selOptAudio, unetRow,
         fs, ns, tas, lbl, rw, cb,
       }
 
@@ -1074,10 +1094,22 @@ export function buildWorkflowConfigExtension(cfg) {
         panel.querySelector('#daz-negative-clear')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-negative-prompt'); if (ta) ta.value = ''
         })
+        function syncGgufCheckbox(select, checkbox) {
+          const sel = panel.querySelector(select)
+          const chk = panel.querySelector(checkbox)
+          if (!sel || !chk) return
+          chk.checked = isGgufFilename(sel.value)
+        }
+        unetGgufFields.forEach(({ select, checkbox }) => {
+          panel.querySelector(select)?.addEventListener('change', () => syncGgufCheckbox(select, checkbox))
+        })
         panel.querySelector('#daz-models-clear')?.addEventListener('click', () => {
           modelsClearIds.forEach(id => {
-            const el = panel.querySelector(id); if (el) el.value = ''
+            const el = panel.querySelector(id); if (!el) return
+            if (el.type === 'checkbox') el.checked = false
+            else el.value = ''
           })
+          unetGgufFields.forEach(({ select, checkbox }) => syncGgufCheckbox(select, checkbox))
         })
         panel.querySelector('#daz-loras-clear')?.addEventListener('click', () => {
           for (let n = 1; n <= loraLabels.length; n++) {
@@ -1200,8 +1232,8 @@ export function buildWorkflowConfigExtension(cfg) {
       // ── Preset field writer ───────────────────────────────────────────────────
 
       const PRESET_FIELD_MAP = {
-        unet_high:  { sel: '#daz-unet-high',              kind: 'name'  },
-        unet_low:   { sel: '#daz-unet-low',               kind: 'name'  },
+        unet_high:  { sel: '#daz-unet-high',              kind: 'name', checkbox: '#daz-unet-high-gguf' },
+        unet_low:   { sel: '#daz-unet-low',               kind: 'name', checkbox: '#daz-unet-low-gguf'  },
         vae:        { sel: '#daz-vae',                    kind: 'name'  },
         clip:       { sel: '#daz-clip',                   kind: 'name'  },
         clip_2:     { sel: '#daz-clip-2',                 kind: 'name'  },
@@ -1269,7 +1301,13 @@ export function buildWorkflowConfigExtension(cfg) {
           if (!el) continue
           const v = (val && typeof val === 'object') ? val : {}
           switch (map.kind) {
-            case 'name':  el.value = String(v.name  ?? val ?? ''); break
+            case 'name':
+              el.value = String(v.name ?? val ?? '')
+              if (map.checkbox) {
+                const chk = panel.querySelector(map.checkbox)
+                if (chk) chk.checked = isGgufFilename(el.value)
+              }
+              break
             case 'raw':   el.value = String(val ?? '');             break
             case 'note':  el.value = String(v.value ?? val ?? ''); break
             case 'int':   el.value = String(v.value ?? val ?? 0);  break

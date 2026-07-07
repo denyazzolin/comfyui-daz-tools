@@ -4,9 +4,9 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
-    all_versions_for_class, parse_movie_file,
+    all_versions_for_class, parse_movie_file, load_unet_gguf,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_seed_randomize, _get_flag_value, _get_custom_value,
+    _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
     _resolve_path, _load_file, _write_file,
 )
@@ -30,9 +30,11 @@ _NO_CONFIGS  = "(no configs)"
 _FILE_DEFAULT = "(default)"
 
 
-def _load_unet(name: str):
+def _load_unet(name: str, gguf: bool = False):
     if not name:
         return None
+    if gguf:
+        return load_unet_gguf(name)
     path = folder_paths.get_full_path("diffusion_models", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigWan22: diffusion model '{name}' not found")
@@ -295,8 +297,8 @@ class WorkflowConfigWan22:
         is_relay       = prompt_type == "smart"
         pos_out        = pos_text if is_relay else "\n\n".join(p for p in (master_text, pos_text) if p)
 
-        unet_high = _load_unet(_get_name(active_set.get("unet_high")))
-        unet_low  = _load_unet(_get_name(active_set.get("unet_low")))
+        unet_high = _load_unet(_get_name(active_set.get("unet_high")), _get_gguf(active_set.get("unet_high")))
+        unet_low  = _load_unet(_get_name(active_set.get("unet_low")),  _get_gguf(active_set.get("unet_low")))
 
         lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
         lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
