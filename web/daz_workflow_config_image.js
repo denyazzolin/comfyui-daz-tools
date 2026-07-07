@@ -137,16 +137,16 @@ function updateOutputLabels(node, data, h) {
 // ── Image — edit panel: Models box ────────────────────────────────────────────
 
 function buildModelsHtml(folderMap, data, h) {
-  const { fName, fGguf, selOpt, unetRow, fs, lbl, rw, cb } = h
+  const { fName, selOpt, unetRow, fs, lbl, rw, cb } = h
   const checkpointFiles = folderMap.checkpoints      || []
-  const unetFiles       = folderMap.diffusion_models || []
+  const unetAllFiles    = [...(folderMap.diffusion_models || []), ...(folderMap.unet_gguf || [])].sort((a, b) => a.localeCompare(b))
   const vaeFiles        = folderMap.vae              || []
   const clipFiles       = folderMap.text_encoders    || []
   return `
     <div style="${rw}"><label style="${lbl}">Checkpoint</label>
       <select id="daz-checkpoint" style="${fs}">${selOpt(checkpointFiles, fName(data.checkpoint))}</select>
     </div>
-    ${unetRow('Diffuser', 'daz-unet-high', 'daz-unet-high-gguf', unetFiles, fName(data.unet_high), fGguf(data.unet_high))}
+    ${unetRow('Diffuser', 'daz-unet-high', 'daz-unet-high-gguf', unetAllFiles, fName(data.unet_high))}
     <div style="${rw}"><label style="${lbl}">VAE</label>
       <select id="daz-vae" style="${fs}">${selOpt(vaeFiles, fName(data.vae))}</select>
     </div>
@@ -255,7 +255,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   },
 
   uidPrefix:        'i',
-  folderNames:      ['checkpoints', 'diffusion_models', 'vae', 'text_encoders', 'input'],
+  folderNames:      ['checkpoints', 'diffusion_models', 'unet_gguf', 'vae', 'text_encoders', 'input'],
   loraLabels:       [],
   loraLabelWidth:   '44px',
   useModeLoraCount: 0,
@@ -263,6 +263,9 @@ app.registerExtension(buildWorkflowConfigExtension({
   cfgInputIds:    ['#daz-cfg'],
   dimsClearIds:   ['#daz-width', '#daz-height', '#daz-steps', '#daz-seed', '#daz-cfg'],
   modelsClearIds: ['#daz-checkpoint', '#daz-unet-high', '#daz-unet-high-gguf', '#daz-vae', '#daz-clip'],
+  unetGgufFields: [
+    { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
+  ],
   defaultNegativePrompt: '',
 
   hideType:      true,

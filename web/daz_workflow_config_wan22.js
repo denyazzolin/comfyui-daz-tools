@@ -166,13 +166,13 @@ function updateOutputLabels(node, data, h) {
 // ── WAN2.2 — edit panel: Models box ──────────────────────────────────────────
 
 function buildModelsHtml(folderMap, data, h) {
-  const { fName, fValue, fGguf, selOpt, unetRow, fs, ns, lbl, rw, cb } = h
-  const unetFiles = folderMap.diffusion_models || []
+  const { fName, fValue, selOpt, unetRow, fs, ns, lbl, rw, cb } = h
+  const unetAllFiles = [...(folderMap.diffusion_models || []), ...(folderMap.unet_gguf || [])].sort((a, b) => a.localeCompare(b))
   const vaeFiles  = folderMap.vae              || []
   const clipFiles = folderMap.text_encoders    || []
   return `
-    ${unetRow('Unet High', 'daz-unet-high', 'daz-unet-high-gguf', unetFiles, fName(data.unet_high), fGguf(data.unet_high))}
-    ${unetRow('Unet Low',  'daz-unet-low',  'daz-unet-low-gguf',  unetFiles, fName(data.unet_low),  fGguf(data.unet_low))}
+    ${unetRow('Unet High', 'daz-unet-high', 'daz-unet-high-gguf', unetAllFiles, fName(data.unet_high))}
+    ${unetRow('Unet Low',  'daz-unet-low',  'daz-unet-low-gguf',  unetAllFiles, fName(data.unet_low))}
     <div style="${rw}"><label style="${lbl}">VAE</label>
       <select id="daz-vae" style="${fs}">${selOpt(vaeFiles, fName(data.vae))}</select>
     </div>
@@ -304,7 +304,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   },
 
   uidPrefix:       'w',
-  folderNames:     ['diffusion_models', 'vae', 'text_encoders', 'input', 'loras'],
+  folderNames:     ['diffusion_models', 'unet_gguf', 'vae', 'text_encoders', 'input', 'loras'],
   loraLabels:      ['Lora 1 Hi','Lora 1 Lo','Lora 2 Hi','Lora 2 Lo','Lora 3 Hi','Lora 3 Lo','Lora 4 Hi','Lora 4 Lo'],
   loraLabelWidth:  '62px',
   useModeLoraCount: 8,
@@ -314,6 +314,10 @@ app.registerExtension(buildWorkflowConfigExtension({
                    '#daz-cfg-high','#daz-cfg-low','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-unet-low','#daz-unet-low-gguf',
                    '#daz-vae','#daz-clip','#daz-shift-high','#daz-shift-low'],
+  unetGgufFields: [
+    { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
+    { select: '#daz-unet-low',  checkbox: '#daz-unet-low-gguf' },
+  ],
   defaultNegativePrompt: 'low quality, blurry, watermark, text, logo, distorted, deformed, extra fingers, bad hands, static, overexposed',
 
   renderDetailHtml,

@@ -175,16 +175,16 @@ function updateOutputLabels(node, data, h) {
 // ── LTX2.3 — edit panel: Models box ──────────────────────────────────────────
 
 function buildModelsHtml(folderMap, data, h) {
-  const { fName, fGguf, selOpt, unetRow, fs, lbl, rw, cb } = h
+  const { fName, selOpt, unetRow, fs, lbl, rw, cb } = h
   const checkpointFiles = folderMap.checkpoints      || []
-  const unetFiles       = folderMap.diffusion_models || []
+  const unetAllFiles    = [...(folderMap.diffusion_models || []), ...(folderMap.unet_gguf || [])].sort((a, b) => a.localeCompare(b))
   const vaeFiles        = folderMap.vae              || []
   const clipFiles       = folderMap.text_encoders    || []
   return `
     <div style="${rw}"><label style="${lbl}">Checkpoint</label>
       <select id="daz-checkpoint" style="${fs}">${selOpt(checkpointFiles, fName(data.checkpoint))}</select>
     </div>
-    ${unetRow('Transformer', 'daz-unet-high', 'daz-unet-high-gguf', unetFiles, fName(data.unet_high), fGguf(data.unet_high))}
+    ${unetRow('Transformer', 'daz-unet-high', 'daz-unet-high-gguf', unetAllFiles, fName(data.unet_high))}
     <div style="${rw}"><label style="${lbl}">Video VAE</label>
       <select id="daz-vae" style="${fs}">${selOpt(vaeFiles, fName(data.vae))}</select>
     </div>
@@ -313,7 +313,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   },
 
   uidPrefix:        'l',
-  folderNames:      ['checkpoints', 'diffusion_models', 'vae', 'text_encoders', 'input', 'loras'],
+  folderNames:      ['checkpoints', 'diffusion_models', 'unet_gguf', 'vae', 'text_encoders', 'input', 'loras'],
   loraLabels:       ['Lora 1','Lora 2','Lora 3','Lora 4','Lora 5','Lora 6','Lora 7','Lora 8'],
   loraLabelWidth:   '44px',
   useModeLoraCount: 6,
@@ -322,6 +322,9 @@ app.registerExtension(buildWorkflowConfigExtension({
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
                    '#daz-cfg','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-checkpoint','#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip','#daz-clip-2'],
+  unetGgufFields: [
+    { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
+  ],
   defaultNegativePrompt: 'worst quality, inconsistent motion, blurry, jittery, distorted, static, flickering, text, watermark, logo, deformed, extra limbs',
 
   renderDetailHtml,

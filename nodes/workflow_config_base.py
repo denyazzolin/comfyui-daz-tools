@@ -598,6 +598,42 @@ def load_checkpoint(name: str):
     return out[0], out[1], out[2]
 
 
+# ── GGUF unet listing ─────────────────────────────────────────────────────────
+
+def _list_gguf_unets() -> list:
+    """List GGUF-quantized unet files.
+
+    ComfyUI-GGUF registers its own 'unet_gguf' folder_paths key — pointing at
+    the same directories as 'diffusion_models'/'unet' but filtered to the
+    '.gguf' extension — rather than patching the core keys, since ComfyUI's
+    own extension filters for those keys don't include '.gguf'. That's why
+    the regular 'diffusion_models' listing never shows GGUF files. Fall back
+    to scanning the diffusion_models directories directly if that key isn't
+    registered (e.g. ComfyUI-GGUF isn't installed).
+    """
+    if _fp is None:
+        return []
+    try:
+        files = _fp.get_filename_list("unet_gguf")
+        if files:
+            return files
+    except Exception:
+        pass
+    seen = []
+    try:
+        for d in _fp.get_folder_paths("diffusion_models"):
+            if not os.path.isdir(d):
+                continue
+            for root, _dirs, filenames in os.walk(d):
+                for fname in filenames:
+                    if fname.lower().endswith(".gguf"):
+                        rel = os.path.relpath(os.path.join(root, fname), d)
+                        seen.append(rel.replace(os.sep, "/"))
+    except Exception:
+        pass
+    return sorted(seen)
+
+
 # ── GGUF unet loader ──────────────────────────────────────────────────────────
 
 def load_unet_gguf(name: str):
@@ -1103,6 +1139,8 @@ try:
                     f for f in os.listdir(d)
                     if os.path.isfile(os.path.join(d, f))
                 ])
+            elif folder == "unet_gguf":
+                files = _list_gguf_unets()
             else:
                 files = fp.get_filename_list(folder)
             return web.json_response(files)
