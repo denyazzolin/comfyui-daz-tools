@@ -4,9 +4,9 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
-    all_versions_for_class, parse_movie_file,
+    all_versions_for_class, parse_movie_file, load_unet_gguf,
     _get_name, _get_text, _get_path, _get_file, _get_int, _get_float, _get_loras,
-    _get_seed_randomize, _get_flag_value, _get_custom_value,
+    _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
     _resolve_path, _load_file, _write_file,
 )
@@ -29,9 +29,11 @@ _NO_CONFIGS   = "(no configs)"
 _FILE_DEFAULT = "(default)"
 
 
-def _load_unet(name: str):
+def _load_unet(name: str, gguf: bool = False):
     if not name:
         return None
+    if gguf:
+        return load_unet_gguf(name)
     path = folder_paths.get_full_path("diffusion_models", name)
     if not path:
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: diffusion model '{name}' not found")
@@ -295,6 +297,7 @@ class WorkflowConfigLtx23:
 
         ckpt_name = _get_name(active_set.get("checkpoint"))
         unet_name = _get_name(active_set.get("unet_high"))
+        unet_gguf = _get_gguf(active_set.get("unet_high"))
         vae_name  = _get_name(active_set.get("vae"))
         avae_name = _get_name(active_set.get("audio_vae"))
 
@@ -303,7 +306,7 @@ class WorkflowConfigLtx23:
         except Exception as e:
             raise RuntimeError(f"[DAZ TOOLS] LTX2.3: checkpoint load failed ('{ckpt_name}'): {e}") from e
         try:
-            unet = _load_unet(unet_name)
+            unet = _load_unet(unet_name, unet_gguf)
         except Exception as e:
             raise RuntimeError(f"[DAZ TOOLS] LTX2.3: transformer load failed ('{unet_name}'): {e}") from e
         try:

@@ -137,7 +137,7 @@ function updateOutputLabels(node, data, h) {
 // ── Image — edit panel: Models box ────────────────────────────────────────────
 
 function buildModelsHtml(folderMap, data, h) {
-  const { fName, selOpt, fs, lbl, rw, cb } = h
+  const { fName, fGguf, selOpt, unetRow, fs, lbl, rw, cb } = h
   const checkpointFiles = folderMap.checkpoints      || []
   const unetFiles       = folderMap.diffusion_models || []
   const vaeFiles        = folderMap.vae              || []
@@ -146,9 +146,7 @@ function buildModelsHtml(folderMap, data, h) {
     <div style="${rw}"><label style="${lbl}">Checkpoint</label>
       <select id="daz-checkpoint" style="${fs}">${selOpt(checkpointFiles, fName(data.checkpoint))}</select>
     </div>
-    <div style="${rw}"><label style="${lbl}">Diffuser</label>
-      <select id="daz-unet-high" style="${fs}">${selOpt(unetFiles, fName(data.unet_high))}</select>
-    </div>
+    ${unetRow('Diffuser', 'daz-unet-high', 'daz-unet-high-gguf', unetFiles, fName(data.unet_high), fGguf(data.unet_high))}
     <div style="${rw}"><label style="${lbl}">VAE</label>
       <select id="daz-vae" style="${fs}">${selOpt(vaeFiles, fName(data.vae))}</select>
     </div>
@@ -207,7 +205,8 @@ function buildDimsHtml(data, h) {
 function buildPayload(wrap) {
   return {
     checkpoint:      { name:  wrap.querySelector('#daz-checkpoint')?.value    ?? '' },
-    unet_high:       { name:  wrap.querySelector('#daz-unet-high')?.value     ?? '' },
+    unet_high:       { name:  wrap.querySelector('#daz-unet-high')?.value     ?? '',
+                       gguf:  wrap.querySelector('#daz-unet-high-gguf')?.checked ?? false },
     vae:             { name:  wrap.querySelector('#daz-vae')?.value           ?? '' },
     clip:            { name:  wrap.querySelector('#daz-clip')?.value          ?? '' },
     clip_type:                wrap.querySelector('#daz-clip-type')?.value      ?? 'stable_diffusion',
@@ -263,7 +262,7 @@ app.registerExtension(buildWorkflowConfigExtension({
 
   cfgInputIds:    ['#daz-cfg'],
   dimsClearIds:   ['#daz-width', '#daz-height', '#daz-steps', '#daz-seed', '#daz-cfg'],
-  modelsClearIds: ['#daz-checkpoint', '#daz-unet-high', '#daz-vae', '#daz-clip'],
+  modelsClearIds: ['#daz-checkpoint', '#daz-unet-high', '#daz-unet-high-gguf', '#daz-vae', '#daz-clip'],
   defaultNegativePrompt: '',
 
   hideType:      true,

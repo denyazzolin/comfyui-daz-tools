@@ -175,7 +175,7 @@ function updateOutputLabels(node, data, h) {
 // ── LTX2.3 — edit panel: Models box ──────────────────────────────────────────
 
 function buildModelsHtml(folderMap, data, h) {
-  const { fName, selOpt, fs, lbl, rw, cb } = h
+  const { fName, fGguf, selOpt, unetRow, fs, lbl, rw, cb } = h
   const checkpointFiles = folderMap.checkpoints      || []
   const unetFiles       = folderMap.diffusion_models || []
   const vaeFiles        = folderMap.vae              || []
@@ -184,9 +184,7 @@ function buildModelsHtml(folderMap, data, h) {
     <div style="${rw}"><label style="${lbl}">Checkpoint</label>
       <select id="daz-checkpoint" style="${fs}">${selOpt(checkpointFiles, fName(data.checkpoint))}</select>
     </div>
-    <div style="${rw}"><label style="${lbl}">Transformer</label>
-      <select id="daz-unet-high" style="${fs}">${selOpt(unetFiles, fName(data.unet_high))}</select>
-    </div>
+    ${unetRow('Transformer', 'daz-unet-high', 'daz-unet-high-gguf', unetFiles, fName(data.unet_high), fGguf(data.unet_high))}
     <div style="${rw}"><label style="${lbl}">Video VAE</label>
       <select id="daz-vae" style="${fs}">${selOpt(vaeFiles, fName(data.vae))}</select>
     </div>
@@ -260,7 +258,8 @@ function buildPayload(wrap) {
   }
   return {
     checkpoint:      { name:  wrap.querySelector('#daz-checkpoint')?.value       ?? '' },
-    unet_high:       { name:  wrap.querySelector('#daz-unet-high')?.value        ?? '' },
+    unet_high:       { name:  wrap.querySelector('#daz-unet-high')?.value        ?? '',
+                       gguf:  wrap.querySelector('#daz-unet-high-gguf')?.checked  ?? false },
     vae:             { name:  wrap.querySelector('#daz-vae')?.value              ?? '' },
     audio_vae:       { name:  wrap.querySelector('#daz-audio-vae')?.value        ?? '' },
     clip_2:          { name:  wrap.querySelector('#daz-clip-2')?.value           ?? '' },
@@ -322,7 +321,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   cfgInputIds:    ['#daz-cfg'],
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
                    '#daz-cfg','#daz-total-frames','#daz-fps'],
-  modelsClearIds: ['#daz-checkpoint','#daz-unet-high','#daz-vae','#daz-audio-vae','#daz-clip','#daz-clip-2'],
+  modelsClearIds: ['#daz-checkpoint','#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip','#daz-clip-2'],
   defaultNegativePrompt: 'worst quality, inconsistent motion, blurry, jittery, distorted, static, flickering, text, watermark, logo, deformed, extra limbs',
 
   renderDetailHtml,

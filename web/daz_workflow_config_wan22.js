@@ -166,17 +166,13 @@ function updateOutputLabels(node, data, h) {
 // ── WAN2.2 — edit panel: Models box ──────────────────────────────────────────
 
 function buildModelsHtml(folderMap, data, h) {
-  const { fName, fValue, selOpt, fs, ns, lbl, rw, cb } = h
+  const { fName, fValue, fGguf, selOpt, unetRow, fs, ns, lbl, rw, cb } = h
   const unetFiles = folderMap.diffusion_models || []
   const vaeFiles  = folderMap.vae              || []
   const clipFiles = folderMap.text_encoders    || []
   return `
-    <div style="${rw}"><label style="${lbl}">Unet High</label>
-      <select id="daz-unet-high" style="${fs}">${selOpt(unetFiles, fName(data.unet_high))}</select>
-    </div>
-    <div style="${rw}"><label style="${lbl}">Unet Low</label>
-      <select id="daz-unet-low" style="${fs}">${selOpt(unetFiles, fName(data.unet_low))}</select>
-    </div>
+    ${unetRow('Unet High', 'daz-unet-high', 'daz-unet-high-gguf', unetFiles, fName(data.unet_high), fGguf(data.unet_high))}
+    ${unetRow('Unet Low',  'daz-unet-low',  'daz-unet-low-gguf',  unetFiles, fName(data.unet_low),  fGguf(data.unet_low))}
     <div style="${rw}"><label style="${lbl}">VAE</label>
       <select id="daz-vae" style="${fs}">${selOpt(vaeFiles, fName(data.vae))}</select>
     </div>
@@ -249,8 +245,10 @@ function buildPayload(wrap) {
     }
   }
   return {
-    unet_high:       { name: wrap.querySelector('#daz-unet-high')?.value       ?? '' },
-    unet_low:        { name: wrap.querySelector('#daz-unet-low')?.value        ?? '' },
+    unet_high:       { name: wrap.querySelector('#daz-unet-high')?.value       ?? '',
+                       gguf: wrap.querySelector('#daz-unet-high-gguf')?.checked ?? false },
+    unet_low:        { name: wrap.querySelector('#daz-unet-low')?.value        ?? '',
+                       gguf: wrap.querySelector('#daz-unet-low-gguf')?.checked  ?? false },
     vae:             { name: wrap.querySelector('#daz-vae')?.value             ?? '' },
     clip:            { name: wrap.querySelector('#daz-clip')?.value            ?? '' },
     shift_high:      { value: parseFloat(wrap.querySelector('#daz-shift-high')?.value ?? '5') || 5.0 },
@@ -314,7 +312,8 @@ app.registerExtension(buildWorkflowConfigExtension({
   cfgInputIds:    ['#daz-cfg-high', '#daz-cfg-low'],
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-split-step','#daz-seed',
                    '#daz-cfg-high','#daz-cfg-low','#daz-total-frames','#daz-fps'],
-  modelsClearIds: ['#daz-unet-high','#daz-unet-low','#daz-vae','#daz-clip','#daz-shift-high','#daz-shift-low'],
+  modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-unet-low','#daz-unet-low-gguf',
+                   '#daz-vae','#daz-clip','#daz-shift-high','#daz-shift-low'],
   defaultNegativePrompt: 'low quality, blurry, watermark, text, logo, distorted, deformed, extra fingers, bad hands, static, overexposed',
 
   renderDetailHtml,

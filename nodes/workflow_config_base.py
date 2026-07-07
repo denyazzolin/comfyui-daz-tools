@@ -61,7 +61,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 6
+CURRENT_SCHEMA = 7
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -252,6 +252,11 @@ def _get_float(val, default: float = 0.0) -> float:
     except (ValueError, TypeError):
         return default
 
+def _get_gguf(val) -> bool:
+    if isinstance(val, dict):
+        return bool(val.get("gguf", False))
+    return False
+
 def _get_flag_label(val, default: str = "") -> str:
     if isinstance(val, dict):
         return str(val.get("label") or default)
@@ -314,7 +319,15 @@ def _apply_set_fields(target: dict, data: dict) -> None:
     if "clip_type" in data:
         target["clip_type"] = str(data["clip_type"] or "stable_diffusion")
 
-    for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("unet_high", "unet_low"):
+        if f in data:
+            v = data[f]
+            if isinstance(v, dict):
+                target[f] = {"name": str(v.get("name") or ""), "gguf": bool(v.get("gguf", False))}
+            else:
+                target[f] = {"name": str(v or ""), "gguf": False}
+
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
         if f in data:
             v = data[f]
             target[f] = v if isinstance(v, dict) else {"name": str(v or "")}
@@ -400,7 +413,13 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
     s: dict = {"version": version, "label": str(data.get("version_label") or ""), "created_at": now, "updated_at": now}
     s["type"] = data.get("type", "")
     s["clip_type"] = str(data.get("clip_type") or "stable_diffusion")
-    for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("unet_high", "unet_low"):
+        v = data.get(f)
+        if isinstance(v, dict):
+            s[f] = {"name": str(v.get("name") or ""), "gguf": bool(v.get("gguf", False))}
+        else:
+            s[f] = {"name": str(v or ""), "gguf": False}
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
         v = data.get(f)
         s[f] = v if isinstance(v, dict) else {"name": str(v or "")}
     v = data.get("group")
@@ -461,7 +480,14 @@ def _normalize_set(set_obj: dict) -> dict:
     """Ensure a set object is in v1 typed-object format before sending to the JS client."""
     result = dict(set_obj)
 
-    for f in ("unet_high", "unet_low", "vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("unet_high", "unet_low"):
+        v = result.get(f)
+        if not isinstance(v, dict):
+            result[f] = {"name": str(v or ""), "gguf": False}
+        elif "gguf" not in v:
+            result[f] = {**v, "gguf": False}
+
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
         v = result.get(f)
         if not isinstance(v, dict):
             result[f] = {"name": str(v or "")}
@@ -570,6 +596,34 @@ def load_checkpoint(name: str):
         embedding_directory=_fp.get_folder_paths("embeddings"),
     )
     return out[0], out[1], out[2]
+
+
+# ── GGUF unet loader ──────────────────────────────────────────────────────────
+
+def load_unet_gguf(name: str):
+    """Load a diffusion model stored in GGUF format.
+
+    Delegates to the 'UnetLoaderGGUF' node from the ComfyUI-GGUF custom node
+    package (city96/ComfyUI-GGUF), looked up via ComfyUI's global node
+    registry rather than importing that package directly, since its module
+    name is not a stable import path.
+    """
+    if not name:
+        return None
+    try:
+        import nodes as _comfy_nodes
+    except Exception as e:
+        raise RuntimeError(
+            f"[DAZ TOOLS] WorkflowConfig: could not access the ComfyUI node registry "
+            f"to load GGUF unet '{name}' — {e}"
+        ) from e
+    gguf_cls = _comfy_nodes.NODE_CLASS_MAPPINGS.get("UnetLoaderGGUF")
+    if gguf_cls is None:
+        raise RuntimeError(
+            f"[DAZ TOOLS] WorkflowConfig: unet '{name}' is marked as GGUF but the "
+            f"'ComfyUI-GGUF' custom node package (providing 'UnetLoaderGGUF') is not installed"
+        )
+    return gguf_cls().load_unet(unet_name=name)[0]
 
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
@@ -817,6 +871,15 @@ def _migrate(configs: dict, from_version: int) -> dict:
                     for key, default_label in (("param_1", "param 1"), ("param_2", "param 2")):
                         if not isinstance(s["custom"].get(key), dict):
                             s["custom"][key] = {"label": default_label, "value": ""}
+    if from_version < 7:
+        for entry in configs.values():
+            for s in entry.get("sets", []):
+                for f in ("unet_high", "unet_low"):
+                    v = s.get(f)
+                    if isinstance(v, dict):
+                        v.setdefault("gguf", False)
+                    elif v:
+                        s[f] = {"name": str(v), "gguf": False}
     return configs
 
 
