@@ -1232,8 +1232,8 @@ export function buildWorkflowConfigExtension(cfg) {
       // ── Preset field writer ───────────────────────────────────────────────────
 
       const PRESET_FIELD_MAP = {
-        unet_high:  { sel: '#daz-unet-high',              kind: 'name'  },
-        unet_low:   { sel: '#daz-unet-low',               kind: 'name'  },
+        unet_high:  { sel: '#daz-unet-high',              kind: 'name', checkbox: '#daz-unet-high-gguf' },
+        unet_low:   { sel: '#daz-unet-low',               kind: 'name', checkbox: '#daz-unet-low-gguf'  },
         vae:        { sel: '#daz-vae',                    kind: 'name'  },
         clip:       { sel: '#daz-clip',                   kind: 'name'  },
         clip_2:     { sel: '#daz-clip-2',                 kind: 'name'  },
@@ -1301,7 +1301,13 @@ export function buildWorkflowConfigExtension(cfg) {
           if (!el) continue
           const v = (val && typeof val === 'object') ? val : {}
           switch (map.kind) {
-            case 'name':  el.value = String(v.name  ?? val ?? ''); break
+            case 'name':
+              el.value = String(v.name ?? val ?? '')
+              if (map.checkbox) {
+                const chk = panel.querySelector(map.checkbox)
+                if (chk) chk.checked = isGgufFilename(el.value)
+              }
+              break
             case 'raw':   el.value = String(val ?? '');             break
             case 'note':  el.value = String(v.value ?? val ?? ''); break
             case 'int':   el.value = String(v.value ?? val ?? 0);  break
