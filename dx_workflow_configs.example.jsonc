@@ -110,8 +110,8 @@
           "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
           "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5
           "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
-          "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // NOT USED by LTX node
-          "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // NOT USED by LTX node
+          "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
+          "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
         },
         "filename": { "file": "" },        // output filename (without extension)
         "flags": {

@@ -199,6 +199,7 @@ class WorkflowConfigLtx23:
         "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
         "STRING", "STRING",
+        "LORA", "LORA",
     )
     RETURN_NAMES = (
         "checkpoint_model", "checkpoint_vae", "checkpoint_clip",
@@ -219,6 +220,7 @@ class WorkflowConfigLtx23:
         "is_t2v",
         "flag_1", "flag_2", "flag_3",
         "custom_1", "custom_2",
+        "lora_7", "lora_8",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -324,11 +326,14 @@ class WorkflowConfigLtx23:
         lora_4_sd, lora_4_w = _process_lora(loras.get("lora_4", ""))
         lora_5_sd, lora_5_w = _process_lora(loras.get("lora_5", ""))
         lora_6_sd, lora_6_w = _process_lora(loras.get("lora_6", ""))
+        lora_7_sd, lora_7_w = _process_lora(loras.get("lora_7", ""))
+        lora_8_sd, lora_8_w = _process_lora(loras.get("lora_8", ""))
 
         lora_pairs = [
             (lora_1_sd, lora_1_w), (lora_2_sd, lora_2_w),
             (lora_3_sd, lora_3_w), (lora_4_sd, lora_4_w),
             (lora_5_sd, lora_5_w), (lora_6_sd, lora_6_w),
+            (lora_7_sd, lora_7_w), (lora_8_sd, lora_8_w),
         ]
 
         return (
@@ -362,4 +367,5 @@ class WorkflowConfigLtx23:
             _get_flag_value(active_set.get("flags", {}).get("flag_3")),
             _get_custom_value(active_set.get("custom", {}).get("param_1")),
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
+            lora_7_sd, lora_8_sd,
         )

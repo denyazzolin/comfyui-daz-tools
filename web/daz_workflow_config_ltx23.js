@@ -59,6 +59,7 @@ function renderDetailHtml(data, h) {
     ${rowPairLora('LoRA 1', loras.lora_1, 'LoRA 2', loras.lora_2, 'daz-use-lora-1', 'daz-use-lora-2')}
     ${rowPairLora('LoRA 3', loras.lora_3, 'LoRA 4', loras.lora_4, 'daz-use-lora-3', 'daz-use-lora-4')}
     ${rowPairLora('LoRA 5', loras.lora_5, 'LoRA 6', loras.lora_6, 'daz-use-lora-5', 'daz-use-lora-6')}
+    ${rowPairLora('LoRA 7', loras.lora_7, 'LoRA 8', loras.lora_8, 'daz-use-lora-7', 'daz-use-lora-8')}
     ${rowDiv()}
     ${row('Resolution',  fValue(data.width) && fValue(data.height) ? `${fValue(data.width)} × ${fValue(data.height)}` : '')}
     <tr>
@@ -163,6 +164,8 @@ function updateOutputLabels(node, data, h) {
     fFlagLabel(data.flags?.flag_3, 'flag 3') + ': ' + fFlagValue(data.flags?.flag_3),
     fFlagLabel(data.custom?.param_1, 'param 1') + ': ' + fCustomValue(data.custom?.param_1),
     fFlagLabel(data.custom?.param_2, 'param 2') + ': ' + fCustomValue(data.custom?.param_2),
+    loraEnabled(loras.lora_7) ? fName(loras.lora_7) : '',
+    loraEnabled(loras.lora_8) ? fName(loras.lora_8) : '',
   ]
   values.forEach((val, i) => {
     if (!node.outputs[i]) return
@@ -301,7 +304,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigLtx23',
   nodeDataName: 'WorkflowConfigLtx23',
   CLASS:        'ltx2.3',
-  PANEL_H: 673, NODE_W: 460, NODE_H: 885,
+  PANEL_H: 697, NODE_W: 460, NODE_H: 909,
 
   keys: {
     detail:          '_dazLtx23Detail',
@@ -316,7 +319,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   folderNames:      ['checkpoints', 'diffusion_models', 'unet_gguf', 'vae', 'text_encoders', 'input', 'loras'],
   loraLabels:       ['Lora 1','Lora 2','Lora 3','Lora 4','Lora 5','Lora 6','Lora 7','Lora 8'],
   loraLabelWidth:   '44px',
-  useModeLoraCount: 6,
+  useModeLoraCount: 8,
 
   cfgInputIds:    ['#daz-cfg'],
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
