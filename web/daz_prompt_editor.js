@@ -63,15 +63,19 @@
 
   // ── Segment parsing ───────────────────────────────────────────────────────
 
-  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple'])
+  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple', 'timecode'])
 
   // Infer the serialised format of prompt text from its content.
-  // Returns 'beats', 'smart', or null (= cannot determine, use declared type).
+  // Returns 'beats', 'smart', 'timecode', or null (= cannot determine, use declared type).
   function detectPromptFormat(text) {
     const lines = text.split('\n').filter(l => l.trim())
     // Beats: every non-empty line starts with a numeric range [X-Y] or [Xs-Ys]
     if (lines.length >= 2 && lines.every(l => /^\[(\d+)s?\s*[-–]\s*(\d+)s?\]/.test(l))) {
       return 'beats'
+    }
+    // Timecode: every non-empty line starts with a single [MM:SS] marker (no range)
+    if (lines.length >= 2 && lines.every(l => /^\[(\d+):(\d+)\]/.test(l))) {
+      return 'timecode'
     }
     // Smart: multiple pipe-separated parts where at least one ends with [X-Y]
     const parts = text.split(/\s*\|\s*/).filter(p => p.trim())
@@ -120,6 +124,28 @@
       })
     }
 
+    if (parseType === 'timecode') {
+      const lines = text.split('\n').filter(l => l.trim())
+      if (!lines.length) return [{ text: '', frames: totalFrames }]
+      const starts = lines.map(line => {
+        const m = line.match(/^\[(\d+):(\d+)\]\s*([\s\S]*)$/)
+        if (m) return { text: m[3].trim(), startSec: parseInt(m[1]) * 60 + parseInt(m[2]) }
+        return { text: line.trim(), startSec: null }
+      })
+      if (fps > 0 && starts.every(s => s.startSec !== null)) {
+        let used = 0
+        return starts.map((s, i) => {
+          const isLast = i === starts.length - 1
+          const frames = isLast
+            ? Math.max(1, totalFrames - used)
+            : Math.max(1, Math.round((starts[i + 1].startSec - s.startSec) * fps))
+          used += frames
+          return { text: s.text, frames }
+        })
+      }
+      return starts.map(s => ({ text: s.text, frames: Math.max(1, Math.floor(totalFrames / lines.length)) }))
+    }
+
     // simple: one flat segment — no structural parsing
     return [{ text, frames: Math.max(1, totalFrames) }]
   }
@@ -157,6 +183,22 @@
         const end  = pos + s.frames
         const line = `[${pos}-${end}] ${s.text}`
         pos = end
+        return line
+      }).join('\n')
+    }
+    if (type === 'timecode') {
+      const halfDown = secs => Math.ceil(secs - 0.5)
+      const fmt = secs => `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`
+      let accFrames = 0
+      let prevSec   = 0
+      return segments.map(s => {
+        const line = `[${fmt(prevSec)}] ${s.text}`
+        accFrames += s.frames
+        // Every segment is at least 1s long — guarantees strictly increasing
+        // marks even when short segments round down to the same second, at
+        // the cost of possibly overshooting the video's true duration.
+        const nextSec = fps > 0 ? halfDown(accFrames / fps) : accFrames
+        prevSec       = Math.max(nextSec, prevSec + 1)
         return line
       }).join('\n')
     }
@@ -376,15 +418,17 @@
 
       // ── Prompt mode radios ──────────────────────────────────────────────
       const TYPE_HINTS = {
-        smart:  'Warning! Prompt Relays work better with CFG 1.0',
-        beats:  'Beats will coerce frame count into full seconds',
-        simple: 'Simple prompt will remove all segments',
+        smart:    'Warning! Prompt Relays work better with CFG 1.0',
+        beats:    'Beats will coerce frame count into full seconds',
+        simple:   'Simple prompt will remove all segments',
+        timecode: 'Timecode marks each segment\'s start time as [MM:SS]',
       }
       const promptHdr = el('div', 'display:flex;align-items:center;gap:10px;padding:6px 10px 4px')
       promptHdr.innerHTML = `
-        ${mkRadio('pe-smart',  'pe-type', 'smart',  'Smart',  promptType === 'smart')}
-        ${mkRadio('pe-beats',  'pe-type', 'beats',  'Beats',  promptType === 'beats')}
-        ${mkRadio('pe-simple', 'pe-type', 'simple', 'Simple', promptType === 'simple')}
+        ${mkRadio('pe-smart',    'pe-type', 'smart',    'Smart',    promptType === 'smart')}
+        ${mkRadio('pe-beats',    'pe-type', 'beats',    'Beats',    promptType === 'beats')}
+        ${mkRadio('pe-simple',   'pe-type', 'simple',   'Simple',   promptType === 'simple')}
+        ${mkRadio('pe-timecode', 'pe-type', 'timecode', 'Timecode', promptType === 'timecode')}
         <span id="pe-type-hint" style="flex:1;text-align:center;font-size:10px;font-family:monospace;color:#c8922a">${esc(TYPE_HINTS[promptType] ?? '')}</span>
         ${sectionLabel('PROMPT')}
       `
@@ -402,6 +446,12 @@
               segments = segments.map(s => ({
                 ...s,
                 text: s.text.replace(/^\[\d+s?\s*[-–]\s*\d+s?\]\s*/, '').trim(),
+              }))
+            }
+            if (oldType === 'timecode' && promptType !== 'timecode') {
+              segments = segments.map(s => ({
+                ...s,
+                text: s.text.replace(/^\[\d+:\d+\]\s*/, '').trim(),
               }))
             }
             if (promptType === 'simple') {

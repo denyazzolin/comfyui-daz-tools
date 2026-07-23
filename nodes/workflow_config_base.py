@@ -278,7 +278,7 @@ def _get_seed_randomize(val) -> bool:
         return bool(val.get("randomize", False))
     return False
 
-_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3}
+_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3, "timecode": 4}
 
 def _get_prompt_type_int(val, default: int = 1) -> int:
     t = val.get("type", "smart") if isinstance(val, dict) else "smart"
