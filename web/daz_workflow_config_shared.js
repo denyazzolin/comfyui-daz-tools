@@ -201,6 +201,10 @@ export function buildWorkflowConfigExtension(cfg) {
       function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
       function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
       function fType(val)       { return (val && typeof val === 'object') ? (val.type      || 'smart') : 'smart'  }
+      function fPosition(val)   {
+        return (val && typeof val === 'object' && (val.position === 'before' || val.position === 'after'))
+          ? val.position : 'before'
+      }
       function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
       function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
       function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
@@ -630,6 +634,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const imageName = fPath(data.image_path).split(/[\\/]/).pop() || ''
         const audioName = fPath(data.audio_path).split(/[\\/]/).pop() || ''
         const posType   = fType(data.positive_prompt)
+        const masterPos = fPosition(data.master_prompt)
         const curVer    = isNew ? '1' : (node._dazCurrentVersion || data.version || '1')
         const uid       = `${uidPrefix}${node.id || Math.random().toString(36).slice(2, 7)}`
 
@@ -767,6 +772,7 @@ export function buildWorkflowConfigExtension(cfg) {
               posType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]' : 'Simple prompt will remove all segments'
             }</div>
             <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
+            <input type="hidden" id="daz-master-position" value="${esc(masterPos)}">
             <label style="${lbl}">Master</label>
             <textarea id="daz-master-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.master_prompt))}</textarea>
@@ -1797,11 +1803,13 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function openPromptEditorFromEdit(node, wrap, isNewConfig = false) {
         if (!window.DazPromptEditor) return
-        const posType = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
+        const posType     = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
+        const masterPosEl = wrap.querySelector('#daz-master-position')
+        const masterPos    = masterPosEl?.value === 'after' ? 'after' : 'before'
         window.DazPromptEditor.open({
           defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           detail: {
-            master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
+            master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '', position: masterPos },
             positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },
             negative_prompt: { text: wrap.querySelector('#daz-negative-prompt')?.value ?? '' },
             total_frames:    { value: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) },
@@ -1810,6 +1818,7 @@ export function buildWorkflowConfigExtension(cfg) {
           onSave: (updates) => {
             const masterTA = wrap.querySelector('#daz-master-prompt')
             if (masterTA) masterTA.value = updates.master_prompt.text
+            if (masterPosEl) masterPosEl.value = updates.master_prompt.position === 'after' ? 'after' : 'before'
             const posTA = wrap.querySelector('#daz-positive-prompt')
             if (posTA) posTA.value = updates.positive_prompt.text
             const newType = updates.positive_prompt.type
@@ -2081,6 +2090,8 @@ export function buildWorkflowConfigExtension(cfg) {
           const posType = fType(detail.positive_prompt)
           const masterTA = wrap.querySelector('#daz-master-prompt')
           if (masterTA) masterTA.value = fText(detail.master_prompt)
+          const masterPosEl = wrap.querySelector('#daz-master-position')
+          if (masterPosEl) masterPosEl.value = fPosition(detail.master_prompt)
           const posTA = wrap.querySelector('#daz-positive-prompt')
           if (posTA) posTA.value = fText(detail.positive_prompt)
           const posTypeInput = wrap.querySelector('#daz-positive-prompt-type')

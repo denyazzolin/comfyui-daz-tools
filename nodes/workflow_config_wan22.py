@@ -298,7 +298,7 @@ class WorkflowConfigWan22:
         is_relay          = prompt_type == "smart"
         if is_relay:
             pos_out = pos_text
-        elif prompt_type in ("beats", "timecode") and _get_master_position(master_prompt_val) == "after":
+        elif prompt_type in ("beats", "timecode", "simple") and _get_master_position(master_prompt_val) == "after":
             pos_out = "\n\n".join(p for p in (pos_text, master_text) if p)
         else:
             pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)

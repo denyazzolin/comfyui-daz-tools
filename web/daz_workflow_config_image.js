@@ -211,7 +211,8 @@ function buildPayload(wrap) {
     clip:            { name:  wrap.querySelector('#daz-clip')?.value          ?? '' },
     clip_type:                wrap.querySelector('#daz-clip-type')?.value      ?? 'stable_diffusion',
     image_path:      { path:  wrap.querySelector('#daz-image-path')?.value    ?? '' },
-    master_prompt:   { text:  wrap.querySelector('#daz-master-prompt')?.value ?? '' },
+    master_prompt:   { text:  wrap.querySelector('#daz-master-prompt')?.value ?? '',
+                       position: wrap.querySelector('#daz-master-position')?.value === 'after' ? 'after' : 'before' },
     positive_prompt: {
       text: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
       type: wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart',

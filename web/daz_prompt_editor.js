@@ -1,7 +1,8 @@
 // Shared floating Prompt Editor panel for WorkflowConfig nodes.
 // Exposes window.DazPromptEditor.open({ detail, onSave })
 // onSave receives: { master_prompt, positive_prompt, negative_prompt, total_frames, fps }
-//   where positive_prompt is { text, type } and the rest are typed objects.
+//   where positive_prompt is { text, type }, master_prompt is { text, position }
+//   and the rest are typed objects.
 
 ;(function () {
   'use strict'
@@ -37,6 +38,14 @@
       style="font-family:monospace;font-size:11px;padding:2px 8px;border-radius:3px;
              cursor:pointer;border:1px solid ${border};background:${bg};color:${color}"
       >${label}</button>`
+  }
+
+  function mkCheckbox(id, label, checked) {
+    return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:#ccc;font-size:11px">
+      <input type="checkbox" id="${id}"${checked ? ' checked' : ''}
+        style="cursor:pointer;accent-color:#54af7b;margin:0">
+      ${label}
+    </label>`
   }
 
   function mkRadio(id, name, value, label, checked) {
@@ -246,13 +255,16 @@
   function open({ detail, onSave, defaultNegativePrompt = '' }) {
     if (_overlay) _overlay.remove()
 
-    const fText  = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
-    const fValue = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
+    const fText     = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
+    const fValue    = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
+    const fPosition = v => (v && typeof v === 'object' && (v.position === 'before' || v.position === 'after'))
+                             ? v.position : 'before'
 
-    let totalFrames = Math.max(1, fValue(detail.total_frames))
-    let fps         = fValue(detail.fps)
-    let masterText  = fText(detail.master_prompt)
-    let negText     = fText(detail.negative_prompt)
+    let totalFrames    = Math.max(1, fValue(detail.total_frames))
+    let fps            = fValue(detail.fps)
+    let masterText     = fText(detail.master_prompt)
+    let masterPosition = fPosition(detail.master_prompt)
+    let negText        = fText(detail.negative_prompt)
     let promptType  = (detail.positive_prompt && typeof detail.positive_prompt === 'object')
                         ? (detail.positive_prompt.type || 'smart') : 'smart'
     if (!VALID_PROMPT_TYPES.has(promptType)) promptType = 'smart'
@@ -435,10 +447,12 @@
       })
 
       // ── Master ──────────────────────────────────────────────────────────
+      const showMasterPosition = promptType !== 'smart'
       const masterSec = el('div', 'padding:6px 10px')
       masterSec.innerHTML = `
         <textarea id="pe-master" style="${TA_STYLE};min-height:159px">${esc(masterText)}</textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:3px">
+        <div style="display:flex;align-items:center;justify-content:${showMasterPosition ? 'space-between' : 'flex-end'};margin-top:3px">
+          ${showMasterPosition ? mkCheckbox('pe-master-position', 'Append (master after positive)', masterPosition === 'after') : ''}
           ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
         </div>
       `
@@ -448,6 +462,12 @@
         masterText = ''
         masterSec.querySelector('#pe-master').value = ''
       })
+      const masterPosCk = masterSec.querySelector('#pe-master-position')
+      if (masterPosCk) {
+        masterPosCk.addEventListener('change', e => {
+          masterPosition = e.target.checked ? 'after' : 'before'
+        })
+      }
 
       panel.appendChild(greenDiv())
 
@@ -735,7 +755,7 @@
       const tfEl = panel.querySelector('#pe-tf')
       if (tfEl) totalFrames = Math.max(1, parseInt(tfEl.value) || 1)
       onSave({
-        master_prompt:   { text: masterText },
+        master_prompt:   { text: masterText, position: masterPosition },
         positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
         negative_prompt: { text: negText },
         total_frames:    { value: totalFrames },
