@@ -33,10 +33,11 @@
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   }
 
-  function mkBtn(id, label, border, bg, color) {
-    return `<button id="${id}"
+  function mkBtn(id, label, border, bg, color, disabled = false) {
+    return `<button id="${id}"${disabled ? ' disabled' : ''}
       style="font-family:monospace;font-size:11px;padding:2px 8px;border-radius:3px;
-             cursor:pointer;border:1px solid ${border};background:${bg};color:${color}"
+             cursor:${disabled ? 'default' : 'pointer'};border:1px solid ${border};background:${bg};
+             color:${color};opacity:${disabled ? 0.4 : 1}"
       >${label}</button>`
   }
 
@@ -334,6 +335,10 @@
       return scaled
     }
 
+    function oneSecondFrames() {
+      return fps > 0 ? Math.max(1, Math.round(fps)) : 16
+    }
+
     function frameLabel(f) {
       if (!fps || fps <= 0) return `${f}`
       const secStr = (f / fps).toFixed(1).replace(/\.0$/, '')
@@ -594,6 +599,7 @@
         <span id="pe-seg-err" style="color:#f88;font-size:10px"></span>
         ${mkBtn('pe-seg-del', 'delete',   '#803030', '#5c1a1a', '#f99')}
         ${mkBtn('pe-seg-eq',  'equalize', '#555',    '#333',    '#ccc')}
+        ${mkBtn('pe-seg-ins', 'insert',   '#2a5878', '#1a3c52', '#cde')}
         ${mkBtn('pe-seg-add', 'add',      '#2a8050', '#1a5c35', '#cde')}
       `
       panel.appendChild(segCtrl)
@@ -693,6 +699,25 @@
         render()
       })
 
+      segCtrl.querySelector('#pe-seg-ins').addEventListener('click', () => {
+        const used = segments.reduce((a, s) => a + s.frames, 0)
+        const rem  = totalFrames - used
+        if (rem >= 1) {
+          segments.splice(selIdx, 0, { text: '', frames: rem })
+        } else {
+          const n = segments.length
+          if (totalFrames < n + 1) {
+            segErr.textContent = 'No frames available'
+            setTimeout(() => { segErr.textContent = '' }, 2000)
+            return
+          }
+          const newFrames = Math.min(oneSecondFrames(), totalFrames - n)
+          segments = scaleSegmentsToSum(segments, totalFrames - newFrames)
+          segments.splice(selIdx, 0, { text: '', frames: newFrames })
+        }
+        render()
+      })
+
       segCtrl.querySelector('#pe-seg-add').addEventListener('click', () => {
         const used = segments.reduce((a, s) => a + s.frames, 0)
         const rem  = totalFrames - used
@@ -705,7 +730,7 @@
             setTimeout(() => { segErr.textContent = '' }, 2000)
             return
           }
-          const newFrames = Math.min(16, totalFrames - n)
+          const newFrames = Math.min(oneSecondFrames(), totalFrames - n)
           segments = scaleSegmentsToSum(segments, totalFrames - newFrames)
           segments.push({ text: '', frames: newFrames })
         }
