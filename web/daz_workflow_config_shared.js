@@ -1099,7 +1099,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const checkCfgWarn = () => {
           if (!_cfgWarnEl) return
           const atOne = _cfgIds.some(id => parseFloat(panel.querySelector(id)?.value) === 1)
-          _cfgWarnEl.textContent = atOne ? '(negative prompt is ineffective at CFG 1.0)' : ''
+          _cfgWarnEl.textContent = atOne ? '(Negative prompt is ineffective at CFG 1.0 - use NAG)' : ''
         }
         _cfgIds.forEach(id => panel.querySelector(id)?.addEventListener('input', checkCfgWarn))
         checkCfgWarn()
