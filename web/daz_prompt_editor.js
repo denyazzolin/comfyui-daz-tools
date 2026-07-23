@@ -312,6 +312,28 @@
       })
     }
 
+    function scaleSegmentsToSum(segs, newSum) {
+      const oldSum = segs.reduce((a, s) => a + s.frames, 0)
+      if (!segs.length || oldSum <= 0) return segs
+      const ratio  = newSum / oldSum
+      const scaled = segs.map(s => ({ ...s, frames: Math.max(1, Math.round(s.frames * ratio)) }))
+      let sum = scaled.reduce((a, s) => a + s.frames, 0)
+      let safety = 400
+      while (sum > newSum && safety-- > 0) {
+        const mi = scaled.reduce((bi, s, i) => s.frames > scaled[bi].frames ? i : bi, 0)
+        if (scaled[mi].frames <= 1) break
+        scaled[mi].frames--
+        sum--
+      }
+      safety = 400
+      while (sum < newSum && safety-- > 0) {
+        const mi = scaled.reduce((bi, s, i) => s.frames < scaled[bi].frames ? i : bi, 0)
+        scaled[mi].frames++
+        sum++
+      }
+      return scaled
+    }
+
     function frameLabel(f) {
       if (!fps || fps <= 0) return `${f}`
       const secStr = (f / fps).toFixed(1).replace(/\.0$/, '')
@@ -672,19 +694,20 @@
       })
 
       segCtrl.querySelector('#pe-seg-add').addEventListener('click', () => {
-        const maxSegs = Math.floor(totalFrames / 3)
-        if (segments.length >= maxSegs) {
-          segErr.textContent = 'Min 3 frames/seg'
-          setTimeout(() => { segErr.textContent = '' }, 2000)
-          return
-        }
         const used = segments.reduce((a, s) => a + s.frames, 0)
         const rem  = totalFrames - used
         if (rem >= 1) {
           segments.push({ text: '', frames: rem })
         } else {
-          segments.push({ text: '', frames: 1 })
-          equalize()
+          const n = segments.length
+          if (totalFrames < n + 1) {
+            segErr.textContent = 'No frames available'
+            setTimeout(() => { segErr.textContent = '' }, 2000)
+            return
+          }
+          const newFrames = Math.min(16, totalFrames - n)
+          segments = scaleSegmentsToSum(segments, totalFrames - newFrames)
+          segments.push({ text: '', frames: newFrames })
         }
         selIdx = segments.length - 1
         render()
