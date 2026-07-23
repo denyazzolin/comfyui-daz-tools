@@ -11,7 +11,7 @@ import { api } from '../../scripts/api.js'
 //   unetGgufFields: [{ select, checkbox }] — pairs whose select should swap
 //     between the 'diffusion_models' and 'unet_gguf' folder listings
 //   hideType, hideAudioPath, hideLorasBox
-//   renderDetailHtml(data, h), updateOutputLabels(node, data, h),
+//   renderDetailHtml(data, h, extra), updateOutputLabels(node, data, h),
 //   buildModelsHtml(folderMap, data, h), buildDimsHtml(data, h),
 //   buildPayload(wrap)
 
@@ -352,7 +352,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Convenience wrappers for per-class functions ───────────────────────
 
-      function renderDetailHtml(data) { return renderDetailHtmlFn(data, h) }
+      function renderDetailHtml(data, extra) { return renderDetailHtmlFn(data, h, extra) }
       function updateOutputLabels(node, data) { return updateOutputLabelsFn(node, data, h) }
       function buildModelsHtml(folderMap, data) { return buildModelsHtmlFn(folderMap, data, h) }
       function buildDimsHtml(data) { return buildDimsHtmlFn(data, h) }
@@ -419,7 +419,12 @@ export function buildWorkflowConfigExtension(cfg) {
                      background:#000000;color:#ffffff;border:1px solid #666;
                      border-radius:3px;cursor:pointer">Edit</button>
           </div>
-          ${renderDetailHtml(data)}
+          ${renderDetailHtml(data, {
+            showMovie:  _configFiles.length > 1,
+            movieLabel: node._dazConfigFileWidget?.value || '',
+            sceneLabel: node.widgets?.find(w => w.name === 'scene')?.value || '',
+            takeLabel:  node._dazVersionWidget?.value || '',
+          })}
           <div style="padding:4px 8px 6px">
             <button id="daz-prompt-editor-btn"
               style="font-family:monospace;font-size:11px;padding:3px 10px;width:100%;

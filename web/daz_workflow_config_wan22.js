@@ -3,9 +3,10 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 
 // ── WAN2.2 — use-mode detail table ────────────────────────────────────────────
 
-function renderDetailHtml(data, h) {
+function renderDetailHtml(data, h, extra = {}) {
   const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fCustomValue, fNote,
           row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
+  const { showMovie, movieLabel, sceneLabel, takeLabel } = extra
   if (data.error) {
     return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
   }
@@ -30,8 +31,11 @@ function renderDetailHtml(data, h) {
     : `<span style="color:#555">—</span>`
   const typeLabel = data.type === 'I2V' ? 'I2V' : data.type === 'T2V' ? 'T2V' : data.type === 'MULTI' ? 'MULTI' : 'No type'
   return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
+    ${showMovie ? row('Movie', movieLabel) : ''}
     ${row('Group',      fName(data.group))}
     ${row('Type',       typeLabel)}
+    ${row('Scene',      sceneLabel)}
+    ${row('Take',       takeLabel)}
     ${rowNote(fNote(data.note))}
     ${rowDiv()}
     ${row('UNet High',  disp(fName(data.unet_high)))}
@@ -293,7 +297,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigWan22',
   nodeDataName: 'WorkflowConfigWan22',
   CLASS:        'Wan2.2',
-  PANEL_H: 674, NODE_W: 460, NODE_H: 886,
+  PANEL_H: 740, NODE_W: 460, NODE_H: 952,
 
   keys: {
     detail:          '_dazWan22Detail',

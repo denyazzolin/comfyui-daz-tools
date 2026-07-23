@@ -10,9 +10,10 @@ const CLIP_TYPES = [
 
 // ── Image — use-mode detail table ─────────────────────────────────────────────
 
-function renderDetailHtml(data, h) {
+function renderDetailHtml(data, h, extra = {}) {
   const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fCustomValue, fNote,
           row, rowNote, rowDiv, disp, trunc } = h
+  const { showMovie, movieLabel, sceneLabel, takeLabel } = extra
 
   if (data.error) {
     return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
@@ -28,7 +29,10 @@ function renderDetailHtml(data, h) {
     : `<span style="color:#555">—</span>`
 
   return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
+    ${showMovie ? row('Movie', movieLabel) : ''}
     ${row('Group',      fName(data.group))}
+    ${row('Scene',      sceneLabel)}
+    ${row('Take',       takeLabel)}
     ${rowNote(fNote(data.note))}
     ${rowDiv()}
     ${row('Checkpoint', disp(fName(data.checkpoint)))}
@@ -244,7 +248,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigImage',
   nodeDataName: 'WorkflowConfigImage',
   CLASS:        'ImageInference',
-  PANEL_H: 560, NODE_W: 460, NODE_H: 775,
+  PANEL_H: 626, NODE_W: 460, NODE_H: 841,
 
   keys: {
     detail:          '_dazImageDetail',

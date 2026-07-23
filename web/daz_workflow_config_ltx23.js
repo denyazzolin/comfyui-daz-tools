@@ -3,9 +3,10 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 
 // ── LTX2.3 — use-mode detail table ───────────────────────────────────────────
 
-function renderDetailHtml(data, h) {
+function renderDetailHtml(data, h, extra = {}) {
   const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fCustomValue, fNote,
           row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
+  const { showMovie, movieLabel, sceneLabel, takeLabel } = extra
 
   function dualClipDisp(n1, n2) {
     const a = disp(n1, 9), b = disp(n2, 9)
@@ -37,8 +38,11 @@ function renderDetailHtml(data, h) {
   const typeLabel = data.type === 'I2V' ? 'I2V' : data.type === 'T2V' ? 'T2V' : data.type === 'MULTI' ? 'MULTI' : 'No type'
   const loras = data.loras ?? {}
   return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
+    ${showMovie ? row('Movie', movieLabel) : ''}
     ${row('Group',       fName(data.group))}
     ${row('Type',        typeLabel)}
+    ${row('Scene',       sceneLabel)}
+    ${row('Take',        takeLabel)}
     ${rowNote(fNote(data.note))}
     ${rowDiv()}
     ${row('Checkpoint',  disp(fName(data.checkpoint)))}
@@ -305,7 +309,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigLtx23',
   nodeDataName: 'WorkflowConfigLtx23',
   CLASS:        'ltx2.3',
-  PANEL_H: 697, NODE_W: 460, NODE_H: 909,
+  PANEL_H: 763, NODE_W: 460, NODE_H: 975,
 
   keys: {
     detail:          '_dazLtx23Detail',
