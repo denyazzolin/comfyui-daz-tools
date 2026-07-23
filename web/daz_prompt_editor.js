@@ -442,6 +442,13 @@
 
           const doChange = () => {
             promptType = newType
+            if (oldType === 'simple' && promptType !== 'simple') {
+              // Simple never splits into segments — the flat text may still
+              // contain beats/timecode markers typed by hand. Re-parse it so
+              // it splits into real segments instead of staying one blob.
+              const flat = segments.map(s => s.text).filter(t => t.trim()).join('\n')
+              segments = parseSegments(flat, promptType, totalFrames, fps)
+            }
             if (oldType === 'beats' && promptType !== 'beats') {
               segments = segments.map(s => ({
                 ...s,
