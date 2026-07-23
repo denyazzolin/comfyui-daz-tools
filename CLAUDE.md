@@ -26,3 +26,7 @@ Never commit or push to remote automatically. Ask first
 ## what to do when commiting and pushing to repositories
 
 Do not add Claude as a contributor
+
+## when answering questions about the code or implementation, or analyzing declared bugs or issues
+
+Always check the source code, never respond only from memory
