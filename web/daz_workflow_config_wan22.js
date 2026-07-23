@@ -257,7 +257,7 @@ function buildPayload(wrap) {
     audio_path:      { path: wrap.querySelector('#daz-audio-path')?.value      ?? '' },
     loras,
     master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '',
-                       position: wrap.querySelector('#daz-master-position')?.value === 'after' ? 'after' : 'before' },
+                       position: wrap.querySelector('#daz-master-position')?.checked ? 'after' : 'before' },
     positive_prompt: {
       text: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
       type: wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart',

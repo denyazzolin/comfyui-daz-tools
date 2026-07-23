@@ -772,11 +772,17 @@ export function buildWorkflowConfigExtension(cfg) {
               posType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]' : 'Simple prompt will remove all segments'
             }</div>
             <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
-            <input type="hidden" id="daz-master-position" value="${esc(masterPos)}">
             <label style="${lbl}">Master</label>
             <textarea id="daz-master-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.master_prompt))}</textarea>
-            <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+            <div id="daz-master-ctrl-row" style="display:flex;align-items:center;
+                 justify-content:${posType !== 'smart' ? 'space-between' : 'flex-end'};margin-bottom:6px">
+              <label id="daz-master-position-wrap" style="display:${posType !== 'smart' ? 'flex' : 'none'};
+                     align-items:center;gap:5px;cursor:pointer;color:#ccc;font-size:11px">
+                <input type="checkbox" id="daz-master-position"${masterPos === 'after' ? ' checked' : ''}
+                  style="cursor:pointer;accent-color:#54af7b;margin:0">
+                Append (master after positive)
+              </label>
               <button id="daz-master-clear" style="${cb}">clear</button>
             </div>
             <label style="${lbl}">Positive</label>
@@ -944,6 +950,11 @@ export function buildWorkflowConfigExtension(cfg) {
             if (h) h.value = r.value
             const hint = panel.querySelector('#daz-pos-type-hint')
             if (hint) hint.textContent = POS_TYPE_HINTS[r.value] ?? ''
+            const showPos = r.value !== 'smart'
+            const posRow  = panel.querySelector('#daz-master-ctrl-row')
+            if (posRow) posRow.style.justifyContent = showPos ? 'space-between' : 'flex-end'
+            const posWrap = panel.querySelector('#daz-master-position-wrap')
+            if (posWrap) posWrap.style.display = showPos ? 'flex' : 'none'
           })
         })
 
@@ -1284,6 +1295,11 @@ export function buildWorkflowConfigExtension(cfg) {
             const posTypeInput = panel.querySelector('#daz-positive-prompt-type')
             if (posTypeInput) posTypeInput.value = newType
             panel.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === newType })
+            const showPos = newType !== 'smart'
+            const posRow  = panel.querySelector('#daz-master-ctrl-row')
+            if (posRow) posRow.style.justifyContent = showPos ? 'space-between' : 'flex-end'
+            const posWrap = panel.querySelector('#daz-master-position-wrap')
+            if (posWrap) posWrap.style.display = showPos ? 'flex' : 'none'
             const posHint = panel.querySelector('#daz-pos-type-hint')
             if (posHint) posHint.textContent = newType === 'smart'
               ? 'Warning! Prompt Relays work better with CFG 1.0'
@@ -1805,7 +1821,7 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!window.DazPromptEditor) return
         const posType     = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
         const masterPosEl = wrap.querySelector('#daz-master-position')
-        const masterPos    = masterPosEl?.value === 'after' ? 'after' : 'before'
+        const masterPos    = masterPosEl?.checked ? 'after' : 'before'
         window.DazPromptEditor.open({
           defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           detail: {
@@ -1818,13 +1834,18 @@ export function buildWorkflowConfigExtension(cfg) {
           onSave: (updates) => {
             const masterTA = wrap.querySelector('#daz-master-prompt')
             if (masterTA) masterTA.value = updates.master_prompt.text
-            if (masterPosEl) masterPosEl.value = updates.master_prompt.position === 'after' ? 'after' : 'before'
+            if (masterPosEl) masterPosEl.checked = updates.master_prompt.position === 'after'
             const posTA = wrap.querySelector('#daz-positive-prompt')
             if (posTA) posTA.value = updates.positive_prompt.text
             const newType = updates.positive_prompt.type
             const posTypeInput = wrap.querySelector('#daz-positive-prompt-type')
             if (posTypeInput) posTypeInput.value = newType
             wrap.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === newType })
+            const showPos = newType !== 'smart'
+            const posRow  = wrap.querySelector('#daz-master-ctrl-row')
+            if (posRow) posRow.style.justifyContent = showPos ? 'space-between' : 'flex-end'
+            const posWrap = wrap.querySelector('#daz-master-position-wrap')
+            if (posWrap) posWrap.style.display = showPos ? 'flex' : 'none'
             const posHint = wrap.querySelector('#daz-pos-type-hint')
             if (posHint) posHint.textContent = newType === 'smart'
               ? 'Warning! Prompt Relays work better with CFG 1.0'
@@ -2091,12 +2112,17 @@ export function buildWorkflowConfigExtension(cfg) {
           const masterTA = wrap.querySelector('#daz-master-prompt')
           if (masterTA) masterTA.value = fText(detail.master_prompt)
           const masterPosEl = wrap.querySelector('#daz-master-position')
-          if (masterPosEl) masterPosEl.value = fPosition(detail.master_prompt)
+          if (masterPosEl) masterPosEl.checked = fPosition(detail.master_prompt) === 'after'
           const posTA = wrap.querySelector('#daz-positive-prompt')
           if (posTA) posTA.value = fText(detail.positive_prompt)
           const posTypeInput = wrap.querySelector('#daz-positive-prompt-type')
           if (posTypeInput) posTypeInput.value = posType
           wrap.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === posType })
+          const showPos = posType !== 'smart'
+          const posRow  = wrap.querySelector('#daz-master-ctrl-row')
+          if (posRow) posRow.style.justifyContent = showPos ? 'space-between' : 'flex-end'
+          const posWrap = wrap.querySelector('#daz-master-position-wrap')
+          if (posWrap) posWrap.style.display = showPos ? 'flex' : 'none'
           const posHint = wrap.querySelector('#daz-pos-type-hint')
           if (posHint) posHint.textContent = posType === 'smart'
             ? 'Warning! Prompt Relays work better with CFG 1.0'
