@@ -61,7 +61,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 7
+CURRENT_SCHEMA = 8
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -110,10 +110,18 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
     if file_version > CURRENT_SCHEMA:
         print(f"[DAZ TOOLS] WorkflowConfig: {os.path.basename(path)} is schema v{file_version} "
               f"(node understands v{CURRENT_SCHEMA}) — skipping migration")
-    elif file_version < CURRENT_SCHEMA:
+        return configs, meta_extra, effective
+
+    migrated = False
+    if file_version < CURRENT_SCHEMA:
         print(f"[DAZ TOOLS] WorkflowConfig: migrating {os.path.basename(path)} "
               f"v{file_version} → v{CURRENT_SCHEMA}")
-        configs = _migrate(configs, file_version)
+        configs  = _migrate(configs, file_version)
+        migrated = True
+
+    backfilled = _backfill_master_position(configs)
+
+    if migrated or backfilled:
         try:
             _write_file(path, configs, meta_extra, effective)
         except Exception as e:
@@ -209,6 +217,12 @@ def _get_text(val, default: str = "") -> str:
     if isinstance(val, dict):
         return str(val.get("text") or default)
     return str(val or default)
+
+def _get_master_position(val, default: str = "before") -> str:
+    if isinstance(val, dict):
+        pos = val.get("position")
+        return pos if pos in ("before", "after") else default
+    return default
 
 def _get_path(val, default: str = "") -> str:
     if isinstance(val, dict):
@@ -917,6 +931,26 @@ def _migrate(configs: dict, from_version: int) -> dict:
                     elif v:
                         s[f] = {"name": str(v), "gguf": False}
     return configs
+
+
+def _backfill_master_position(configs: dict) -> bool:
+    """Ensure every set's master_prompt has a 'position' field. Additive and
+    idempotent — safe to run on every load regardless of the file's schema
+    version, since a file can already be marked as the current schema without
+    every set having been through the version-gated migration (e.g. hand-edited
+    files, or files created in between schema bumps)."""
+    changed = False
+    for entry in configs.values():
+        for s in entry.get("sets", []):
+            mp = s.get("master_prompt")
+            if isinstance(mp, dict):
+                if "position" not in mp:
+                    mp["position"] = "before"
+                    changed = True
+            elif mp:
+                s["master_prompt"] = {"text": str(mp), "position": "before"}
+                changed = True
+    return changed
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
