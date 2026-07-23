@@ -82,6 +82,9 @@ export function buildWorkflowConfigExtension(cfg) {
         const m = label.match(/^\(([^)]+)\)/)
         return m ? m[1] + '.json' : label
       }
+      function fileLabelName(label) {
+        return (label || '').replace(/^\([^)]*\)\s*/, '')
+      }
 
       function currentFile(node) { return node._dazConfigFile || null }
 
@@ -421,7 +424,7 @@ export function buildWorkflowConfigExtension(cfg) {
           </div>
           ${renderDetailHtml(data, {
             showMovie:  _configFiles.length > 1,
-            movieLabel: node._dazConfigFileWidget?.value || '',
+            movieLabel: fileLabelName(node._dazConfigFileWidget?.value),
             sceneLabel: node.widgets?.find(w => w.name === 'scene')?.value || '',
             takeLabel:  node._dazVersionWidget?.value || '',
           })}
