@@ -268,7 +268,7 @@
 
     const panel = el('div',
       'background:#1a1a1a;border:1px solid #444;border-radius:6px;' +
-      'width:640px;max-height:90vh;overflow-y:auto;overflow-x:hidden;' +
+      'width:640px;max-height:97vh;overflow-y:auto;overflow-x:hidden;' +
       'font-family:monospace;font-size:12px;color:#ddd;' +
       'display:flex;flex-direction:column')
 
@@ -437,7 +437,7 @@
       // ── Master ──────────────────────────────────────────────────────────
       const masterSec = el('div', 'padding:6px 10px')
       masterSec.innerHTML = `
-        <textarea id="pe-master" style="${TA_STYLE};min-height:106px">${esc(masterText)}</textarea>
+        <textarea id="pe-master" style="${TA_STYLE};min-height:159px">${esc(masterText)}</textarea>
         <div style="display:flex;justify-content:flex-end;margin-top:3px">
           ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
         </div>
@@ -524,7 +524,7 @@
       // ── Segment text area ───────────────────────────────────────────────
       const posSec = el('div', 'padding:0 10px 4px')
       posSec.innerHTML = `
-        <textarea id="pe-seg-text" style="${TA_STYLE};min-height:106px">${esc(segments[selIdx]?.text ?? '')}</textarea>
+        <textarea id="pe-seg-text" style="${TA_STYLE};min-height:212px">${esc(segments[selIdx]?.text ?? '')}</textarea>
       `
       panel.appendChild(posSec)
       posSec.querySelector('#pe-seg-text').addEventListener('input', e => {
