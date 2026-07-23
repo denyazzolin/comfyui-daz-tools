@@ -413,11 +413,11 @@ export function buildWorkflowConfigExtension(cfg) {
             <button id="daz-new-btn"
               style="font-family:monospace;font-size:12px;padding:2px 10px;
                      background:#000000;color:#ffffff;border:1px solid #54af7b;
-                     border-radius:3px;cursor:pointer">New</button>
+                     border-radius:3px;cursor:pointer">New Take</button>
             <button id="daz-edit-btn"
               style="font-family:monospace;font-size:12px;padding:2px 10px;
                      background:#000000;color:#ffffff;border:1px solid #666;
-                     border-radius:3px;cursor:pointer">Edit</button>
+                     border-radius:3px;cursor:pointer">Edit Take</button>
           </div>
           ${renderDetailHtml(data, {
             showMovie:  _configFiles.length > 1,
@@ -703,7 +703,7 @@ export function buildWorkflowConfigExtension(cfg) {
               <textarea id="daz-note" maxlength="900"
                 style="${tas};height:60px;resize:none">${esc(fNote(data.note))}</textarea>
             </div>
-            <div style="${rw}"><label style="${lbl}">Version Label</label>
+            <div style="${rw}"><label style="${lbl}">Take Label</label>
               <input id="daz-version-label" type="text" value="${esc(data.label || '')}"
                 data-original="${esc(data.label || '')}"
                 placeholder="Optional version label…" style="${fs}">
@@ -911,8 +911,8 @@ export function buildWorkflowConfigExtension(cfg) {
              ${sep}${presetBtns}${sep}
              <div style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;justify-content:flex-end">
                <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
-               <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Version</button>
-               <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
+               <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Take</button>
+               <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Take</button>
                <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
              </div>`
 
@@ -2002,7 +2002,7 @@ export function buildWorkflowConfigExtension(cfg) {
             body: JSON.stringify(payload),
           })
           if (r.status === 409) {
-            activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+            activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
             activeBtn.disabled    = false
             showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode, true, true, keepPanelOpen, thenFn))
             return
@@ -2014,7 +2014,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
             node[keys.editMode] = false
           } else {
-            activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+            activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
             activeBtn.disabled    = false
           }
 
@@ -2047,7 +2047,7 @@ export function buildWorkflowConfigExtension(cfg) {
           thenFn?.()
           return true
         } catch (e) {
-          activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+          activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
           activeBtn.disabled    = false
           errorDiv.textContent  = `Error: ${e.message}`
         }
@@ -2360,16 +2360,16 @@ export function buildWorkflowConfigExtension(cfg) {
         ].join(';')
         box.innerHTML = `
           <p style="font-size:13px;color:#ddd;margin:0 0 6px">
-            Delete version <strong>${esc(version)}</strong> of &ldquo;${esc(name)}&rdquo;?
+            Delete take <strong>${esc(version)}</strong> of &ldquo;${esc(name)}&rdquo;?
           </p>
-          <p style="font-size:11px;color:#888;margin:0 0 18px">This cannot be undone. If this is the last version, the entire config will be removed.</p>
+          <p style="font-size:11px;color:#888;margin:0 0 18px">This cannot be undone. If this is the last take, the entire scene will be removed.</p>
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button id="dv-keep"
               style="font-family:monospace;font-size:11px;padding:4px 14px;
                      background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Keep</button>
             <button id="dv-confirm"
               style="font-family:monospace;font-size:11px;padding:4px 14px;
-                     background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">Delete Version</button>
+                     background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">Delete Take</button>
           </div>
         `
         overlay.appendChild(box)
