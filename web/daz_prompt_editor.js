@@ -69,12 +69,14 @@
   // Returns 'beats', 'smart', 'timecode', or null (= cannot determine, use declared type).
   function detectPromptFormat(text) {
     const lines = text.split('\n').filter(l => l.trim())
-    // Beats: every non-empty line starts with a numeric range [X-Y] or [Xs-Ys]
-    if (lines.length >= 2 && lines.every(l => /^\[(\d+)s?\s*[-–]\s*(\d+)s?\]/.test(l))) {
+    // Beats: at least one line starts a segment with a numeric range [X-Y] or [Xs-Ys].
+    // Lines without a marker are continuations of the previous segment, not their own
+    // segment, so detection no longer requires every line to match.
+    if (lines.length >= 2 && lines.some(l => /^\[(\d+)s?\s*[-–]\s*(\d+)s?\]/.test(l))) {
       return 'beats'
     }
-    // Timecode: every non-empty line starts with a single [MM:SS] marker (no range)
-    if (lines.length >= 2 && lines.every(l => /^\[(\d+):(\d+)\]/.test(l))) {
+    // Timecode: at least one line starts a segment with a single [MM:SS] marker (no range)
+    if (lines.length >= 2 && lines.some(l => /^\[(\d+):(\d+)\]/.test(l))) {
       return 'timecode'
     }
     // Smart: multiple pipe-separated parts where at least one ends with [X-Y]
@@ -108,42 +110,75 @@
     if (parseType === 'beats') {
       const lines = text.split('\n').filter(l => l.trim())
       if (!lines.length) return [{ text: '', frames: totalFrames }]
-      return lines.map(line => {
+      // A segment starts at a marker line and absorbs every following line up to
+      // the next marker (or end of text) as continuation text of that segment.
+      const blocks = []
+      for (const line of lines) {
         // New format: [x-ys] text (seconds) — only end value carries the 's'
         const ms = line.match(/^\[(\d+)\s*[-–]\s*(\d+)s\]\s*([\s\S]*)$/)
-        if (ms) {
-          const frames = fps > 0
-            ? Math.max(1, Math.round((parseInt(ms[2]) - parseInt(ms[1])) * fps))
-            : Math.max(1, Math.floor(totalFrames / lines.length))
-          return { text: ms[3].trim(), frames }
-        }
         // Old format: [x-y] text (frames) — backward compat
-        const mf = line.match(/^\[(\d+)\s*[-–]\s*(\d+)\]\s*([\s\S]*)$/)
-        if (mf) return { text: mf[3].trim(), frames: Math.max(1, parseInt(mf[2]) - parseInt(mf[1])) }
-        return { text: line.trim(), frames: Math.max(1, Math.floor(totalFrames / lines.length)) }
+        const mf = !ms && line.match(/^\[(\d+)\s*[-–]\s*(\d+)\]\s*([\s\S]*)$/)
+        if (ms) {
+          blocks.push({ marker: 'sec', start: parseInt(ms[1]), end: parseInt(ms[2]), lines: [ms[3].trim()] })
+        } else if (mf) {
+          blocks.push({ marker: 'frame', start: parseInt(mf[1]), end: parseInt(mf[2]), lines: [mf[3].trim()] })
+        } else if (blocks.length) {
+          blocks[blocks.length - 1].lines.push(line.trim())
+        } else {
+          blocks.push({ marker: null, lines: [line.trim()] })
+        }
+      }
+      // Text before the first marker never starts a segment of its own — fold
+      // it into the first real segment instead of discarding it.
+      if (blocks.length > 1 && blocks[0].marker === null) {
+        const pre = blocks.shift()
+        blocks[0].lines = [...pre.lines, ...blocks[0].lines]
+      }
+      return blocks.map(b => {
+        const segText = b.lines.filter(Boolean).join('\n')
+        if (b.marker === 'sec') {
+          const frames = fps > 0
+            ? Math.max(1, Math.round((b.end - b.start) * fps))
+            : Math.max(1, Math.floor(totalFrames / blocks.length))
+          return { text: segText, frames }
+        }
+        if (b.marker === 'frame') return { text: segText, frames: Math.max(1, b.end - b.start) }
+        return { text: segText, frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }
       })
     }
 
     if (parseType === 'timecode') {
       const lines = text.split('\n').filter(l => l.trim())
       if (!lines.length) return [{ text: '', frames: totalFrames }]
-      const starts = lines.map(line => {
+      // Same marker-to-marker grouping as beats, keyed on a [MM:SS] start time.
+      const blocks = []
+      for (const line of lines) {
         const m = line.match(/^\[(\d+):(\d+)\]\s*([\s\S]*)$/)
-        if (m) return { text: m[3].trim(), startSec: parseInt(m[1]) * 60 + parseInt(m[2]) }
-        return { text: line.trim(), startSec: null }
-      })
-      if (fps > 0 && starts.every(s => s.startSec !== null)) {
+        if (m) {
+          blocks.push({ startSec: parseInt(m[1]) * 60 + parseInt(m[2]), lines: [m[3].trim()] })
+        } else if (blocks.length) {
+          blocks[blocks.length - 1].lines.push(line.trim())
+        } else {
+          blocks.push({ startSec: null, lines: [line.trim()] })
+        }
+      }
+      if (blocks.length > 1 && blocks[0].startSec === null) {
+        const pre = blocks.shift()
+        blocks[0].lines = [...pre.lines, ...blocks[0].lines]
+      }
+      const texts = blocks.map(b => b.lines.filter(Boolean).join('\n'))
+      if (fps > 0 && blocks.every(b => b.startSec !== null)) {
         let used = 0
-        return starts.map((s, i) => {
-          const isLast = i === starts.length - 1
+        return blocks.map((b, i) => {
+          const isLast = i === blocks.length - 1
           const frames = isLast
             ? Math.max(1, totalFrames - used)
-            : Math.max(1, Math.round((starts[i + 1].startSec - s.startSec) * fps))
+            : Math.max(1, Math.round((blocks[i + 1].startSec - b.startSec) * fps))
           used += frames
-          return { text: s.text, frames }
+          return { text: texts[i], frames }
         })
       }
-      return starts.map(s => ({ text: s.text, frames: Math.max(1, Math.floor(totalFrames / lines.length)) }))
+      return blocks.map((b, i) => ({ text: texts[i], frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }))
     }
 
     // simple: one flat segment — no structural parsing
