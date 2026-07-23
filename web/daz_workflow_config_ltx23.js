@@ -328,7 +328,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   unetGgufFields: [
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],
-  defaultNegativePrompt: 'worst quality, inconsistent motion, blurry, jittery, distorted, static, flickering, text, watermark, logo, deformed, extra limbs',
+  defaultNegativePrompt: 'pc game, console game, video game, cartoon, childish, ugly, blurry, distorted face, extra limbs, mismatched audio',
 
   renderDetailHtml,
   updateOutputLabels,

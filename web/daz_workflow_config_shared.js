@@ -781,7 +781,7 @@ export function buildWorkflowConfigExtension(cfg) {
             </div>
             <label style="${lbl}">Negative<span id="daz-neg-cfg-warn" style="color:#f88;font-size:10px;margin-left:6px"></span></label>
             <textarea id="daz-negative-prompt"
-              style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.negative_prompt))}</textarea>
+              style="${tas};height:100px;margin-bottom:2px">${esc(isNew ? (cfg.defaultNegativePrompt || '') : fText(data.negative_prompt))}</textarea>
             <div style="display:flex;justify-content:space-between;margin-bottom:8px">
               <button id="daz-negative-default" style="${cb}">default</button>
               <button id="daz-negative-clear" style="${cb}">clear</button>
