@@ -11,7 +11,7 @@ import { api } from '../../scripts/api.js'
 //   unetGgufFields: [{ select, checkbox }] — pairs whose select should swap
 //     between the 'diffusion_models' and 'unet_gguf' folder listings
 //   hideType, hideAudioPath, hideLorasBox
-//   renderDetailHtml(data, h), updateOutputLabels(node, data, h),
+//   renderDetailHtml(data, h, extra), updateOutputLabels(node, data, h),
 //   buildModelsHtml(folderMap, data, h), buildDimsHtml(data, h),
 //   buildPayload(wrap)
 
@@ -81,6 +81,9 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!label || label === '(default)') return null
         const m = label.match(/^\(([^)]+)\)/)
         return m ? m[1] + '.json' : label
+      }
+      function fileLabelName(label) {
+        return (label || '').replace(/^\([^)]*\)\s*/, '')
       }
 
       function currentFile(node) { return node._dazConfigFile || null }
@@ -201,6 +204,10 @@ export function buildWorkflowConfigExtension(cfg) {
       function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
       function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
       function fType(val)       { return (val && typeof val === 'object') ? (val.type      || 'smart') : 'smart'  }
+      function fPosition(val)   {
+        return (val && typeof val === 'object' && (val.position === 'before' || val.position === 'after'))
+          ? val.position : 'before'
+      }
       function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
       function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
       function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
@@ -348,7 +355,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Convenience wrappers for per-class functions ───────────────────────
 
-      function renderDetailHtml(data) { return renderDetailHtmlFn(data, h) }
+      function renderDetailHtml(data, extra) { return renderDetailHtmlFn(data, h, extra) }
       function updateOutputLabels(node, data) { return updateOutputLabelsFn(node, data, h) }
       function buildModelsHtml(folderMap, data) { return buildModelsHtmlFn(folderMap, data, h) }
       function buildDimsHtml(data) { return buildDimsHtmlFn(data, h) }
@@ -409,13 +416,18 @@ export function buildWorkflowConfigExtension(cfg) {
             <button id="daz-new-btn"
               style="font-family:monospace;font-size:12px;padding:2px 10px;
                      background:#000000;color:#ffffff;border:1px solid #54af7b;
-                     border-radius:3px;cursor:pointer">New</button>
+                     border-radius:3px;cursor:pointer">New Take</button>
             <button id="daz-edit-btn"
               style="font-family:monospace;font-size:12px;padding:2px 10px;
                      background:#000000;color:#ffffff;border:1px solid #666;
-                     border-radius:3px;cursor:pointer">Edit</button>
+                     border-radius:3px;cursor:pointer">Edit Take</button>
           </div>
-          ${renderDetailHtml(data)}
+          ${renderDetailHtml(data, {
+            showMovie:  _configFiles.length > 1,
+            movieLabel: fileLabelName(node._dazConfigFileWidget?.value),
+            sceneLabel: node.widgets?.find(w => w.name === 'scene')?.value || '',
+            takeLabel:  node._dazVersionWidget?.value || '',
+          })}
           <div style="padding:4px 8px 6px">
             <button id="daz-prompt-editor-btn"
               style="font-family:monospace;font-size:11px;padding:3px 10px;width:100%;
@@ -630,6 +642,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const imageName = fPath(data.image_path).split(/[\\/]/).pop() || ''
         const audioName = fPath(data.audio_path).split(/[\\/]/).pop() || ''
         const posType   = fType(data.positive_prompt)
+        const masterPos = fPosition(data.master_prompt)
         const curVer    = isNew ? '1' : (node._dazCurrentVersion || data.version || '1')
         const uid       = `${uidPrefix}${node.id || Math.random().toString(36).slice(2, 7)}`
 
@@ -693,7 +706,7 @@ export function buildWorkflowConfigExtension(cfg) {
               <textarea id="daz-note" maxlength="900"
                 style="${tas};height:60px;resize:none">${esc(fNote(data.note))}</textarea>
             </div>
-            <div style="${rw}"><label style="${lbl}">Version Label</label>
+            <div style="${rw}"><label style="${lbl}">Take Label</label>
               <input id="daz-version-label" type="text" value="${esc(data.label || '')}"
                 data-original="${esc(data.label || '')}"
                 placeholder="Optional version label…" style="${fs}">
@@ -756,16 +769,28 @@ export function buildWorkflowConfigExtension(cfg) {
                 <input type="radio" name="daz-pos-type-${uid}" value="simple"
                   ${posType === 'simple' ? 'checked' : ''}>Simple
               </label>
+              <label style="display:flex;align-items:center;gap:4px;color:#ccc;font-size:11px;cursor:pointer">
+                <input type="radio" name="daz-pos-type-${uid}" value="timecode"
+                  ${posType === 'timecode' ? 'checked' : ''}>Timecode
+              </label>
             </div>
             <div id="daz-pos-type-hint" style="min-height:16px;margin-bottom:6px;font-size:10px;font-family:monospace;color:#c8922a">${
               posType === 'smart' ? 'Warning! Prompt Relays work better with CFG 1.0' :
-              posType === 'beats' ? 'Beats will coerce frame count into full seconds' : 'Simple prompt will remove all segments'
+              posType === 'beats' ? 'Beats will coerce frame count into full seconds' :
+              posType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]' : 'Simple prompt will remove all segments'
             }</div>
             <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
             <label style="${lbl}">Master</label>
             <textarea id="daz-master-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.master_prompt))}</textarea>
-            <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+            <div id="daz-master-ctrl-row" style="display:flex;align-items:center;
+                 justify-content:${posType !== 'smart' ? 'space-between' : 'flex-end'};margin-bottom:6px">
+              <label id="daz-master-position-wrap" style="display:${posType !== 'smart' ? 'flex' : 'none'};
+                     align-items:center;gap:5px;cursor:pointer;color:#ccc;font-size:11px">
+                <input type="checkbox" id="daz-master-position"${masterPos === 'after' ? ' checked' : ''}
+                  style="cursor:pointer;accent-color:#54af7b;margin:0">
+                Append (master after positive)
+              </label>
               <button id="daz-master-clear" style="${cb}">clear</button>
             </div>
             <label style="${lbl}">Positive</label>
@@ -776,7 +801,7 @@ export function buildWorkflowConfigExtension(cfg) {
             </div>
             <label style="${lbl}">Negative<span id="daz-neg-cfg-warn" style="color:#f88;font-size:10px;margin-left:6px"></span></label>
             <textarea id="daz-negative-prompt"
-              style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.negative_prompt))}</textarea>
+              style="${tas};height:100px;margin-bottom:2px">${esc(isNew ? (cfg.defaultNegativePrompt || '') : fText(data.negative_prompt))}</textarea>
             <div style="display:flex;justify-content:space-between;margin-bottom:8px">
               <button id="daz-negative-default" style="${cb}">default</button>
               <button id="daz-negative-clear" style="${cb}">clear</button>
@@ -889,8 +914,8 @@ export function buildWorkflowConfigExtension(cfg) {
              ${sep}${presetBtns}${sep}
              <div style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;justify-content:flex-end">
                <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
-               <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Version</button>
-               <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Version</button>
+               <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Take</button>
+               <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Take</button>
                <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
              </div>`
 
@@ -922,9 +947,10 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // Radio → hidden type sync + hint
         const POS_TYPE_HINTS = {
-          smart:  'Warning! Prompt Relays work better with CFG 1.0',
-          beats:  'Beats will coerce frame count into full seconds',
-          simple: 'Simple prompt will remove all segments',
+          smart:    'Warning! Prompt Relays work better with CFG 1.0',
+          beats:    'Beats will coerce frame count into full seconds',
+          simple:   'Simple prompt will remove all segments',
+          timecode: 'Timecode marks each segment\'s start time as [MM:SS]',
         }
         panel.querySelectorAll(`input[name="daz-pos-type-${uid}"]`).forEach(r => {
           r.addEventListener('change', () => {
@@ -932,6 +958,11 @@ export function buildWorkflowConfigExtension(cfg) {
             if (h) h.value = r.value
             const hint = panel.querySelector('#daz-pos-type-hint')
             if (hint) hint.textContent = POS_TYPE_HINTS[r.value] ?? ''
+            const showPos = r.value !== 'smart'
+            const posRow  = panel.querySelector('#daz-master-ctrl-row')
+            if (posRow) posRow.style.justifyContent = showPos ? 'space-between' : 'flex-end'
+            const posWrap = panel.querySelector('#daz-master-position-wrap')
+            if (posWrap) posWrap.style.display = showPos ? 'flex' : 'none'
           })
         })
 
@@ -1071,7 +1102,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const checkCfgWarn = () => {
           if (!_cfgWarnEl) return
           const atOne = _cfgIds.some(id => parseFloat(panel.querySelector(id)?.value) === 1)
-          _cfgWarnEl.textContent = atOne ? '(negative prompt is ineffective at CFG 1.0)' : ''
+          _cfgWarnEl.textContent = atOne ? '(Negative prompt is ineffective at CFG 1.0 - use NAG)' : ''
         }
         _cfgIds.forEach(id => panel.querySelector(id)?.addEventListener('input', checkCfgWarn))
         checkCfgWarn()
@@ -1272,10 +1303,16 @@ export function buildWorkflowConfigExtension(cfg) {
             const posTypeInput = panel.querySelector('#daz-positive-prompt-type')
             if (posTypeInput) posTypeInput.value = newType
             panel.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === newType })
+            const showPos = newType !== 'smart'
+            const posRow  = panel.querySelector('#daz-master-ctrl-row')
+            if (posRow) posRow.style.justifyContent = showPos ? 'space-between' : 'flex-end'
+            const posWrap = panel.querySelector('#daz-master-position-wrap')
+            if (posWrap) posWrap.style.display = showPos ? 'flex' : 'none'
             const posHint = panel.querySelector('#daz-pos-type-hint')
             if (posHint) posHint.textContent = newType === 'smart'
               ? 'Warning! Prompt Relays work better with CFG 1.0'
-              : newType === 'beats' ? 'Beats will coerce frame count into full seconds' : 'Simple prompt will remove all segments'
+              : newType === 'beats' ? 'Beats will coerce frame count into full seconds'
+              : newType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]' : 'Simple prompt will remove all segments'
             continue
           }
           if (field === 'loras') {
@@ -1289,6 +1326,30 @@ export function buildWorkflowConfigExtension(cfg) {
               if (nameEl) nameEl.value   = String(lora.name ?? '')
               if (strEl)  strEl.value    = String(lora.strength ?? 1.0)
               if (enEl)   enEl.checked   = lora.enabled ?? true
+            }
+            continue
+          }
+          if (field === 'flags') {
+            if (!(field in preset)) continue
+            const flags = (preset.flags && typeof preset.flags === 'object') ? preset.flags : {}
+            for (let n = 1; n <= 3; n++) {
+              const flag    = flags[`flag_${n}`] ?? {}
+              const labelEl = panel.querySelector(`#daz-flag-${n}-label`)
+              const valEl   = panel.querySelector(`#daz-flag-${n}-value`)
+              if (labelEl) labelEl.value = String(flag.label ?? `flag ${n}`)
+              if (valEl)   valEl.checked = flag.value ?? false
+            }
+            continue
+          }
+          if (field === 'custom') {
+            if (!(field in preset)) continue
+            const custom = (preset.custom && typeof preset.custom === 'object') ? preset.custom : {}
+            for (let n = 1; n <= 2; n++) {
+              const param   = custom[`param_${n}`] ?? {}
+              const labelEl = panel.querySelector(`#daz-custom-${n}-label`)
+              const valEl   = panel.querySelector(`#daz-custom-${n}-value`)
+              if (labelEl) labelEl.value = String(param.label ?? `param ${n}`)
+              if (valEl)   valEl.value   = String(param.value ?? '')
             }
             continue
           }
@@ -1790,11 +1851,13 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function openPromptEditorFromEdit(node, wrap, isNewConfig = false) {
         if (!window.DazPromptEditor) return
-        const posType = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
+        const posType     = wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart'
+        const masterPosEl = wrap.querySelector('#daz-master-position')
+        const masterPos    = masterPosEl?.checked ? 'after' : 'before'
         window.DazPromptEditor.open({
           defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
           detail: {
-            master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
+            master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '', position: masterPos },
             positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },
             negative_prompt: { text: wrap.querySelector('#daz-negative-prompt')?.value ?? '' },
             total_frames:    { value: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) },
@@ -1803,16 +1866,23 @@ export function buildWorkflowConfigExtension(cfg) {
           onSave: (updates) => {
             const masterTA = wrap.querySelector('#daz-master-prompt')
             if (masterTA) masterTA.value = updates.master_prompt.text
+            if (masterPosEl) masterPosEl.checked = updates.master_prompt.position === 'after'
             const posTA = wrap.querySelector('#daz-positive-prompt')
             if (posTA) posTA.value = updates.positive_prompt.text
             const newType = updates.positive_prompt.type
             const posTypeInput = wrap.querySelector('#daz-positive-prompt-type')
             if (posTypeInput) posTypeInput.value = newType
             wrap.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === newType })
+            const showPos = newType !== 'smart'
+            const posRow  = wrap.querySelector('#daz-master-ctrl-row')
+            if (posRow) posRow.style.justifyContent = showPos ? 'space-between' : 'flex-end'
+            const posWrap = wrap.querySelector('#daz-master-position-wrap')
+            if (posWrap) posWrap.style.display = showPos ? 'flex' : 'none'
             const posHint = wrap.querySelector('#daz-pos-type-hint')
             if (posHint) posHint.textContent = newType === 'smart'
               ? 'Warning! Prompt Relays work better with CFG 1.0'
-              : newType === 'beats' ? 'Beats will coerce frame count into full seconds' : 'Simple prompt will remove all segments'
+              : newType === 'beats' ? 'Beats will coerce frame count into full seconds'
+              : newType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]' : 'Simple prompt will remove all segments'
             const negTA = wrap.querySelector('#daz-negative-prompt')
             if (negTA) negTA.value = updates.negative_prompt.text
             const framesInput = wrap.querySelector('#daz-total-frames')
@@ -1959,7 +2029,7 @@ export function buildWorkflowConfigExtension(cfg) {
             body: JSON.stringify(payload),
           })
           if (r.status === 409) {
-            activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+            activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
             activeBtn.disabled    = false
             showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode, true, true, keepPanelOpen, thenFn))
             return
@@ -1971,7 +2041,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
             node[keys.editMode] = false
           } else {
-            activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+            activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
             activeBtn.disabled    = false
           }
 
@@ -2004,7 +2074,7 @@ export function buildWorkflowConfigExtension(cfg) {
           thenFn?.()
           return true
         } catch (e) {
-          activeBtn.textContent = saveMode === 'new_version' ? '+ Version' : 'Save'
+          activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
           activeBtn.disabled    = false
           errorDiv.textContent  = `Error: ${e.message}`
         }
@@ -2073,15 +2143,23 @@ export function buildWorkflowConfigExtension(cfg) {
           const posType = fType(detail.positive_prompt)
           const masterTA = wrap.querySelector('#daz-master-prompt')
           if (masterTA) masterTA.value = fText(detail.master_prompt)
+          const masterPosEl = wrap.querySelector('#daz-master-position')
+          if (masterPosEl) masterPosEl.checked = fPosition(detail.master_prompt) === 'after'
           const posTA = wrap.querySelector('#daz-positive-prompt')
           if (posTA) posTA.value = fText(detail.positive_prompt)
           const posTypeInput = wrap.querySelector('#daz-positive-prompt-type')
           if (posTypeInput) posTypeInput.value = posType
           wrap.querySelectorAll('input[name^="daz-pos-type-"]').forEach(r => { r.checked = r.value === posType })
+          const showPos = posType !== 'smart'
+          const posRow  = wrap.querySelector('#daz-master-ctrl-row')
+          if (posRow) posRow.style.justifyContent = showPos ? 'space-between' : 'flex-end'
+          const posWrap = wrap.querySelector('#daz-master-position-wrap')
+          if (posWrap) posWrap.style.display = showPos ? 'flex' : 'none'
           const posHint = wrap.querySelector('#daz-pos-type-hint')
           if (posHint) posHint.textContent = posType === 'smart'
             ? 'Warning! Prompt Relays work better with CFG 1.0'
-            : posType === 'beats' ? 'Beats will coerce frame count into full seconds' : 'Simple prompt will remove all segments'
+            : posType === 'beats' ? 'Beats will coerce frame count into full seconds'
+            : posType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]' : 'Simple prompt will remove all segments'
           const negTA = wrap.querySelector('#daz-negative-prompt')
           if (negTA) negTA.value = fText(detail.negative_prompt)
           const framesInput = wrap.querySelector('#daz-total-frames')
@@ -2309,16 +2387,16 @@ export function buildWorkflowConfigExtension(cfg) {
         ].join(';')
         box.innerHTML = `
           <p style="font-size:13px;color:#ddd;margin:0 0 6px">
-            Delete version <strong>${esc(version)}</strong> of &ldquo;${esc(name)}&rdquo;?
+            Delete take <strong>${esc(version)}</strong> of &ldquo;${esc(name)}&rdquo;?
           </p>
-          <p style="font-size:11px;color:#888;margin:0 0 18px">This cannot be undone. If this is the last version, the entire config will be removed.</p>
+          <p style="font-size:11px;color:#888;margin:0 0 18px">This cannot be undone. If this is the last take, the entire scene will be removed.</p>
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button id="dv-keep"
               style="font-family:monospace;font-size:11px;padding:4px 14px;
                      background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Keep</button>
             <button id="dv-confirm"
               style="font-family:monospace;font-size:11px;padding:4px 14px;
-                     background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">Delete Version</button>
+                     background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">Delete Take</button>
           </div>
         `
         overlay.appendChild(box)

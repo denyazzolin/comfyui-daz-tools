@@ -1,7 +1,8 @@
 // Shared floating Prompt Editor panel for WorkflowConfig nodes.
 // Exposes window.DazPromptEditor.open({ detail, onSave })
 // onSave receives: { master_prompt, positive_prompt, negative_prompt, total_frames, fps }
-//   where positive_prompt is { text, type } and the rest are typed objects.
+//   where positive_prompt is { text, type }, master_prompt is { text, position }
+//   and the rest are typed objects.
 
 ;(function () {
   'use strict'
@@ -32,11 +33,20 @@
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   }
 
-  function mkBtn(id, label, border, bg, color) {
-    return `<button id="${id}"
+  function mkBtn(id, label, border, bg, color, disabled = false) {
+    return `<button id="${id}"${disabled ? ' disabled' : ''}
       style="font-family:monospace;font-size:11px;padding:2px 8px;border-radius:3px;
-             cursor:pointer;border:1px solid ${border};background:${bg};color:${color}"
+             cursor:${disabled ? 'default' : 'pointer'};border:1px solid ${border};background:${bg};
+             color:${color};opacity:${disabled ? 0.4 : 1}"
       >${label}</button>`
+  }
+
+  function mkCheckbox(id, label, checked) {
+    return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:#ccc;font-size:11px">
+      <input type="checkbox" id="${id}"${checked ? ' checked' : ''}
+        style="cursor:pointer;accent-color:#54af7b;margin:0">
+      ${label}
+    </label>`
   }
 
   function mkRadio(id, name, value, label, checked) {
@@ -63,15 +73,21 @@
 
   // ── Segment parsing ───────────────────────────────────────────────────────
 
-  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple'])
+  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple', 'timecode'])
 
   // Infer the serialised format of prompt text from its content.
-  // Returns 'beats', 'smart', or null (= cannot determine, use declared type).
+  // Returns 'beats', 'smart', 'timecode', or null (= cannot determine, use declared type).
   function detectPromptFormat(text) {
     const lines = text.split('\n').filter(l => l.trim())
-    // Beats: every non-empty line starts with a numeric range [X-Y] or [Xs-Ys]
-    if (lines.length >= 2 && lines.every(l => /^\[(\d+)s?\s*[-–]\s*(\d+)s?\]/.test(l))) {
+    // Beats: at least one line starts a segment with a numeric range [X-Y] or [Xs-Ys].
+    // Lines without a marker are continuations of the previous segment, not their own
+    // segment, so detection no longer requires every line to match.
+    if (lines.length >= 2 && lines.some(l => /^\[(\d+)s?\s*[-–]\s*(\d+)s?\]/.test(l))) {
       return 'beats'
+    }
+    // Timecode: at least one line starts a segment with a single [MM:SS] marker (no range)
+    if (lines.length >= 2 && lines.some(l => /^\[(\d+):(\d+)\]/.test(l))) {
+      return 'timecode'
     }
     // Smart: multiple pipe-separated parts where at least one ends with [X-Y]
     const parts = text.split(/\s*\|\s*/).filter(p => p.trim())
@@ -104,20 +120,75 @@
     if (parseType === 'beats') {
       const lines = text.split('\n').filter(l => l.trim())
       if (!lines.length) return [{ text: '', frames: totalFrames }]
-      return lines.map(line => {
+      // A segment starts at a marker line and absorbs every following line up to
+      // the next marker (or end of text) as continuation text of that segment.
+      const blocks = []
+      for (const line of lines) {
         // New format: [x-ys] text (seconds) — only end value carries the 's'
         const ms = line.match(/^\[(\d+)\s*[-–]\s*(\d+)s\]\s*([\s\S]*)$/)
-        if (ms) {
-          const frames = fps > 0
-            ? Math.max(1, Math.round((parseInt(ms[2]) - parseInt(ms[1])) * fps))
-            : Math.max(1, Math.floor(totalFrames / lines.length))
-          return { text: ms[3].trim(), frames }
-        }
         // Old format: [x-y] text (frames) — backward compat
-        const mf = line.match(/^\[(\d+)\s*[-–]\s*(\d+)\]\s*([\s\S]*)$/)
-        if (mf) return { text: mf[3].trim(), frames: Math.max(1, parseInt(mf[2]) - parseInt(mf[1])) }
-        return { text: line.trim(), frames: Math.max(1, Math.floor(totalFrames / lines.length)) }
+        const mf = !ms && line.match(/^\[(\d+)\s*[-–]\s*(\d+)\]\s*([\s\S]*)$/)
+        if (ms) {
+          blocks.push({ marker: 'sec', start: parseInt(ms[1]), end: parseInt(ms[2]), lines: [ms[3].trim()] })
+        } else if (mf) {
+          blocks.push({ marker: 'frame', start: parseInt(mf[1]), end: parseInt(mf[2]), lines: [mf[3].trim()] })
+        } else if (blocks.length) {
+          blocks[blocks.length - 1].lines.push(line.trim())
+        } else {
+          blocks.push({ marker: null, lines: [line.trim()] })
+        }
+      }
+      // Text before the first marker never starts a segment of its own — fold
+      // it into the first real segment instead of discarding it.
+      if (blocks.length > 1 && blocks[0].marker === null) {
+        const pre = blocks.shift()
+        blocks[0].lines = [...pre.lines, ...blocks[0].lines]
+      }
+      return blocks.map(b => {
+        const segText = b.lines.filter(Boolean).join('\n')
+        if (b.marker === 'sec') {
+          const frames = fps > 0
+            ? Math.max(1, Math.round((b.end - b.start) * fps))
+            : Math.max(1, Math.floor(totalFrames / blocks.length))
+          return { text: segText, frames }
+        }
+        if (b.marker === 'frame') return { text: segText, frames: Math.max(1, b.end - b.start) }
+        return { text: segText, frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }
       })
+    }
+
+    if (parseType === 'timecode') {
+      const lines = text.split('\n').filter(l => l.trim())
+      if (!lines.length) return [{ text: '', frames: totalFrames }]
+      // Same marker-to-marker grouping as beats, keyed on a [MM:SS] start time.
+      const blocks = []
+      for (const line of lines) {
+        const m = line.match(/^\[(\d+):(\d+)\]\s*([\s\S]*)$/)
+        if (m) {
+          blocks.push({ startSec: parseInt(m[1]) * 60 + parseInt(m[2]), lines: [m[3].trim()] })
+        } else if (blocks.length) {
+          blocks[blocks.length - 1].lines.push(line.trim())
+        } else {
+          blocks.push({ startSec: null, lines: [line.trim()] })
+        }
+      }
+      if (blocks.length > 1 && blocks[0].startSec === null) {
+        const pre = blocks.shift()
+        blocks[0].lines = [...pre.lines, ...blocks[0].lines]
+      }
+      const texts = blocks.map(b => b.lines.filter(Boolean).join('\n'))
+      if (fps > 0 && blocks.every(b => b.startSec !== null)) {
+        let used = 0
+        return blocks.map((b, i) => {
+          const isLast = i === blocks.length - 1
+          const frames = isLast
+            ? Math.max(1, totalFrames - used)
+            : Math.max(1, Math.round((blocks[i + 1].startSec - b.startSec) * fps))
+          used += frames
+          return { text: texts[i], frames }
+        })
+      }
+      return blocks.map((b, i) => ({ text: texts[i], frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }))
     }
 
     // simple: one flat segment — no structural parsing
@@ -160,6 +231,22 @@
         return line
       }).join('\n')
     }
+    if (type === 'timecode') {
+      const halfDown = secs => Math.ceil(secs - 0.5)
+      const fmt = secs => `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`
+      let accFrames = 0
+      let prevSec   = 0
+      return segments.map(s => {
+        const line = `[${fmt(prevSec)}] ${s.text}`
+        accFrames += s.frames
+        // Every segment is at least 1s long — guarantees strictly increasing
+        // marks even when short segments round down to the same second, at
+        // the cost of possibly overshooting the video's true duration.
+        const nextSec = fps > 0 ? halfDown(accFrames / fps) : accFrames
+        prevSec       = Math.max(nextSec, prevSec + 1)
+        return line
+      }).join('\n')
+    }
     // simple
     return segments.map(s => s.text).join('\n')
   }
@@ -169,13 +256,16 @@
   function open({ detail, onSave, defaultNegativePrompt = '' }) {
     if (_overlay) _overlay.remove()
 
-    const fText  = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
-    const fValue = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
+    const fText     = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
+    const fValue    = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
+    const fPosition = v => (v && typeof v === 'object' && (v.position === 'before' || v.position === 'after'))
+                             ? v.position : 'before'
 
-    let totalFrames = Math.max(1, fValue(detail.total_frames))
-    let fps         = fValue(detail.fps)
-    let masterText  = fText(detail.master_prompt)
-    let negText     = fText(detail.negative_prompt)
+    let totalFrames    = Math.max(1, fValue(detail.total_frames))
+    let fps            = fValue(detail.fps)
+    let masterText     = fText(detail.master_prompt)
+    let masterPosition = fPosition(detail.master_prompt)
+    let negText        = fText(detail.negative_prompt)
     let promptType  = (detail.positive_prompt && typeof detail.positive_prompt === 'object')
                         ? (detail.positive_prompt.type || 'smart') : 'smart'
     if (!VALID_PROMPT_TYPES.has(promptType)) promptType = 'smart'
@@ -191,7 +281,7 @@
 
     const panel = el('div',
       'background:#1a1a1a;border:1px solid #444;border-radius:6px;' +
-      'width:640px;max-height:90vh;overflow-y:auto;overflow-x:hidden;' +
+      'width:640px;max-height:97vh;overflow-y:auto;overflow-x:hidden;' +
       'font-family:monospace;font-size:12px;color:#ddd;' +
       'display:flex;flex-direction:column')
 
@@ -221,6 +311,32 @@
       segments.forEach((s, i) => {
         s.frames = i === n - 1 ? Math.max(1, totalFrames - base * (n - 1)) : base
       })
+    }
+
+    function scaleSegmentsToSum(segs, newSum) {
+      const oldSum = segs.reduce((a, s) => a + s.frames, 0)
+      if (!segs.length || oldSum <= 0) return segs
+      const ratio  = newSum / oldSum
+      const scaled = segs.map(s => ({ ...s, frames: Math.max(1, Math.round(s.frames * ratio)) }))
+      let sum = scaled.reduce((a, s) => a + s.frames, 0)
+      let safety = 400
+      while (sum > newSum && safety-- > 0) {
+        const mi = scaled.reduce((bi, s, i) => s.frames > scaled[bi].frames ? i : bi, 0)
+        if (scaled[mi].frames <= 1) break
+        scaled[mi].frames--
+        sum--
+      }
+      safety = 400
+      while (sum < newSum && safety-- > 0) {
+        const mi = scaled.reduce((bi, s, i) => s.frames < scaled[bi].frames ? i : bi, 0)
+        scaled[mi].frames++
+        sum++
+      }
+      return scaled
+    }
+
+    function oneSecondFrames() {
+      return fps > 0 ? Math.max(1, Math.round(fps)) : 16
     }
 
     function frameLabel(f) {
@@ -358,10 +474,12 @@
       })
 
       // ── Master ──────────────────────────────────────────────────────────
+      const showMasterPosition = promptType !== 'smart'
       const masterSec = el('div', 'padding:6px 10px')
       masterSec.innerHTML = `
-        <textarea id="pe-master" style="${TA_STYLE};min-height:106px">${esc(masterText)}</textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:3px">
+        <textarea id="pe-master" style="${TA_STYLE};min-height:159px">${esc(masterText)}</textarea>
+        <div style="display:flex;align-items:center;justify-content:${showMasterPosition ? 'space-between' : 'flex-end'};margin-top:3px">
+          ${showMasterPosition ? mkCheckbox('pe-master-position', 'Append (master after positive)', masterPosition === 'after') : ''}
           ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
         </div>
       `
@@ -371,20 +489,28 @@
         masterText = ''
         masterSec.querySelector('#pe-master').value = ''
       })
+      const masterPosCk = masterSec.querySelector('#pe-master-position')
+      if (masterPosCk) {
+        masterPosCk.addEventListener('change', e => {
+          masterPosition = e.target.checked ? 'after' : 'before'
+        })
+      }
 
       panel.appendChild(greenDiv())
 
       // ── Prompt mode radios ──────────────────────────────────────────────
       const TYPE_HINTS = {
-        smart:  'Warning! Prompt Relays work better with CFG 1.0',
-        beats:  'Beats will coerce frame count into full seconds',
-        simple: 'Simple prompt will remove all segments',
+        smart:    'Warning! Prompt Relays work better with CFG 1.0',
+        beats:    'Beats will coerce frame count into full seconds',
+        simple:   'Simple prompt will remove all segments',
+        timecode: 'Timecode marks each segment\'s start time as [MM:SS]',
       }
       const promptHdr = el('div', 'display:flex;align-items:center;gap:10px;padding:6px 10px 4px')
       promptHdr.innerHTML = `
-        ${mkRadio('pe-smart',  'pe-type', 'smart',  'Smart',  promptType === 'smart')}
-        ${mkRadio('pe-beats',  'pe-type', 'beats',  'Beats',  promptType === 'beats')}
-        ${mkRadio('pe-simple', 'pe-type', 'simple', 'Simple', promptType === 'simple')}
+        ${mkRadio('pe-smart',    'pe-type', 'smart',    'Smart',    promptType === 'smart')}
+        ${mkRadio('pe-beats',    'pe-type', 'beats',    'Beats',    promptType === 'beats')}
+        ${mkRadio('pe-simple',   'pe-type', 'simple',   'Simple',   promptType === 'simple')}
+        ${mkRadio('pe-timecode', 'pe-type', 'timecode', 'Timecode', promptType === 'timecode')}
         <span id="pe-type-hint" style="flex:1;text-align:center;font-size:10px;font-family:monospace;color:#c8922a">${esc(TYPE_HINTS[promptType] ?? '')}</span>
         ${sectionLabel('PROMPT')}
       `
@@ -398,10 +524,23 @@
 
           const doChange = () => {
             promptType = newType
+            if (oldType === 'simple' && promptType !== 'simple') {
+              // Simple never splits into segments — the flat text may still
+              // contain beats/timecode markers typed by hand. Re-parse it so
+              // it splits into real segments instead of staying one blob.
+              const flat = segments.map(s => s.text).filter(t => t.trim()).join('\n')
+              segments = parseSegments(flat, promptType, totalFrames, fps)
+            }
             if (oldType === 'beats' && promptType !== 'beats') {
               segments = segments.map(s => ({
                 ...s,
                 text: s.text.replace(/^\[\d+s?\s*[-–]\s*\d+s?\]\s*/, '').trim(),
+              }))
+            }
+            if (oldType === 'timecode' && promptType !== 'timecode') {
+              segments = segments.map(s => ({
+                ...s,
+                text: s.text.replace(/^\[\d+:\d+\]\s*/, '').trim(),
               }))
             }
             if (promptType === 'simple') {
@@ -432,7 +571,7 @@
       // ── Segment text area ───────────────────────────────────────────────
       const posSec = el('div', 'padding:0 10px 4px')
       posSec.innerHTML = `
-        <textarea id="pe-seg-text" style="${TA_STYLE};min-height:106px">${esc(segments[selIdx]?.text ?? '')}</textarea>
+        <textarea id="pe-seg-text" style="${TA_STYLE};min-height:212px">${esc(segments[selIdx]?.text ?? '')}</textarea>
       `
       panel.appendChild(posSec)
       posSec.querySelector('#pe-seg-text').addEventListener('input', e => {
@@ -460,6 +599,7 @@
         <span id="pe-seg-err" style="color:#f88;font-size:10px"></span>
         ${mkBtn('pe-seg-del', 'delete',   '#803030', '#5c1a1a', '#f99')}
         ${mkBtn('pe-seg-eq',  'equalize', '#555',    '#333',    '#ccc')}
+        ${mkBtn('pe-seg-ins', 'insert',   '#2a5878', '#1a3c52', '#cde')}
         ${mkBtn('pe-seg-add', 'add',      '#2a8050', '#1a5c35', '#cde')}
       `
       panel.appendChild(segCtrl)
@@ -559,20 +699,40 @@
         render()
       })
 
-      segCtrl.querySelector('#pe-seg-add').addEventListener('click', () => {
-        const maxSegs = Math.floor(totalFrames / 3)
-        if (segments.length >= maxSegs) {
-          segErr.textContent = 'Min 3 frames/seg'
-          setTimeout(() => { segErr.textContent = '' }, 2000)
-          return
+      segCtrl.querySelector('#pe-seg-ins').addEventListener('click', () => {
+        const used = segments.reduce((a, s) => a + s.frames, 0)
+        const rem  = totalFrames - used
+        if (rem >= 1) {
+          segments.splice(selIdx, 0, { text: '', frames: rem })
+        } else {
+          const n = segments.length
+          if (totalFrames < n + 1) {
+            segErr.textContent = 'No frames available'
+            setTimeout(() => { segErr.textContent = '' }, 2000)
+            return
+          }
+          const newFrames = Math.min(oneSecondFrames(), totalFrames - n)
+          segments = scaleSegmentsToSum(segments, totalFrames - newFrames)
+          segments.splice(selIdx, 0, { text: '', frames: newFrames })
         }
+        render()
+      })
+
+      segCtrl.querySelector('#pe-seg-add').addEventListener('click', () => {
         const used = segments.reduce((a, s) => a + s.frames, 0)
         const rem  = totalFrames - used
         if (rem >= 1) {
           segments.push({ text: '', frames: rem })
         } else {
-          segments.push({ text: '', frames: 1 })
-          equalize()
+          const n = segments.length
+          if (totalFrames < n + 1) {
+            segErr.textContent = 'No frames available'
+            setTimeout(() => { segErr.textContent = '' }, 2000)
+            return
+          }
+          const newFrames = Math.min(oneSecondFrames(), totalFrames - n)
+          segments = scaleSegmentsToSum(segments, totalFrames - newFrames)
+          segments.push({ text: '', frames: newFrames })
         }
         selIdx = segments.length - 1
         render()
@@ -643,7 +803,7 @@
       const tfEl = panel.querySelector('#pe-tf')
       if (tfEl) totalFrames = Math.max(1, parseInt(tfEl.value) || 1)
       onSave({
-        master_prompt:   { text: masterText },
+        master_prompt:   { text: masterText, position: masterPosition },
         positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
         negative_prompt: { text: negText },
         total_frames:    { value: totalFrames },

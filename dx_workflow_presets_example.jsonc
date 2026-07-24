@@ -1,6 +1,6 @@
 {
     "_meta": {
-        "preset_schema_version": 2, // internal schema version; do not change
+        "preset_schema_version": 3, // internal schema version; do not change
         "name": "General Presets", // display name for this preset file
         "version": "1.0", // file format version string
         "created_at": "2026-06-02T00:00:00", // file creation timestamp (ISO 8601)
@@ -30,7 +30,9 @@
                 "steps",
                 "split_step",
                 "cfg_high",
-                "cfg_low"
+                "cfg_low",
+                "flags",
+                "custom"
             ],
             "ltx2.3": [
                 "class",
@@ -54,7 +56,9 @@
                 "width",
                 "height",
                 "steps",
-                "cfg_high"
+                "cfg_high",
+                "flags",
+                "custom"
             ],
             "ImageInference": [
                 "class",
@@ -75,7 +79,9 @@
                 "width",
                 "height",
                 "steps",
-                "cfg_high"
+                "cfg_high",
+                "flags",
+                "custom"
             ]
         }
     },
@@ -146,7 +152,16 @@
             }, // guidance scale for the high-pass unet
             "cfg_low": {
                 "value": 3.5
-            } // guidance scale for the low-pass unet
+            }, // guidance scale for the low-pass unet
+            "flags": {
+                "flag_1": { "label": "flag 1", "value": false }, // three boolean toggles with configurable labels
+                "flag_2": { "label": "flag 2", "value": false },
+                "flag_3": { "label": "flag 3", "value": false }
+            }, // all 3 flags are saved/applied as a whole, including their labels
+            "custom": {
+                "param_1": { "label": "param 1", "value": "" }, // two free-form string outputs, each with a configurable label
+                "param_2": { "label": "param 2", "value": "" }
+            } // both custom params are saved/applied as a whole, including their labels
         },
         {
             "class": "ltx2.3",
@@ -207,7 +222,16 @@
             }, // number of denoising steps
             "cfg_high": {
                 "value": 1.0
-            } // guidance scale (distilled models use low values near 1)
+            }, // guidance scale (distilled models use low values near 1)
+            "flags": {
+                "flag_1": { "label": "flag 1", "value": false },
+                "flag_2": { "label": "flag 2", "value": false },
+                "flag_3": { "label": "flag 3", "value": false }
+            }, // all 3 flags are saved/applied as a whole, including their labels
+            "custom": {
+                "param_1": { "label": "param 1", "value": "" },
+                "param_2": { "label": "param 2", "value": "" }
+            } // both custom params are saved/applied as a whole, including their labels
         },
         {
             "class": "ImageInference",
@@ -252,7 +276,16 @@
             }, // number of denoising steps
             "cfg_high": {
                 "value": 3.5
-            } // guidance scale (labeled "CFG" in the UI)
+            }, // guidance scale (labeled "CFG" in the UI)
+            "flags": {
+                "flag_1": { "label": "flag 1", "value": false },
+                "flag_2": { "label": "flag 2", "value": false },
+                "flag_3": { "label": "flag 3", "value": false }
+            }, // all 3 flags are saved/applied as a whole, including their labels
+            "custom": {
+                "param_1": { "label": "param 1", "value": "" },
+                "param_2": { "label": "param 2", "value": "" }
+            } // both custom params are saved/applied as a whole, including their labels
         }
     ]
 }

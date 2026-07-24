@@ -3,9 +3,10 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 
 // ── WAN2.2 — use-mode detail table ────────────────────────────────────────────
 
-function renderDetailHtml(data, h) {
+function renderDetailHtml(data, h, extra = {}) {
   const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fCustomValue, fNote,
           row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
+  const { showMovie, movieLabel, sceneLabel, takeLabel } = extra
   if (data.error) {
     return `<p style="font-family:monospace;font-size:12px;color:#f88;padding:8px">${esc(data.error)}</p>`
   }
@@ -30,8 +31,11 @@ function renderDetailHtml(data, h) {
     : `<span style="color:#555">—</span>`
   const typeLabel = data.type === 'I2V' ? 'I2V' : data.type === 'T2V' ? 'T2V' : data.type === 'MULTI' ? 'MULTI' : 'No type'
   return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
+    ${showMovie ? row('Movie', movieLabel) : ''}
     ${row('Group',      fName(data.group))}
     ${row('Type',       typeLabel)}
+    ${row('Scene',      sceneLabel)}
+    ${row('Take',       takeLabel)}
     ${rowNote(fNote(data.note))}
     ${rowDiv()}
     ${row('UNet High',  disp(fName(data.unet_high)))}
@@ -72,7 +76,7 @@ function renderDetailHtml(data, h) {
     ${row('Master',      trunc(fText(data.master_prompt)))}
     ${row('Positive',    trunc(fText(data.positive_prompt)))}
     ${row('Negative',    trunc(fText(data.negative_prompt)))}
-    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple' })[fType(data.positive_prompt)] || 'Smart')}
+    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode' })[fType(data.positive_prompt)] || 'Smart')}
     ${rowDiv()}
     ${row('Filename',    fFile(data.filename))}
     <tr>
@@ -256,7 +260,8 @@ function buildPayload(wrap) {
     image_path:      { path: wrap.querySelector('#daz-image-path')?.value      ?? '' },
     audio_path:      { path: wrap.querySelector('#daz-audio-path')?.value      ?? '' },
     loras,
-    master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '' },
+    master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '',
+                       position: wrap.querySelector('#daz-master-position')?.checked ? 'after' : 'before' },
     positive_prompt: {
       text: wrap.querySelector('#daz-positive-prompt')?.value ?? '',
       type: wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart',
@@ -292,7 +297,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigWan22',
   nodeDataName: 'WorkflowConfigWan22',
   CLASS:        'Wan2.2',
-  PANEL_H: 674, NODE_W: 460, NODE_H: 886,
+  PANEL_H: 740, NODE_W: 460, NODE_H: 952,
 
   keys: {
     detail:          '_dazWan22Detail',
@@ -318,7 +323,7 @@ app.registerExtension(buildWorkflowConfigExtension({
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
     { select: '#daz-unet-low',  checkbox: '#daz-unet-low-gguf' },
   ],
-  defaultNegativePrompt: 'low quality, blurry, watermark, text, logo, distorted, deformed, extra fingers, bad hands, static, overexposed',
+  defaultNegativePrompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走',
 
   renderDetailHtml,
   updateOutputLabels,

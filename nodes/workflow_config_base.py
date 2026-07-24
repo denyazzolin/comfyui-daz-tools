@@ -61,7 +61,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 7
+CURRENT_SCHEMA = 8
 _META_KEY      = "_meta"
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
@@ -110,10 +110,18 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
     if file_version > CURRENT_SCHEMA:
         print(f"[DAZ TOOLS] WorkflowConfig: {os.path.basename(path)} is schema v{file_version} "
               f"(node understands v{CURRENT_SCHEMA}) — skipping migration")
-    elif file_version < CURRENT_SCHEMA:
+        return configs, meta_extra, effective
+
+    migrated = False
+    if file_version < CURRENT_SCHEMA:
         print(f"[DAZ TOOLS] WorkflowConfig: migrating {os.path.basename(path)} "
               f"v{file_version} → v{CURRENT_SCHEMA}")
-        configs = _migrate(configs, file_version)
+        configs  = _migrate(configs, file_version)
+        migrated = True
+
+    backfilled = _backfill_master_position(configs)
+
+    if migrated or backfilled:
         try:
             _write_file(path, configs, meta_extra, effective)
         except Exception as e:
@@ -210,6 +218,12 @@ def _get_text(val, default: str = "") -> str:
         return str(val.get("text") or default)
     return str(val or default)
 
+def _get_master_position(val, default: str = "before") -> str:
+    if isinstance(val, dict):
+        pos = val.get("position")
+        return pos if pos in ("before", "after") else default
+    return default
+
 def _get_path(val, default: str = "") -> str:
     if isinstance(val, dict):
         return str(val.get("path") or default)
@@ -278,7 +292,7 @@ def _get_seed_randomize(val) -> bool:
         return bool(val.get("randomize", False))
     return False
 
-_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3}
+_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3, "timecode": 4}
 
 def _get_prompt_type_int(val, default: int = 1) -> int:
     t = val.get("type", "smart") if isinstance(val, dict) else "smart"
@@ -664,7 +678,7 @@ def load_unet_gguf(name: str):
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
 
-PRESET_SCHEMA = 2
+PRESET_SCHEMA = 3
 _PRESET_SKIP_APPLY  = {"class", "name", "version", "version_label", "created_at", "updated_at"}
 _PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
 _PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
@@ -680,6 +694,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "unet_high", "unet_low", "vae", "clip", "loras",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
+        "flags", "custom",
     ],
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
@@ -687,6 +702,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "master_prompt", "positive_prompt", "negative_prompt",
         "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
         "width", "height", "steps", "cfg_high",
+        "flags", "custom",
     ],
     "ImageInference": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
@@ -694,7 +710,18 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "master_prompt", "positive_prompt", "negative_prompt",
         "checkpoint", "unet_high", "vae", "clip", "clip_type",
         "width", "height", "steps", "cfg_high",
+        "flags", "custom",
     ],
+}
+
+_PRESET_DEFAULT_FLAGS: dict = {
+    "flag_1": {"label": "flag 1", "value": False},
+    "flag_2": {"label": "flag 2", "value": False},
+    "flag_3": {"label": "flag 3", "value": False},
+}
+_PRESET_DEFAULT_CUSTOM: dict = {
+    "param_1": {"label": "param 1", "value": ""},
+    "param_2": {"label": "param 2", "value": ""},
 }
 
 
@@ -759,6 +786,21 @@ def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[
             for preset in presets:
                 if preset.get("class") == cls and "loras" not in preset:
                     preset["loras"] = {key: _lora_obj() for key in _LORA_FIELDS}
+    if from_version < 3:
+        for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
+            profile = profiles.get(cls)
+            for field in ("flags", "custom"):
+                if field not in default_profile:
+                    continue
+                if isinstance(profile, list) and field not in profile:
+                    profile.append(field)
+            for preset in presets:
+                if preset.get("class") != cls:
+                    continue
+                if "flags" not in preset:
+                    preset["flags"] = {k: dict(v) for k, v in _PRESET_DEFAULT_FLAGS.items()}
+                if "custom" not in preset:
+                    preset["custom"] = {k: dict(v) for k, v in _PRESET_DEFAULT_CUSTOM.items()}
     return presets, profiles
 
 
@@ -867,6 +909,29 @@ def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
         elif field == "loras":
             if isinstance(val, dict):
                 target["loras"] = {key: _coerce_lora(val.get(key, "")) for key in _LORA_FIELDS}
+        elif field == "flags":
+            if isinstance(val, dict):
+                target["flags"] = {
+                    key: _coerce_labeled(val.get(key), default["label"], "value", bool, False)
+                    for key, default in _PRESET_DEFAULT_FLAGS.items()
+                }
+        elif field == "custom":
+            if isinstance(val, dict):
+                target["custom"] = {
+                    key: _coerce_labeled(val.get(key), default["label"], "value", str, "")
+                    for key, default in _PRESET_DEFAULT_CUSTOM.items()
+                }
+
+
+def _coerce_labeled(value, label_default, value_key, value_type, value_default):
+    """Coerce a preset's {label, value} field, filling in defaults for missing parts."""
+    if isinstance(value, dict):
+        try:
+            coerced_value = value_type(value.get(value_key, value_default))
+        except (ValueError, TypeError):
+            coerced_value = value_default
+        return {"label": str(value.get("label", label_default) or label_default), "value": coerced_value}
+    return {"label": label_default, "value": value_default}
 
 
 def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
@@ -877,6 +942,14 @@ def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
             continue
         if field == "loras":
             preset["loras"] = _get_loras(set_obj)
+            continue
+        if field == "flags":
+            flags = set_obj.get("flags")
+            preset["flags"] = flags if isinstance(flags, dict) else dict(_PRESET_DEFAULT_FLAGS)
+            continue
+        if field == "custom":
+            custom = set_obj.get("custom")
+            preset["custom"] = custom if isinstance(custom, dict) else dict(_PRESET_DEFAULT_CUSTOM)
             continue
         val = set_obj.get(field)
         if val is not None:
@@ -917,6 +990,26 @@ def _migrate(configs: dict, from_version: int) -> dict:
                     elif v:
                         s[f] = {"name": str(v), "gguf": False}
     return configs
+
+
+def _backfill_master_position(configs: dict) -> bool:
+    """Ensure every set's master_prompt has a 'position' field. Additive and
+    idempotent — safe to run on every load regardless of the file's schema
+    version, since a file can already be marked as the current schema without
+    every set having been through the version-gated migration (e.g. hand-edited
+    files, or files created in between schema bumps)."""
+    changed = False
+    for entry in configs.values():
+        for s in entry.get("sets", []):
+            mp = s.get("master_prompt")
+            if isinstance(mp, dict):
+                if "position" not in mp:
+                    mp["position"] = "before"
+                    changed = True
+            elif mp:
+                s["master_prompt"] = {"text": str(mp), "position": "before"}
+                changed = True
+    return changed
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

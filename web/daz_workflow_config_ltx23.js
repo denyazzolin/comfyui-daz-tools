@@ -3,9 +3,10 @@ import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 
 // ── LTX2.3 — use-mode detail table ───────────────────────────────────────────
 
-function renderDetailHtml(data, h) {
+function renderDetailHtml(data, h, extra = {}) {
   const { esc, fName, fValue, fText, fPath, fFile, fType, fRandomize, fFlagLabel, fFlagValue, fCustomValue, fNote,
           row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc, loraEnabled } = h
+  const { showMovie, movieLabel, sceneLabel, takeLabel } = extra
 
   function dualClipDisp(n1, n2) {
     const a = disp(n1, 9), b = disp(n2, 9)
@@ -37,8 +38,11 @@ function renderDetailHtml(data, h) {
   const typeLabel = data.type === 'I2V' ? 'I2V' : data.type === 'T2V' ? 'T2V' : data.type === 'MULTI' ? 'MULTI' : 'No type'
   const loras = data.loras ?? {}
   return `<table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
+    ${showMovie ? row('Movie', movieLabel) : ''}
     ${row('Group',       fName(data.group))}
     ${row('Type',        typeLabel)}
+    ${row('Scene',       sceneLabel)}
+    ${row('Take',        takeLabel)}
     ${rowNote(fNote(data.note))}
     ${rowDiv()}
     ${row('Checkpoint',  disp(fName(data.checkpoint)))}
@@ -81,7 +85,7 @@ function renderDetailHtml(data, h) {
     ${row('Master',      trunc(fText(data.master_prompt)))}
     ${row('Positive',    trunc(fText(data.positive_prompt)))}
     ${row('Negative',    trunc(fText(data.negative_prompt)))}
-    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple' })[fType(data.positive_prompt)] || 'Smart')}
+    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode' })[fType(data.positive_prompt)] || 'Smart')}
     ${rowDiv()}
     ${row('Filename',    fFile(data.filename))}
     <tr>
@@ -270,7 +274,8 @@ function buildPayload(wrap) {
     image_path:      { path:  wrap.querySelector('#daz-image-path')?.value       ?? '' },
     audio_path:      { path:  wrap.querySelector('#daz-audio-path')?.value       ?? '' },
     loras,
-    master_prompt:   { text:  wrap.querySelector('#daz-master-prompt')?.value    ?? '' },
+    master_prompt:   { text:  wrap.querySelector('#daz-master-prompt')?.value    ?? '',
+                       position: wrap.querySelector('#daz-master-position')?.checked ? 'after' : 'before' },
     positive_prompt: {
       text: wrap.querySelector('#daz-positive-prompt')?.value  ?? '',
       type: wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart',
@@ -304,7 +309,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigLtx23',
   nodeDataName: 'WorkflowConfigLtx23',
   CLASS:        'ltx2.3',
-  PANEL_H: 697, NODE_W: 460, NODE_H: 909,
+  PANEL_H: 763, NODE_W: 460, NODE_H: 975,
 
   keys: {
     detail:          '_dazLtx23Detail',
@@ -328,7 +333,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   unetGgufFields: [
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],
-  defaultNegativePrompt: 'worst quality, inconsistent motion, blurry, jittery, distorted, static, flickering, text, watermark, logo, deformed, extra limbs',
+  defaultNegativePrompt: 'pc game, console game, video game, cartoon, childish, ugly, blurry, distorted face, extra limbs, mismatched audio',
 
   renderDetailHtml,
   updateOutputLabels,
