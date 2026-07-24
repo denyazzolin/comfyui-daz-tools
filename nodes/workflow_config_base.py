@@ -678,7 +678,7 @@ def load_unet_gguf(name: str):
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
 
-PRESET_SCHEMA = 2
+PRESET_SCHEMA = 3
 _PRESET_SKIP_APPLY  = {"class", "name", "version", "version_label", "created_at", "updated_at"}
 _PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
 _PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
@@ -694,6 +694,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "unet_high", "unet_low", "vae", "clip", "loras",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
+        "flags", "custom",
     ],
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
@@ -701,6 +702,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "master_prompt", "positive_prompt", "negative_prompt",
         "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
         "width", "height", "steps", "cfg_high",
+        "flags", "custom",
     ],
     "ImageInference": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
@@ -708,7 +710,18 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "master_prompt", "positive_prompt", "negative_prompt",
         "checkpoint", "unet_high", "vae", "clip", "clip_type",
         "width", "height", "steps", "cfg_high",
+        "flags", "custom",
     ],
+}
+
+_PRESET_DEFAULT_FLAGS: dict = {
+    "flag_1": {"label": "flag 1", "value": False},
+    "flag_2": {"label": "flag 2", "value": False},
+    "flag_3": {"label": "flag 3", "value": False},
+}
+_PRESET_DEFAULT_CUSTOM: dict = {
+    "param_1": {"label": "param 1", "value": ""},
+    "param_2": {"label": "param 2", "value": ""},
 }
 
 
@@ -773,6 +786,21 @@ def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[
             for preset in presets:
                 if preset.get("class") == cls and "loras" not in preset:
                     preset["loras"] = {key: _lora_obj() for key in _LORA_FIELDS}
+    if from_version < 3:
+        for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
+            profile = profiles.get(cls)
+            for field in ("flags", "custom"):
+                if field not in default_profile:
+                    continue
+                if isinstance(profile, list) and field not in profile:
+                    profile.append(field)
+            for preset in presets:
+                if preset.get("class") != cls:
+                    continue
+                if "flags" not in preset:
+                    preset["flags"] = {k: dict(v) for k, v in _PRESET_DEFAULT_FLAGS.items()}
+                if "custom" not in preset:
+                    preset["custom"] = {k: dict(v) for k, v in _PRESET_DEFAULT_CUSTOM.items()}
     return presets, profiles
 
 
@@ -881,6 +909,29 @@ def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
         elif field == "loras":
             if isinstance(val, dict):
                 target["loras"] = {key: _coerce_lora(val.get(key, "")) for key in _LORA_FIELDS}
+        elif field == "flags":
+            if isinstance(val, dict):
+                target["flags"] = {
+                    key: _coerce_labeled(val.get(key), default["label"], "value", bool, False)
+                    for key, default in _PRESET_DEFAULT_FLAGS.items()
+                }
+        elif field == "custom":
+            if isinstance(val, dict):
+                target["custom"] = {
+                    key: _coerce_labeled(val.get(key), default["label"], "value", str, "")
+                    for key, default in _PRESET_DEFAULT_CUSTOM.items()
+                }
+
+
+def _coerce_labeled(value, label_default, value_key, value_type, value_default):
+    """Coerce a preset's {label, value} field, filling in defaults for missing parts."""
+    if isinstance(value, dict):
+        try:
+            coerced_value = value_type(value.get(value_key, value_default))
+        except (ValueError, TypeError):
+            coerced_value = value_default
+        return {"label": str(value.get("label", label_default) or label_default), "value": coerced_value}
+    return {"label": label_default, "value": value_default}
 
 
 def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
@@ -891,6 +942,14 @@ def _extract_preset_from_set(set_obj: dict, cls: str, profile: list) -> dict:
             continue
         if field == "loras":
             preset["loras"] = _get_loras(set_obj)
+            continue
+        if field == "flags":
+            flags = set_obj.get("flags")
+            preset["flags"] = flags if isinstance(flags, dict) else dict(_PRESET_DEFAULT_FLAGS)
+            continue
+        if field == "custom":
+            custom = set_obj.get("custom")
+            preset["custom"] = custom if isinstance(custom, dict) else dict(_PRESET_DEFAULT_CUSTOM)
             continue
         val = set_obj.get(field)
         if val is not None:

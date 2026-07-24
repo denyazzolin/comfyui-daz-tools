@@ -1329,6 +1329,30 @@ export function buildWorkflowConfigExtension(cfg) {
             }
             continue
           }
+          if (field === 'flags') {
+            if (!(field in preset)) continue
+            const flags = (preset.flags && typeof preset.flags === 'object') ? preset.flags : {}
+            for (let n = 1; n <= 3; n++) {
+              const flag    = flags[`flag_${n}`] ?? {}
+              const labelEl = panel.querySelector(`#daz-flag-${n}-label`)
+              const valEl   = panel.querySelector(`#daz-flag-${n}-value`)
+              if (labelEl) labelEl.value = String(flag.label ?? `flag ${n}`)
+              if (valEl)   valEl.checked = flag.value ?? false
+            }
+            continue
+          }
+          if (field === 'custom') {
+            if (!(field in preset)) continue
+            const custom = (preset.custom && typeof preset.custom === 'object') ? preset.custom : {}
+            for (let n = 1; n <= 2; n++) {
+              const param   = custom[`param_${n}`] ?? {}
+              const labelEl = panel.querySelector(`#daz-custom-${n}-label`)
+              const valEl   = panel.querySelector(`#daz-custom-${n}-value`)
+              if (labelEl) labelEl.value = String(param.label ?? `param ${n}`)
+              if (valEl)   valEl.value   = String(param.value ?? '')
+            }
+            continue
+          }
           const map = PRESET_FIELD_MAP[field]
           if (!map || !(field in preset)) continue
           const val  = preset[field]

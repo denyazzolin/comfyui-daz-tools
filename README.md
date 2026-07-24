@@ -202,6 +202,8 @@ The preset library is a shared collection of model-and-parameter templates (`dx_
 
 For WAN2.2 and LTX2.3, presets also carry the full LoRA setup — all 8 slots, including empty/disabled ones. Applying a preset overwrites all of the current config's LoRA slots, so the pre-filled panel always reflects exactly the preset's LoRA setup rather than a merge with whatever was there before.
 
+Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes.
+
 Three buttons in the edit panel footer give access to the library:
 
 **Apply Preset** — opens a browser showing all saved presets for this node class (WAN2.2 and LTX2.3 include a type filter). Select a preset and click **Apply** to write its values into the current edit panel. When you create a new config and presets already exist for that class, this browser opens automatically.
