@@ -21,55 +21,6 @@ You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ## Nodes
 
-### Check Null (`utils`)
-- **Input:** any value (optional)
-- **Output:** `is_null` (BOOLEAN) — `True` if the value is null, None, NaN, or empty string
-
----
-
-### Null Audio Checker (`audio`)
-Checks if the audio output from [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) is null (video had no audio track).
-- **Input:** `audio` (AUDIO)
-- **Output:** `is_empty` (BOOLEAN)
-
----
-
-### Abs Int (`math`)
-- **Input:** `value` (INT)
-- **Output:** `abs_value` (INT)
-
----
-
-### Lora Inspector (`utils`)
-Scans `models/loras`, reads safetensors metadata, and caches results to `models/loras/dx_lora_db.json`.
-
-- **Inputs:** `lora` (dropdown, prefixed by category) · `rescan` (BOOLEAN)
-- **Output:** `lora_data` (STRING) — JSON with three sections:
-  - `general`: `filename`, `path`, `category`, `base_model_version`, `network_dim`, `network_alpha`, `potential_triggerwords`, `file_size_mb`, `last_modified`
-  - `extended`: `network_module`, `network_args`, `steps`, `num_epochs`, `epoch`, `resolution`, `num_train_images`, `training_comment`
-  - `training`: `optimizer`, `learning_rate`, `unet_lr`, `text_encoder_lr`, `lr_scheduler`, `noise_offset`, `min_snr_gamma`, `mixed_precision`
-
-**Categories** (inferred from `ss_base_model_version`):
-
-| Category | Matches |
-|---|---|
-| `WAN2.2` | Wan 2.2 |
-| `WAN2.1` | Wan 2.1 |
-| `LTX2.3` | LTX v2.3 |
-| `LTX2` | LTX v2.x |
-| `LTX` | LTX (any other) |
-| `Flux1` | Flux.1 |
-| `Flux2` | Flux 2 |
-| `Flux2 Klein` | Flux Klein |
-| `Chroma` | Chroma |
-| `ZIT` | Z-Image |
-| `Qwen` | Qwen |
-| `Others` | Anything else or missing metadata |
-
-**First-time setup:** entries show as `Unknown` until you tick **Rescan = Yes**, run the node once, then reload the page.
-
----
-
 ### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`)
 
 These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically fo ryou to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
@@ -174,7 +125,7 @@ LoRAs and the timestep-shift model patch (WAN2.2) are fully supported on GGUF-lo
 
 Presets carry the `gguf` flag along with the model name, so applying a preset with a GGUF model correctly sets the loader to use.
 
-**How to start?"** : hit the **NEW** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
+**How to start?"** : hit the **New Take** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
 
 As you create scenes and takes, you may easily just **duplicate** one to keep working on a separate scene or to bootstrap the creation of a new scene.
 
@@ -186,7 +137,7 @@ Below is a picture of the scene editor.
 
 In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes only cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everythig, experiment with new prompts, add othe reference images, other loras, etc, all in teh content of the same scene.
 
-Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "+ Version" button.
+Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "+ Take" button.
 
 #### Managing prompts
 
@@ -196,9 +147,10 @@ Each scene/take stores three prompt fields — **Master**, **Positive**, and **N
 |---|---|
 | **Smart** | The positive prompt is split into pipe-separated segments, each covering a frame range (`text [start-end] \| text [start-end] \| …`). A downstream Prompt Relay node handles distribution across frames. Best used with CFG ≈ 1.0. |
 | **Beats** | Segments are aligned to time ranges in seconds (`[start-ends] text`, one per line). Frame counts are derived from FPS automatically. |
+| **Timecode** | Segments are aligned to absolute start times (`[MM:SS] text`, one per line). Each marker is the segment's start time; frame counts are derived from the gap to the next marker (or the end of the video) using FPS. |
 | **Simple** | A single flat text string passed as-is. |
 
-For **Simple** and **Beats** types, the Master prompt is prepended to the positive prompt before it reaches the sampler. For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
+For **Simple**, **Beats**, and **Timecode** types, the Master prompt is combined with the positive prompt before it reaches the sampler. An **Append** checkbox lets you switch the Master to go after the positive text instead of before (the default). For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
 
 **Prompt Editor**
 
@@ -207,20 +159,20 @@ For **Simple** and **Beats** types, the Master prompt is prepended to the positi
 Click **Prompt Editor** inside the edit panel to open a full-screen editor. It loads the current Master, Positive, Negative, total frames, and FPS values and lets you work with them visually.
 
 - **Frames / FPS** — changing Frames rescales all segment lengths proportionally; changing FPS updates the time labels on the ruler.
-- **Master** — free-form text area.
-- **Prompt type** — switch between Smart, Beats, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
+- **Master** — free-form text area. For Beats, Timecode, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
+- **Prompt type** — switch between Smart, Beats, Timecode, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
 - **Segment bar** — a horizontal bar showing each segment as a proportional colour-coded block. Click any block to select it; the active segment is highlighted in green.
 - **Frame ruler** — marks 0%, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels include both frame number and seconds (e.g. `40 (2.5s)`).
 - **Segment text** — edit the text for the selected segment.
-- **Segment controls** — set the exact frame count, clear the text, delete the segment, equalize all segments evenly, or add a new segment.
+- **Segment controls** — set the exact frame count, clear the text, delete the segment, or equalize all segments evenly. **Insert** adds a new segment right before the selected one; **Add** appends one at the end. Both fill any remaining space first; once the timeline is full, they instead carve out a one-second segment (based on FPS) and proportionally rescale every other segment to preserve its relative timing (minimum 1 frame each).
 - **Negative** — free-form text area.
 - **Clear All** — resets Master, Positive, and Negative to empty and collapses to a single segment.
 
-Clicking **OK** sends all values back to the edit panel. It does **not** save to disk — use **Save** or **+ Version** in the edit panel to persist.
+Clicking **OK** sends all values back to the edit panel. It does **not** save to disk — use **Save** or **+ Take** in the edit panel to persist.
 
 #### Edit mode
 
-Open the full-screen edit panel by clicking the node's **Edit** button (or double-clicking the node on the canvas).
+Open the full-screen edit panel by clicking the node's **Edit Take** button (or double-clicking the node on the canvas).
 
 The panel has three columns:
 - **Left:** Name, Group, Type, Note, reference image and audio, dimensions, seed, CFG, frames, and FPS.
@@ -229,10 +181,10 @@ The panel has three columns:
 
 | Button | What it does |
 |---|---|
-| **Save** | Overwrites the current version with the panel values |
-| **+ Version** | Saves the current panel as a new auto-numbered version |
-| **Duplicate** | Copies this preset — you can duplicate all versions, just the current version, or add a new version to the same preset. If there are unsaved changes, prompts to save or discard first |
-| **Delete Version** | Removes the current version (removes the entire preset if it is the last version) |
+| **Save** | Overwrites the current take with the panel values |
+| **+ Take** | Saves the current panel as a new auto-numbered take |
+| **Duplicate** | Copies this preset — you can duplicate all takes, just the current take, or add a new take to the same preset. If there are unsaved changes, prompts to save or discard first |
+| **Delete Take** | Removes the current take (removes the entire scene if it is the last take) |
 | **Del All** | Deletes the entire preset and all its versions |
 | **Cancel** | Returns to use mode; prompts to discard if there are unsaved changes |
 
@@ -240,7 +192,7 @@ The panel has three columns:
 
 **Rename warning** — saving with a changed name applies to all versions in the preset; a confirmation popup appears before proceeding.
 
-**Use mode** — when not in edit mode, the node shows a summary of the active version. LoRA enabled toggles and flag toggles can be changed directly from use mode without opening the edit panel, and save immediately.
+**Use mode** — when not in edit mode, the node shows a summary of the active take, including its movie (when more than one file is loaded), group, type, scene, take, and note. LoRA enabled toggles and flag toggles can be changed directly from use mode without opening the edit panel, and save immediately.
 
 When no presets exist yet, the node shows an empty state with a centred **Create** button.
 
@@ -260,3 +212,52 @@ Three buttons in the edit panel footer give access to the library:
 - **Save as New Preset** — opens a form to name the new preset, choose its type (WAN2.2 and LTX2.3 only), add an optional version label and note. All model and parameter values are captured from the current config automatically. Saving is blocked if a preset with the same name already exists at version 1 for this class.
 
 **Manage Presets** — opens the browser in delete mode. You can remove a single version or the entire preset and all its versions.
+
+---
+
+### Check Null (`utils`)
+- **Input:** any value (optional)
+- **Output:** `is_null` (BOOLEAN) — `True` if the value is null, None, NaN, or empty string
+
+---
+
+### Null Audio Checker (`audio`)
+Checks if the audio output from [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) is null (video had no audio track).
+- **Input:** `audio` (AUDIO)
+- **Output:** `is_empty` (BOOLEAN)
+
+---
+
+### Abs Int (`math`)
+- **Input:** `value` (INT)
+- **Output:** `abs_value` (INT)
+
+---
+
+### Lora Inspector (`utils`)
+Scans `models/loras`, reads safetensors metadata, and caches results to `models/loras/dx_lora_db.json`.
+
+- **Inputs:** `lora` (dropdown, prefixed by category) · `rescan` (BOOLEAN)
+- **Output:** `lora_data` (STRING) — JSON with three sections:
+  - `general`: `filename`, `path`, `category`, `base_model_version`, `network_dim`, `network_alpha`, `potential_triggerwords`, `file_size_mb`, `last_modified`
+  - `extended`: `network_module`, `network_args`, `steps`, `num_epochs`, `epoch`, `resolution`, `num_train_images`, `training_comment`
+  - `training`: `optimizer`, `learning_rate`, `unet_lr`, `text_encoder_lr`, `lr_scheduler`, `noise_offset`, `min_snr_gamma`, `mixed_precision`
+
+**Categories** (inferred from `ss_base_model_version`):
+
+| Category | Matches |
+|---|---|
+| `WAN2.2` | Wan 2.2 |
+| `WAN2.1` | Wan 2.1 |
+| `LTX2.3` | LTX v2.3 |
+| `LTX2` | LTX v2.x |
+| `LTX` | LTX (any other) |
+| `Flux1` | Flux.1 |
+| `Flux2` | Flux 2 |
+| `Flux2 Klein` | Flux Klein |
+| `Chroma` | Chroma |
+| `ZIT` | Z-Image |
+| `Qwen` | Qwen |
+| `Others` | Anything else or missing metadata |
+
+**First-time setup:** entries show as `Unknown` until you tick **Rescan = Yes**, run the node once, then reload the page.
