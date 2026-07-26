@@ -23,36 +23,36 @@ You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`)
 
-These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically fo ryou to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
+These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically for you to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
 
 The configs are mapped in this way:
 
--**Movies** are actual json files holding the configurations (see more below)
-- Each movie file can have multiple **scenes**, they are the mnain data with all loras, models, prompts, etc
+- **Movies** are actual json files holding the scene configurations (see more below)
+- Each movie file can have multiple **scenes**, they are the main data with all loras, models, prompts, etc
 - Each scene can have multiple **takes**, with their own prompts, models, etc. They are effectively "versions" of a given scene. Each scene has at least one take.
 
 
 ![Sample nodes](content/sample_nodes_v1.png)
 
-#### Config files
+#### Movie files
 
-Presets are stored in `dx_*.json` files inside `ComfyUI/user/default/workflows/.dx_mgr/`. The default file (`dx_workflow_configs.json`) is created automatically the first time you add a preset through the node UI.
+**Movie** files are stored as `dx_*.json` files inside `ComfyUI/user/default/workflows/.dx_mgr/`. A default movie file (`dx_workflow_configs.json`) is created automatically the first time you add a preset through the node UI.
 
-You can have as many config files (references as *movies* on the nodes) as you like — any `dx_*.json` file in that folder is picked up automatically, and a **movie** dropdown appears when more than one file exists. Each file can hold scenes for any node class (WAN2.2, LTX2.3, etc.), and each node shows only its own class entries. Use multiple files to organise moves and scenes by project, client, style, or any other grouping.
+You can have as many movie files as you like — any `dx_*.json` file in that folder is picked up automatically, and a **movie** dropdown appears when more than one file exists. Each file can hold *scenes* for any node class (WAN2.2, LTX2.3, etc.), and each node shows only its own class entries. Use multiple files to organise movies and scenes by project, client, style, or any other grouping.
 
-> **Custom location:** To store config files somewhere else, create `dx_root_dir_config.json` in the plugin folder (`custom_nodes/comfyui-daz-tools/`) with the key `"workflows_root_dir"` pointing to your preferred path. An annotated example is included as `dx_root_dir_config.example.jsonc`.
+> **Custom location:** To store movie files somewhere else, create `dx_root_dir_config.json` in the plugin folder (`custom_nodes/comfyui-daz-tools/`) with the key `"workflows_root_dir"` pointing to your preferred path. An annotated example is included as `dx_root_dir_config.example.jsonc`.
 
 #### Filters
 
 Five possible filters at the top of the node let you narrow down which scenes/takes are shown:
 
-- **Movie** - filter among movie files found (only visible if more than one file with secens for the node's class are found)
+- **Movie** - filter among movie files found (only visible if more than one file with scenes for the node's class are found)
 - **Type** — filter by workflow type: `All`, `I2V` (image-to-video), `T2V` (text-to-video), or `MULTI`, or none.
 - **Group** — filter by a custom group name you assign to presets, or `All` to show everything.
-- **Scene** - Selects wich scene to load
+- **Scene** - Selects which scene to load
 - **Take** - selects which take of the selected scene to load.
 
-Filters check across all takes of a scene, so a scene that has both an I2V and a T2V version (in the case of videos) appears under both type filters. The take dropdown also updates to show only matching versions.
+Filters check across all takes of a scene, so a scene that has both an I2V and a T2V version (in the case of videos) appears under both type filters. The take dropdown also updates to show only matching takes.
 
 #### What each node stores
 
@@ -61,7 +61,7 @@ Both nodes share a common set of configurable fields:
 | Field | What it controls |
 |---|---|
 | **Name / Group / Type** | How the preset is identified and filtered |
-| **Label** | Optional short label shown in the version dropdown (e.g. `2 - cinematic`) |
+| **Label** | Optional short label shown in the take dropdown (e.g. `2 - cinematic`) |
 | **Note** | Free-form note (up to 900 characters), shown on the node while in use |
 | **Image** | Reference input image — a filename inside ComfyUI's input folder, or an absolute path |
 | **Audio** | Reference input audio — a filename inside ComfyUI's input folder, or an absolute path. When set, the node outputs the decoded audio on the `audio` output for use downstream |
@@ -125,7 +125,7 @@ LoRAs and the timestep-shift model patch (WAN2.2) are fully supported on GGUF-lo
 
 Presets carry the `gguf` flag along with the model name, so applying a preset with a GGUF model correctly sets the loader to use.
 
-**How to start?"** : hit the **New Take** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
+**How to start?**: hit the **New Take** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
 
 As you create scenes and takes, you may easily just **duplicate** one to keep working on a separate scene or to bootstrap the creation of a new scene.
 
@@ -135,7 +135,7 @@ Below is a picture of the scene editor.
 
 #### Versioned takes
 
-In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes only cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everythig, experiment with new prompts, add othe reference images, other loras, etc, all in teh content of the same scene.
+In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everything, experiment with new prompts, add other reference images, other loras, etc, all in the context of the same scene.
 
 Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "+ Take" button.
 
