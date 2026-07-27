@@ -2204,8 +2204,8 @@ export function buildWorkflowConfigExtension(cfg) {
         const fieldStyle = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:4px;font-size:11px;font-family:monospace;padding:4px 8px;box-sizing:border-box'
         const btnStyle   = 'font-family:monospace;font-size:11px;padding:7px 12px;border-radius:3px;cursor:pointer;border:1px solid #555;width:100%;text-align:left;margin-bottom:6px;background:#1a1a1a;color:#ddd'
         const newVerBtnHtml = targetFile ? '' :
-          `<button id="dup-new-ver"  style="${btnStyle};border-color:#2a5080;color:#9cd">Duplicate as a new version in this config</button>`
-        const nameHint = targetFile ? 'New config name:' : 'New config name (options 1 &amp; 2):'
+          `<button id="dup-new-ver"  style="${btnStyle};border-color:#2a5080;color:#9cd">Duplicate as a new take in this scene</button>`
+        const nameHint = targetFile ? 'New scene name:' : 'New scene name (options 1 &amp; 2):'
         const destHtml = targetFile
           ? `<p style="font-size:11px;color:#888;margin:0 0 12px">Destination movie file: <span style="color:#9cd">${esc(targetFile.replace(/\.json$/, ''))}</span></p>`
           : ''
@@ -2215,8 +2215,8 @@ export function buildWorkflowConfigExtension(cfg) {
           <p style="font-size:11px;color:#888;margin:0 0 4px">${nameHint}</p>
           <input id="dup-name" type="text" value="${esc('Copy of ' + originalName)}"
             style="${fieldStyle};margin-bottom:14px">
-          <button id="dup-all-sets" style="${btnStyle}">Duplicate as a new config with all versions</button>
-          <button id="dup-cur-set"  style="${btnStyle}">Duplicate as a new config with the current version</button>
+          <button id="dup-all-sets" style="${btnStyle}">Duplicate as a new scene with all takes</button>
+          <button id="dup-cur-set"  style="${btnStyle}">Duplicate as a new scene with the current take</button>
           ${newVerBtnHtml}
           <div style="display:flex;justify-content:flex-end;margin-top:10px">
             <button id="dup-cancel" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
