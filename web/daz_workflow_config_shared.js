@@ -2393,12 +2393,15 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Movie Manager ──────────────────────────────────────────────────────
 
-      async function applyManagerSelectionToNode(node, file, sceneLabel, version) {
+      async function applyManagerSelectionToNode(node, file, sceneLabel, version, { classMismatch = false, fileName = '' } = {}) {
         node._dazConfigFile = file
         try {
           const fr = await fetch(`/daz/config-files?class=${encodeURIComponent(CLASS)}`)
           if (fr.ok) {
             _configFiles = await fr.json()
+            if (!_configFiles.find(f => f.file === file)) {
+              _configFiles = [{ file, name: fileName || file }, ..._configFiles]
+            }
             if (node._dazConfigFileWidget) {
               node._dazConfigFileWidget.options.values = _configFiles.length > 0
                 ? _configFiles.map(f => fileLabel(f))
@@ -2427,7 +2430,7 @@ export function buildWorkflowConfigExtension(cfg) {
         node._dazCurrentVersion = rawVersion(version)
 
         await loadDetail(node, sceneLabel, version)
-        await enterEditForm(node, false)
+        if (!classMismatch) await enterEditForm(node, false)
       }
 
       async function reloadClassFilteredState(node) {
@@ -3008,7 +3011,13 @@ export function buildWorkflowConfigExtension(cfg) {
           box.querySelector('#daz-mgr-load')?.addEventListener('click', () => {
             if (!canLoad) return
             const file = selectedFile, sceneLabel = scene.label, version = selectedVersion
-            const doLoad = () => { close(); applyManagerSelectionToNode(node, file, sceneLabel, version) }
+            const doLoad = () => {
+              close()
+              applyManagerSelectionToNode(node, file, sceneLabel, version, {
+                classMismatch,
+                fileName: selectedFileObj?.name,
+              })
+            }
             if (classMismatch) {
               showManagerConfirm(
                 `This take belongs to a "${scene.class}" scene, not "${CLASS}". ` +
