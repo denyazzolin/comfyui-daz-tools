@@ -2495,6 +2495,28 @@ export function buildWorkflowConfigExtension(cfg) {
         return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
       }
 
+      const MGR_CLASS_DISPLAY_NAMES = { 'Wan2.2': 'WAN2.2', 'ltx2.3': 'LTX2.3', 'ImageInference': 'Image' }
+      const MGR_CLASS_ORDER = ['Wan2.2', 'ltx2.3', 'ImageInference']
+
+      function mgrClassDisplayName(cls) {
+        return MGR_CLASS_DISPLAY_NAMES[cls] || cls
+      }
+
+      function mgrFormatSceneCounts(f) {
+        const counts  = f.scene_counts || {}
+        const classes = Object.keys(counts)
+        if (!classes.length) return `Scenes: ${f.total_scenes}`
+        const ordered = classes.sort((a, b) => {
+          const ia = MGR_CLASS_ORDER.indexOf(a), ib = MGR_CLASS_ORDER.indexOf(b)
+          if (ia === -1 && ib === -1) return a.localeCompare(b)
+          if (ia === -1) return 1
+          if (ib === -1) return -1
+          return ia - ib
+        })
+        if (ordered.length === 1) return `Scenes: ${f.total_scenes} (${mgrClassDisplayName(ordered[0])})`
+        return `Scenes: ${f.total_scenes} (${ordered.map(c => `${counts[c]} ${mgrClassDisplayName(c)}`).join(', ')})`
+      }
+
       function showManagerConfirm(message, confirmLabel, onConfirm) {
         const overlay = document.createElement('div')
         overlay.style.cssText = [
@@ -2595,7 +2617,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const box = document.createElement('div')
         box.style.cssText = [
           'background:#2a2a2a;border:1px solid #555;border-radius:6px',
-          'width:780px;max-width:95vw;max-height:88vh;overflow:hidden',
+          'width:780px;max-width:95vw;height:640px;max-height:88vh;overflow:hidden',
           'display:flex;flex-direction:column;font-family:monospace',
         ].join(';')
         overlay.appendChild(box)
@@ -2604,6 +2626,10 @@ export function buildWorkflowConfigExtension(cfg) {
 
         const smallBtn = 'flex:1;font-family:monospace;font-size:11px;padding:4px 6px;background:#333;' +
           'color:#ddd;border:1px solid #555;border-radius:3px;cursor:pointer'
+        const smallBtnRed = 'flex:1;font-family:monospace;font-size:11px;padding:4px 6px;background:#5c1a1a;' +
+          'color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer'
+        const smallBtnBlue = 'flex:1;font-family:monospace;font-size:11px;padding:4px 6px;background:#1a3a5c;' +
+          'color:#9cd;border:1px solid #2a5080;border-radius:3px;cursor:pointer'
         const smallBtnDisabled = 'flex:1;font-family:monospace;font-size:11px;padding:4px 6px;background:#2a2a2a;' +
           'color:#666;border:1px solid #444;border-radius:3px;cursor:not-allowed'
         const cancelBtn = 'font-family:monospace;font-size:12px;padding:5px 16px;background:#444;' +
@@ -2866,7 +2892,7 @@ export function buildWorkflowConfigExtension(cfg) {
                   <div style="color:#ddd;font-size:12px;word-break:break-word">${esc(f.name)}</div>
                   <div style="color:#888;font-size:10px">${esc(f.file)}</div>
                   <div style="color:#888;font-size:10px">Added: ${esc(fmtManagerDate(f.created_at))}</div>
-                  <div style="color:#888;font-size:10px">Scenes: ${f.total_scenes}</div>
+                  <div style="color:#888;font-size:10px">${esc(mgrFormatSceneCounts(f))}</div>
                 </div>`).join('')
             : `<div style="color:#777;font-size:11px;padding:8px">No movie files.</div>`
 
@@ -2894,17 +2920,17 @@ export function buildWorkflowConfigExtension(cfg) {
             <div style="padding:10px 16px;border-bottom:1px solid #444;font-size:13px;color:#ddd">
               Manage Movies — Current folder: <span style="color:#9cd">${esc(folderName)}</span>
             </div>
-            <div style="flex:1;display:flex;overflow:hidden">
-              <div style="width:290px;border-right:1px solid #444;display:flex;flex-direction:column;padding:10px">
+            <div style="flex:1;display:flex;overflow:hidden;min-height:0">
+              <div style="width:290px;border-right:1px solid #444;display:flex;flex-direction:column;padding:10px;min-height:0">
                 <div style="font-size:12px;color:#aaa;margin-bottom:6px">Current movies</div>
-                <div id="daz-mgr-files" style="flex:1;overflow-y:auto;margin-bottom:8px">${filesListHtml}</div>
+                <div id="daz-mgr-files" style="flex:1;min-height:0;overflow-y:auto;margin-bottom:8px">${filesListHtml}</div>
                 <div style="display:flex;gap:6px">
-                  <button id="daz-mgr-file-delete" style="${selectedFile ? smallBtn : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete</button>
+                  <button id="daz-mgr-file-delete" style="${selectedFile ? smallBtnRed : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete</button>
                   <button id="daz-mgr-file-duplicate" style="${selectedFile ? smallBtn : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Duplicate</button>
-                  <button id="daz-mgr-file-new" style="${smallBtn}">New Movie</button>
+                  <button id="daz-mgr-file-new" style="${smallBtnBlue}">New Movie</button>
                 </div>
               </div>
-              <div style="flex:1;display:flex;flex-direction:column;padding:10px;overflow:hidden">
+              <div style="flex:1;display:flex;flex-direction:column;padding:10px;overflow:hidden;min-height:0">
                 <div style="font-size:12px;color:#aaa;margin-bottom:6px">Selected Movie</div>
                 ${selectedFileObj ? `
                   <div style="font-size:11px;color:#ddd;margin-bottom:8px">
@@ -2915,14 +2941,14 @@ export function buildWorkflowConfigExtension(cfg) {
                 <div style="font-size:11px;color:#aaa;margin:4px 0">Scenes:</div>
                 <div id="daz-mgr-scenes" style="max-height:130px;overflow-y:auto;margin-bottom:6px">${scenesListHtml}</div>
                 <div style="display:flex;gap:6px;margin-bottom:10px">
-                  <button id="daz-mgr-scenes-delete-all" style="${selectedFile ? smallBtn : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete All</button>
-                  <button id="daz-mgr-scene-delete" style="${selectedSceneName ? smallBtn : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete Scene</button>
+                  <button id="daz-mgr-scenes-delete-all" style="${selectedFile ? smallBtnRed : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete All</button>
+                  <button id="daz-mgr-scene-delete" style="${selectedSceneName ? smallBtnRed : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete Scene</button>
                 </div>
                 <div style="font-size:11px;color:#aaa;margin:4px 0">Takes:</div>
-                <div id="daz-mgr-takes" style="flex:1;overflow-y:auto;margin-bottom:6px">${takesListHtml}</div>
+                <div id="daz-mgr-takes" style="flex:1;min-height:0;overflow-y:auto;margin-bottom:6px">${takesListHtml}</div>
                 <div style="display:flex;gap:6px">
-                  <button id="daz-mgr-takes-delete-all" style="${selectedSceneName ? smallBtn : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete All</button>
-                  <button id="daz-mgr-take-delete" style="${selectedVersion ? smallBtn : smallBtnDisabled}" ${selectedVersion ? '' : 'disabled'}>Delete Take</button>
+                  <button id="daz-mgr-takes-delete-all" style="${selectedSceneName ? smallBtnRed : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete All</button>
+                  <button id="daz-mgr-take-delete" style="${selectedVersion ? smallBtnRed : smallBtnDisabled}" ${selectedVersion ? '' : 'disabled'}>Delete Take</button>
                 </div>
               </div>
             </div>
