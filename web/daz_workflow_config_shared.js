@@ -2391,6 +2391,582 @@ export function buildWorkflowConfigExtension(cfg) {
         }
       }
 
+      // ── Movie Manager ──────────────────────────────────────────────────────
+
+      async function applyManagerSelectionToNode(node, file, sceneLabel, version) {
+        node._dazConfigFile = file
+        try {
+          const fr = await fetch(`/daz/config-files?class=${encodeURIComponent(CLASS)}`)
+          if (fr.ok) {
+            _configFiles = await fr.json()
+            if (node._dazConfigFileWidget) {
+              node._dazConfigFileWidget.options.values = _configFiles.length > 0
+                ? _configFiles.map(f => fileLabel(f))
+                : ['(default)']
+              node._dazConfigFileWidget.hidden = _configFiles.length <= 1
+              const match = _configFiles.find(f => f.file === file)
+              if (match) node._dazConfigFileWidget.value = fileLabel(match)
+            }
+          }
+        } catch (e) {
+          console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not refresh movie files`, e)
+        }
+
+        await reloadNodeConfigs(node)
+        node._dazTypeFilter  = 'All'
+        node._dazGroupFilter = 'All'
+        if (node._dazTypeFilterWidget) node._dazTypeFilterWidget.value = 'All'
+        updateGroupFilterWidget(node)
+        if (node._dazGroupFilterWidget) node._dazGroupFilterWidget.value = 'All'
+        syncWidget(node)
+
+        const cw = node.widgets?.find(w => w.name === 'scene')
+        if (cw) cw.value = sceneLabel
+
+        await reloadVersionWidget(node, sceneLabel, version)
+        node._dazCurrentVersion = rawVersion(version)
+
+        loadDetail(node, sceneLabel, version)
+      }
+
+      async function reloadClassFilteredState(node) {
+        try {
+          const fr = await fetch(`/daz/config-files?class=${encodeURIComponent(CLASS)}`)
+          if (fr.ok) {
+            _configFiles = await fr.json()
+            const cfWidget = node._dazConfigFileWidget
+            if (cfWidget) {
+              cfWidget.options.values = _configFiles.length > 0
+                ? _configFiles.map(f => fileLabel(f))
+                : ['(default)']
+              cfWidget.hidden = _configFiles.length <= 1
+              if (_configFiles.length > 0 && !_configFiles.find(f => fileLabel(f) === cfWidget.value)) {
+                cfWidget.value      = fileLabel(_configFiles[0])
+                node._dazConfigFile = _configFiles[0].file
+              }
+            }
+          }
+          await reloadNodeConfigs(node)
+          updateGroupFilterWidget(node)
+          syncWidget(node)
+          if (node[keys.editMode]) return
+          const labels = filteredLabels(node._dazAllConfigs || [], node._dazTypeFilter || 'All', node._dazGroupFilter || 'All')
+          if (!labels.length) { renderUseMode(node, {}); return }
+          const cw = node.widgets?.find(w => w.name === 'scene')
+          if (cw) {
+            await reloadVersionWidget(node, cw.value)
+            loadDetail(node, cw.value, node._dazVersionWidget?.value)
+          }
+        } catch (e) {
+          console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: reload failed`, e)
+        }
+      }
+
+      async function reconcileNodeState(node) {
+        await reloadClassFilteredState(node)
+        if ((node._dazAllConfigs || []).length > 0) return
+
+        try {
+          const fr       = await fetch('/daz/config-files')
+          const allFiles = fr.ok ? await fr.json() : []
+          if (!allFiles.length) return // nothing anywhere — keep existing (default) virtual-file behavior
+
+          const match = allFiles.find(f => f.file === node._dazConfigFile) || allFiles[0]
+          node._dazConfigFile = match.file
+          if (node._dazConfigFileWidget) {
+            node._dazConfigFileWidget.options.values = allFiles.map(f => fileLabel(f))
+            node._dazConfigFileWidget.hidden          = allFiles.length <= 1
+            node._dazConfigFileWidget.value           = fileLabel(match)
+          }
+          await reloadNodeConfigs(node)
+          updateGroupFilterWidget(node)
+          syncWidget(node)
+          renderUseMode(node, {})
+        } catch (e) {
+          console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: reconcile fallback failed`, e)
+        }
+      }
+
+      function fmtManagerDate(iso) {
+        if (!iso) return '—'
+        const d = new Date(iso)
+        if (isNaN(d.getTime())) return '—'
+        const pad = n => String(n).padStart(2, '0')
+        return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+      }
+
+      function showManagerConfirm(message, confirmLabel, onConfirm) {
+        const overlay = document.createElement('div')
+        overlay.style.cssText = [
+          'position:fixed;top:0;left:0;right:0;bottom:0',
+          'background:rgba(0,0,0,0.75);z-index:10001',
+          'display:flex;align-items:center;justify-content:center',
+        ].join(';')
+        const box = document.createElement('div')
+        box.style.cssText = [
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+          'padding:20px 24px;width:360px;font-family:monospace',
+        ].join(';')
+        box.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 18px">${esc(message)}</p>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button id="daz-mgr-confirm-cancel"
+              style="font-family:monospace;font-size:11px;padding:4px 14px;
+                     background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
+            <button id="daz-mgr-confirm-ok"
+              style="font-family:monospace;font-size:11px;padding:4px 14px;
+                     background:#5c1a1a;color:#f99;border:1px solid #803030;border-radius:3px;cursor:pointer">${esc(confirmLabel)}</button>
+          </div>
+        `
+        overlay.appendChild(box)
+        document.body.appendChild(overlay)
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+        box.querySelector('#daz-mgr-confirm-cancel')?.addEventListener('click', () => overlay.remove())
+        box.querySelector('#daz-mgr-confirm-ok')?.addEventListener('click', () => { overlay.remove(); onConfirm() })
+      }
+
+      function showMovieFormModal({ title, defaultName, submitLabel, onSubmit }) {
+        const overlay = document.createElement('div')
+        overlay.style.cssText = [
+          'position:fixed;top:0;left:0;right:0;bottom:0',
+          'background:rgba(0,0,0,0.75);z-index:10001',
+          'display:flex;align-items:center;justify-content:center',
+        ].join(';')
+        const box = document.createElement('div')
+        box.style.cssText = [
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+          'padding:20px 24px;width:380px;font-family:monospace',
+        ].join(';')
+        box.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 12px">${esc(title)}</p>
+          <label style="font-size:11px;color:#999;display:block;margin-bottom:3px">Filename</label>
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+            <span style="color:#888;font-size:12px">dx_</span>
+            <input id="daz-mgr-filename" type="text" style="flex:1;min-width:0;box-sizing:border-box;
+              font-family:monospace;font-size:12px;padding:3px 6px;background:#1a1a1a;color:#ddd;
+              border:1px solid #555;border-radius:3px">
+            <span style="color:#888;font-size:12px">.json</span>
+          </div>
+          <p style="font-size:10px;color:#777;margin:0 0 12px">Letters, numbers, _ and - only.</p>
+          <label style="font-size:11px;color:#999;display:block;margin-bottom:3px">Movie name</label>
+          <input id="daz-mgr-moviename" type="text" value="${esc(defaultName)}" style="width:100%;box-sizing:border-box;
+            font-family:monospace;font-size:12px;padding:3px 6px;background:#1a1a1a;color:#ddd;
+            border:1px solid #555;border-radius:3px;margin-bottom:8px">
+          <p id="daz-mgr-form-error" style="font-size:11px;color:#f88;margin:0 0 8px;min-height:14px"></p>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button id="daz-mgr-form-cancel"
+              style="font-family:monospace;font-size:11px;padding:4px 14px;
+                     background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
+            <button id="daz-mgr-form-ok"
+              style="font-family:monospace;font-size:11px;padding:4px 14px;
+                     background:#1a5c35;color:#cfe;border:1px solid #2a8050;border-radius:3px;cursor:pointer">${esc(submitLabel)}</button>
+          </div>
+        `
+        overlay.appendChild(box)
+        document.body.appendChild(overlay)
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+        box.querySelector('#daz-mgr-form-cancel')?.addEventListener('click', () => overlay.remove())
+        box.querySelector('#daz-mgr-form-ok')?.addEventListener('click', async () => {
+          const filename = box.querySelector('#daz-mgr-filename')?.value.trim() || ''
+          const name     = box.querySelector('#daz-mgr-moviename')?.value.trim() || ''
+          const errDiv   = box.querySelector('#daz-mgr-form-error')
+          const okBtn    = box.querySelector('#daz-mgr-form-ok')
+          if (!filename) { if (errDiv) errDiv.textContent = 'Filename is required.'; return }
+          okBtn.disabled = true
+          const err = await onSubmit(filename, name)
+          if (err) {
+            okBtn.disabled = false
+            if (errDiv) errDiv.textContent = err
+            return
+          }
+          overlay.remove()
+        })
+      }
+
+      async function openMovieManager(node) {
+        if (node._dazMovieManagerOverlay) return
+
+        const overlay = document.createElement('div')
+        overlay.style.cssText = [
+          'position:fixed;top:0;left:0;right:0;bottom:0',
+          'background:rgba(0,0,0,0.75);z-index:10000',
+          'display:flex;align-items:center;justify-content:center',
+        ].join(';')
+        const box = document.createElement('div')
+        box.style.cssText = [
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+          'width:780px;max-width:95vw;max-height:88vh;overflow:hidden',
+          'display:flex;flex-direction:column;font-family:monospace',
+        ].join(';')
+        overlay.appendChild(box)
+        document.body.appendChild(overlay)
+        node._dazMovieManagerOverlay = overlay
+
+        const smallBtn = 'flex:1;font-family:monospace;font-size:11px;padding:4px 6px;background:#333;' +
+          'color:#ddd;border:1px solid #555;border-radius:3px;cursor:pointer'
+        const smallBtnDisabled = 'flex:1;font-family:monospace;font-size:11px;padding:4px 6px;background:#2a2a2a;' +
+          'color:#666;border:1px solid #444;border-radius:3px;cursor:not-allowed'
+        const cancelBtn = 'font-family:monospace;font-size:12px;padding:5px 16px;background:#444;' +
+          'color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer'
+        const loadBtnActive = 'font-family:monospace;font-size:12px;padding:5px 16px;background:#1a5c35;' +
+          'color:#cfe;border:1px solid #2a8050;border-radius:3px;cursor:pointer'
+        const loadBtnDisabled = 'font-family:monospace;font-size:12px;padding:5px 16px;background:#333;' +
+          'color:#777;border:1px solid #555;border-radius:3px;cursor:not-allowed'
+
+        let folderName        = ''
+        let filesData         = []
+        let scenesData        = []
+        let selectedFile       = null
+        let selectedSceneName  = null
+        let selectedVersion    = null
+        let lastError          = ''
+
+        function close() {
+          overlay.remove()
+          node._dazMovieManagerOverlay = null
+        }
+        overlay.addEventListener('click', e => {
+          if (e.target !== overlay) return
+          close()
+          reconcileNodeState(node)
+        })
+
+        function currentScene() {
+          return scenesData.find(s => s.name === selectedSceneName) || null
+        }
+
+        async function fetchFiles() {
+          try {
+            const r    = await fetch('/daz/movie-manager/files')
+            const data = r.ok ? await r.json() : { folder: '', files: [] }
+            folderName = data.folder || ''
+            filesData  = data.files || []
+          } catch (e) {
+            console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: movie manager could not load files`, e)
+            filesData = []
+          }
+        }
+
+        async function fetchScenes(file) {
+          if (!file) { scenesData = []; return }
+          try {
+            const r   = await fetch(`/daz/movie-manager/scenes?file=${encodeURIComponent(file)}`)
+            scenesData = r.ok ? await r.json() : []
+          } catch (e) {
+            console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: movie manager could not load scenes`, e)
+            scenesData = []
+          }
+        }
+
+        async function selectFile(file) {
+          selectedFile = file
+          await fetchScenes(file)
+          selectedSceneName = scenesData[0]?.name ?? null
+          const takes = selectedSceneName ? (currentScene()?.takes || []) : []
+          selectedVersion = takes[0]?.version ?? null
+          render()
+        }
+
+        function selectScene(name) {
+          selectedSceneName = name
+          const takes = currentScene()?.takes || []
+          selectedVersion = takes[0]?.version ?? null
+          render()
+        }
+
+        function selectTake(version) {
+          selectedVersion = version
+          render()
+        }
+
+        async function reloadFilesAndSelectFile(fileToSelect) {
+          await fetchFiles()
+          const match = filesData.find(f => f.file === fileToSelect)
+          await selectFile(match ? match.file : (filesData[0]?.file ?? null))
+        }
+
+        async function reloadScenesAndSelectFirst(preferredScene = null) {
+          await fetchFiles()
+          await fetchScenes(selectedFile)
+          const match = preferredScene && scenesData.find(s => s.name === preferredScene)
+          selectedSceneName = match ? match.name : (scenesData[0]?.name ?? null)
+          const takes = selectedSceneName ? (currentScene()?.takes || []) : []
+          selectedVersion = takes[0]?.version ?? null
+          render()
+        }
+
+        async function reloadTakesKeepScene(preferredVersion = null) {
+          await fetchFiles()
+          await fetchScenes(selectedFile)
+          const stillExists = scenesData.find(s => s.name === selectedSceneName)
+          if (stillExists) {
+            const takes = stillExists.takes || []
+            const match = preferredVersion && takes.find(t => t.version === preferredVersion)
+            selectedVersion = match ? match.version : (takes[0]?.version ?? null)
+          } else {
+            selectedSceneName = scenesData[0]?.name ?? null
+            const takes = selectedSceneName ? (currentScene()?.takes || []) : []
+            selectedVersion = takes[0]?.version ?? null
+          }
+          render()
+        }
+
+        function doDeleteFile(file) {
+          showManagerConfirm(`Delete movie file "${file}"? This cannot be undone.`, 'Delete', async () => {
+            lastError = ''
+            try {
+              const r      = await fetch('/daz/movie-manager/file-delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file }),
+              })
+              const result = await r.json()
+              if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            } catch (e) {
+              lastError = `Delete failed: ${e.message}`
+            }
+            await reloadFilesAndSelectFile(file)
+          })
+        }
+
+        function doDuplicateFile(file, currentName) {
+          showMovieFormModal({
+            title:       'Duplicate Movie',
+            defaultName: `Copy of ${currentName}`,
+            submitLabel: 'Duplicate',
+            onSubmit: async (filename, name) => {
+              try {
+                const r      = await fetch('/daz/movie-manager/file-duplicate', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ source_file: file, filename, name }),
+                })
+                const result = await r.json()
+                if (!r.ok || result.error) return result.error || r.statusText
+                lastError = ''
+                await reloadFilesAndSelectFile(result.file)
+                return null
+              } catch (e) {
+                return e.message
+              }
+            },
+          })
+        }
+
+        function doNewMovie() {
+          showMovieFormModal({
+            title:       'New Movie',
+            defaultName: 'New Movie',
+            submitLabel: 'Create',
+            onSubmit: async (filename, name) => {
+              try {
+                const r      = await fetch('/daz/movie-manager/file-create', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ filename, name }),
+                })
+                const result = await r.json()
+                if (!r.ok || result.error) return result.error || r.statusText
+                lastError = ''
+                await reloadFilesAndSelectFile(result.file)
+                return null
+              } catch (e) {
+                return e.message
+              }
+            },
+          })
+        }
+
+        function doDeleteAllScenes() {
+          if (!selectedFile) return
+          showManagerConfirm('Delete ALL scenes in this movie? The file itself will remain, empty.', 'Delete All', async () => {
+            lastError = ''
+            try {
+              const r      = await fetch('/daz/movie-manager/scenes-delete-all', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file: selectedFile }),
+              })
+              const result = await r.json()
+              if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            } catch (e) {
+              lastError = `Delete failed: ${e.message}`
+            }
+            await reloadFilesAndSelectFile(selectedFile)
+          })
+        }
+
+        function doDeleteScene() {
+          if (!selectedFile || !selectedSceneName) return
+          showManagerConfirm(`Delete scene "${selectedSceneName}" and all its takes?`, 'Delete Scene', async () => {
+            const sceneName = selectedSceneName
+            lastError = ''
+            try {
+              const r      = await fetch('/daz/movie-manager/scene-delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file: selectedFile, scene_name: sceneName }),
+              })
+              const result = await r.json()
+              if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            } catch (e) {
+              lastError = `Delete failed: ${e.message}`
+            }
+            await reloadScenesAndSelectFirst(sceneName)
+          })
+        }
+
+        function doDeleteAllTakes() {
+          if (!selectedFile || !selectedSceneName) return
+          showManagerConfirm(`Delete ALL takes of scene "${selectedSceneName}"? The scene itself will also be removed.`, 'Delete All', async () => {
+            const sceneName = selectedSceneName
+            lastError = ''
+            try {
+              const r      = await fetch('/daz/movie-manager/scene-delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file: selectedFile, scene_name: sceneName }),
+              })
+              const result = await r.json()
+              if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            } catch (e) {
+              lastError = `Delete failed: ${e.message}`
+            }
+            await reloadScenesAndSelectFirst(sceneName)
+          })
+        }
+
+        function doDeleteTake() {
+          if (!selectedFile || !selectedSceneName || !selectedVersion) return
+          showManagerConfirm(`Delete take "${selectedVersion}"?`, 'Delete Take', async () => {
+            const version = selectedVersion
+            lastError  = ''
+            let cascaded = false
+            try {
+              const r      = await fetch('/daz/movie-manager/take-delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file: selectedFile, scene_name: selectedSceneName, version }),
+              })
+              const result = await r.json()
+              if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+              cascaded = !!result.scene_deleted
+            } catch (e) {
+              lastError = `Delete failed: ${e.message}`
+            }
+            if (cascaded) await reloadScenesAndSelectFirst()
+            else await reloadTakesKeepScene(version)
+          })
+        }
+
+        function render() {
+          const selectedFileObj = filesData.find(f => f.file === selectedFile) || null
+          const scene           = currentScene()
+          const takes            = scene?.takes || []
+          const canLoad          = !!(selectedVersion && scene && scene.class === CLASS)
+
+          const filesListHtml = filesData.length
+            ? filesData.map(f => `
+                <div class="daz-mgr-file-item" data-file="${esc(f.file)}"
+                  style="padding:8px;border-radius:3px;cursor:pointer;margin-bottom:4px;
+                         background:${f.file === selectedFile ? '#1a3a5c' : '#1a1a1a'};border:1px solid #444">
+                  <div style="color:#ddd;font-size:12px;word-break:break-word">${esc(f.name)}</div>
+                  <div style="color:#888;font-size:10px">${esc(f.file)}</div>
+                  <div style="color:#888;font-size:10px">Added: ${esc(fmtManagerDate(f.created_at))}</div>
+                  <div style="color:#888;font-size:10px">Scenes: ${f.total_scenes}</div>
+                </div>`).join('')
+            : `<div style="color:#777;font-size:11px;padding:8px">No movie files.</div>`
+
+          const scenesListHtml = scenesData.length
+            ? scenesData.map(s => `
+                <div class="daz-mgr-scene-item" data-scene="${esc(s.name)}"
+                  style="padding:6px 8px;border-radius:3px;cursor:pointer;margin-bottom:4px;
+                         background:${s.name === selectedSceneName ? '#1a3a5c' : '#1a1a1a'};border:1px solid #444">
+                  <div style="color:#ddd;font-size:12px">${esc(s.name)} (${s.take_count} take${s.take_count === 1 ? '' : 's'})</div>
+                  <div style="color:#888;font-size:10px">${esc(s.class || '—')}</div>
+                </div>`).join('')
+            : `<div style="color:#777;font-size:11px;padding:6px">No scenes.</div>`
+
+          const takesListHtml = takes.length
+            ? takes.map(t => `
+                <div class="daz-mgr-take-item" data-version="${esc(t.version)}"
+                  style="padding:5px 8px;border-radius:3px;cursor:pointer;margin-bottom:3px;
+                         background:${t.version === selectedVersion ? '#1a3a5c' : '#1a1a1a'};border:1px solid #444;
+                         color:#ddd;font-size:12px">
+                  ${esc(t.label ? `${t.version} - ${t.label}` : String(t.version))}
+                </div>`).join('')
+            : `<div style="color:#777;font-size:11px;padding:6px">No takes.</div>`
+
+          box.innerHTML = `
+            <div style="padding:10px 16px;border-bottom:1px solid #444;font-size:13px;color:#ddd">
+              Manage Movies — Current folder: <span style="color:#9cd">${esc(folderName)}</span>
+            </div>
+            <div style="flex:1;display:flex;overflow:hidden">
+              <div style="width:290px;border-right:1px solid #444;display:flex;flex-direction:column;padding:10px">
+                <div style="font-size:12px;color:#aaa;margin-bottom:6px">Current movies</div>
+                <div id="daz-mgr-files" style="flex:1;overflow-y:auto;margin-bottom:8px">${filesListHtml}</div>
+                <div style="display:flex;gap:6px">
+                  <button id="daz-mgr-file-delete" style="${selectedFile ? smallBtn : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete</button>
+                  <button id="daz-mgr-file-duplicate" style="${selectedFile ? smallBtn : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Duplicate</button>
+                  <button id="daz-mgr-file-new" style="${smallBtn}">New Movie</button>
+                </div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;padding:10px;overflow:hidden">
+                <div style="font-size:12px;color:#aaa;margin-bottom:6px">Selected Movie</div>
+                ${selectedFileObj ? `
+                  <div style="font-size:11px;color:#ddd;margin-bottom:8px">
+                    <div>Name: ${esc(selectedFileObj.name)}</div>
+                    <div style="color:#888">Added: ${esc(fmtManagerDate(selectedFileObj.created_at))}</div>
+                    <div style="color:#888">Edited: ${esc(fmtManagerDate(selectedFileObj.updated_at))}</div>
+                  </div>` : `<div style="font-size:11px;color:#777;margin-bottom:8px">No movie selected.</div>`}
+                <div style="font-size:11px;color:#aaa;margin:4px 0">Scenes:</div>
+                <div id="daz-mgr-scenes" style="max-height:130px;overflow-y:auto;margin-bottom:6px">${scenesListHtml}</div>
+                <div style="display:flex;gap:6px;margin-bottom:10px">
+                  <button id="daz-mgr-scenes-delete-all" style="${selectedFile ? smallBtn : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete All</button>
+                  <button id="daz-mgr-scene-delete" style="${selectedSceneName ? smallBtn : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete Scene</button>
+                </div>
+                <div style="font-size:11px;color:#aaa;margin:4px 0">Takes:</div>
+                <div id="daz-mgr-takes" style="flex:1;overflow-y:auto;margin-bottom:6px">${takesListHtml}</div>
+                <div style="display:flex;gap:6px">
+                  <button id="daz-mgr-takes-delete-all" style="${selectedSceneName ? smallBtn : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete All</button>
+                  <button id="daz-mgr-take-delete" style="${selectedVersion ? smallBtn : smallBtnDisabled}" ${selectedVersion ? '' : 'disabled'}>Delete Take</button>
+                </div>
+              </div>
+            </div>
+            ${lastError ? `<div style="color:#f88;font-size:11px;padding:0 16px 8px">${esc(lastError)}</div>` : ''}
+            <div style="display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #444">
+              <button id="daz-mgr-load" style="${canLoad ? loadBtnActive : loadBtnDisabled}" ${canLoad ? '' : 'disabled'}>Load and open in Editor</button>
+              <button id="daz-mgr-back" style="${cancelBtn}">Back</button>
+            </div>
+          `
+
+          box.querySelectorAll('.daz-mgr-file-item').forEach(el => {
+            el.addEventListener('click', () => selectFile(el.dataset.file))
+          })
+          box.querySelectorAll('.daz-mgr-scene-item').forEach(el => {
+            el.addEventListener('click', () => selectScene(el.dataset.scene))
+          })
+          box.querySelectorAll('.daz-mgr-take-item').forEach(el => {
+            el.addEventListener('click', () => selectTake(el.dataset.version))
+          })
+          box.querySelector('#daz-mgr-file-delete')?.addEventListener('click', () => selectedFile && doDeleteFile(selectedFile))
+          box.querySelector('#daz-mgr-file-duplicate')?.addEventListener('click', () => {
+            if (selectedFileObj) doDuplicateFile(selectedFile, selectedFileObj.name)
+          })
+          box.querySelector('#daz-mgr-file-new')?.addEventListener('click', () => doNewMovie())
+          box.querySelector('#daz-mgr-scenes-delete-all')?.addEventListener('click', () => doDeleteAllScenes())
+          box.querySelector('#daz-mgr-scene-delete')?.addEventListener('click', () => doDeleteScene())
+          box.querySelector('#daz-mgr-takes-delete-all')?.addEventListener('click', () => doDeleteAllTakes())
+          box.querySelector('#daz-mgr-take-delete')?.addEventListener('click', () => doDeleteTake())
+          box.querySelector('#daz-mgr-load')?.addEventListener('click', () => {
+            if (!canLoad) return
+            const file = selectedFile, sceneLabel = scene.label, version = selectedVersion
+            close()
+            applyManagerSelectionToNode(node, file, sceneLabel, version)
+          })
+          box.querySelector('#daz-mgr-back')?.addEventListener('click', () => {
+            close()
+            reconcileNodeState(node)
+          })
+        }
+
+        await fetchFiles()
+        await selectFile(filesData[0]?.file ?? null)
+      }
+
       // ── Name change confirm ───────────────────────────────────────────────
 
       function showNameChangeConfirm(node, wrap, saveMode, skipRescale, keepPanelOpen = false, thenFn = null) {
@@ -2797,35 +3373,11 @@ export function buildWorkflowConfigExtension(cfg) {
         syncWidget(this)
 
         this.addWidget('button', '↺  Reload Configs', null, async () => {
-          try {
-            const fr = await fetch(`/daz/config-files?class=${encodeURIComponent(CLASS)}`)
-            if (fr.ok) {
-              _configFiles = await fr.json()
-              if (cfWidget) {
-                cfWidget.options.values = _configFiles.length > 0
-                  ? _configFiles.map(f => fileLabel(f))
-                  : ['(default)']
-                cfWidget.hidden = _configFiles.length <= 1
-                if (_configFiles.length > 0 && !_configFiles.find(f => fileLabel(f) === cfWidget.value)) {
-                  cfWidget.value      = fileLabel(_configFiles[0])
-                  this._dazConfigFile = _configFiles[0].file
-                }
-              }
-            }
-            await reloadNodeConfigs(this)
-            updateGroupFilterWidget(this)
-            syncWidget(this)
-            if (this[keys.editMode]) return
-            const labels = filteredLabels(this._dazAllConfigs || [], this._dazTypeFilter || 'All', this._dazGroupFilter || 'All')
-            if (!labels.length) { renderUseMode(this, {}); return }
-            const cw = this.widgets?.find(w => w.name === 'scene')
-            if (cw) {
-              await reloadVersionWidget(this, cw.value)
-              loadDetail(this, cw.value, this._dazVersionWidget?.value)
-            }
-          } catch (e) {
-            console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: reload failed`, e)
-          }
+          await reloadClassFilteredState(this)
+        })
+
+        this.addWidget('button', 'Movie Manager', null, () => {
+          openMovieManager(this)
         })
 
         const wrap = document.createElement('div')
