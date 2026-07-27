@@ -2426,7 +2426,8 @@ export function buildWorkflowConfigExtension(cfg) {
         await reloadVersionWidget(node, sceneLabel, version)
         node._dazCurrentVersion = rawVersion(version)
 
-        loadDetail(node, sceneLabel, version)
+        await loadDetail(node, sceneLabel, version)
+        await enterEditForm(node, false)
       }
 
       async function reloadClassFilteredState(node) {
