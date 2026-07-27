@@ -2882,6 +2882,12 @@ export function buildWorkflowConfigExtension(cfg) {
         }
 
         function render() {
+          const prevScroll = {
+            files:  box.querySelector('#daz-mgr-files')?.scrollTop  ?? 0,
+            scenes: box.querySelector('#daz-mgr-scenes')?.scrollTop ?? 0,
+            takes:  box.querySelector('#daz-mgr-takes')?.scrollTop  ?? 0,
+          }
+
           const selectedFileObj = filesData.find(f => f.file === selectedFile) || null
           const scene           = currentScene()
           const takes            = scene?.takes || []
@@ -2970,6 +2976,13 @@ export function buildWorkflowConfigExtension(cfg) {
               <button id="daz-mgr-back" style="${cancelBtn}">Back</button>
             </div>
           `
+
+          const filesEl  = box.querySelector('#daz-mgr-files')
+          const scenesEl = box.querySelector('#daz-mgr-scenes')
+          const takesEl  = box.querySelector('#daz-mgr-takes')
+          if (filesEl)  filesEl.scrollTop  = prevScroll.files
+          if (scenesEl) scenesEl.scrollTop = prevScroll.scenes
+          if (takesEl)  takesEl.scrollTop  = prevScroll.takes
 
           box.querySelectorAll('.daz-mgr-file-item').forEach(el => {
             el.addEventListener('click', () => selectFile(el.dataset.file))
