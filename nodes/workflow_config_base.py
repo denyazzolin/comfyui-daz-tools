@@ -1568,6 +1568,7 @@ try:
                 {
                     "version":    str(s.get("version", "")),
                     "label":      str(s.get("label", "")),
+                    "note":       _get_custom_value(s.get("note")),
                     "created_at": s.get("created_at", ""),
                     "updated_at": s.get("updated_at", ""),
                 }

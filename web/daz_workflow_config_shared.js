@@ -2638,6 +2638,9 @@ export function buildWorkflowConfigExtension(cfg) {
           'color:#cfe;border:1px solid #2a8050;border-radius:3px;cursor:pointer'
         const loadBtnDisabled = 'font-family:monospace;font-size:12px;padding:5px 16px;background:#333;' +
           'color:#777;border:1px solid #555;border-radius:3px;cursor:not-allowed'
+        const mgrFieldset = 'border:1px solid #444;border-radius:4px;padding:7px 8px;margin:0;' +
+          'min-width:0;box-sizing:border-box;overflow:hidden'
+        const mgrLegend = 'color:#888;font-size:11px;padding:0 5px;font-family:monospace'
 
         let folderName        = ''
         let filesData         = []
@@ -2912,45 +2915,53 @@ export function buildWorkflowConfigExtension(cfg) {
                   style="padding:5px 8px;border-radius:3px;cursor:pointer;margin-bottom:3px;
                          background:${t.version === selectedVersion ? '#1a3a5c' : '#1a1a1a'};border:1px solid #444;
                          color:#ddd;font-size:12px">
-                  ${esc(t.label ? `${t.version} - ${t.label}` : String(t.version))}
+                  <div>${esc(t.label ? `${t.version} - ${t.label}` : String(t.version))}</div>
+                  ${t.note ? `<div style="font-style:italic;font-size:10px;color:#999;margin-top:2px;
+                    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(t.note)}</div>` : ''}
                 </div>`).join('')
             : `<div style="color:#777;font-size:11px;padding:6px">No takes.</div>`
+
+          const listBoxStyle = 'border:1px solid #444;border-radius:3px;padding:4px;box-sizing:border-box'
 
           box.innerHTML = `
             <div style="padding:10px 16px;border-bottom:1px solid #444;font-size:13px;color:#ddd">
               Manage Movies — Current folder: <span style="color:#9cd">${esc(folderName)}</span>
             </div>
-            <div style="flex:1;display:flex;overflow:hidden;min-height:0">
-              <div style="width:290px;border-right:1px solid #444;display:flex;flex-direction:column;padding:10px;min-height:0">
-                <div style="font-size:12px;color:#aaa;margin-bottom:6px">Current movies</div>
-                <div id="daz-mgr-files" style="flex:1;min-height:0;overflow-y:auto;margin-bottom:8px">${filesListHtml}</div>
+            <div style="flex:1;display:flex;overflow:hidden;min-height:0;padding:10px;gap:10px">
+              <fieldset style="${mgrFieldset};flex:0 0 290px;display:flex;flex-direction:column;min-height:0">
+                <legend style="${mgrLegend}">Current Movie</legend>
+                <div id="daz-mgr-files" style="${listBoxStyle};flex:1;min-height:0;overflow-y:auto;margin-bottom:8px">${filesListHtml}</div>
                 <div style="display:flex;gap:6px">
                   <button id="daz-mgr-file-delete" style="${selectedFile ? smallBtnRed : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete</button>
                   <button id="daz-mgr-file-duplicate" style="${selectedFile ? smallBtn : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Duplicate</button>
                   <button id="daz-mgr-file-new" style="${smallBtnBlue}">New Movie</button>
                 </div>
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;padding:10px;overflow:hidden;min-height:0">
-                <div style="font-size:12px;color:#aaa;margin-bottom:6px">Selected Movie</div>
+              </fieldset>
+              <fieldset style="${mgrFieldset};flex:1;display:flex;flex-direction:column;min-height:0">
+                <legend style="${mgrLegend}">Selected Movie</legend>
                 ${selectedFileObj ? `
                   <div style="font-size:11px;color:#ddd;margin-bottom:8px">
                     <div>Name: ${esc(selectedFileObj.name)}</div>
                     <div style="color:#888">Added: ${esc(fmtManagerDate(selectedFileObj.created_at))}</div>
                     <div style="color:#888">Edited: ${esc(fmtManagerDate(selectedFileObj.updated_at))}</div>
                   </div>` : `<div style="font-size:11px;color:#777;margin-bottom:8px">No movie selected.</div>`}
-                <div style="font-size:11px;color:#aaa;margin:4px 0">Scenes:</div>
-                <div id="daz-mgr-scenes" style="max-height:130px;overflow-y:auto;margin-bottom:6px">${scenesListHtml}</div>
-                <div style="display:flex;gap:6px;margin-bottom:10px">
-                  <button id="daz-mgr-scenes-delete-all" style="${selectedFile ? smallBtnRed : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete All</button>
-                  <button id="daz-mgr-scene-delete" style="${selectedSceneName ? smallBtnRed : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete Scene</button>
-                </div>
-                <div style="font-size:11px;color:#aaa;margin:4px 0">Takes:</div>
-                <div id="daz-mgr-takes" style="flex:1;min-height:0;overflow-y:auto;margin-bottom:6px">${takesListHtml}</div>
-                <div style="display:flex;gap:6px">
-                  <button id="daz-mgr-takes-delete-all" style="${selectedSceneName ? smallBtnRed : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete All</button>
-                  <button id="daz-mgr-take-delete" style="${selectedVersion ? smallBtnRed : smallBtnDisabled}" ${selectedVersion ? '' : 'disabled'}>Delete Take</button>
-                </div>
-              </div>
+                <fieldset style="${mgrFieldset};margin-bottom:8px">
+                  <legend style="${mgrLegend}">Scenes</legend>
+                  <div id="daz-mgr-scenes" style="${listBoxStyle};max-height:130px;overflow-y:auto;margin-bottom:6px">${scenesListHtml}</div>
+                  <div style="display:flex;gap:6px">
+                    <button id="daz-mgr-scenes-delete-all" style="${selectedFile ? smallBtnRed : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete All</button>
+                    <button id="daz-mgr-scene-delete" style="${selectedSceneName ? smallBtnRed : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete Scene</button>
+                  </div>
+                </fieldset>
+                <fieldset style="${mgrFieldset};flex:1;display:flex;flex-direction:column;min-height:0">
+                  <legend style="${mgrLegend}">Takes</legend>
+                  <div id="daz-mgr-takes" style="${listBoxStyle};flex:1;min-height:0;overflow-y:auto;margin-bottom:6px">${takesListHtml}</div>
+                  <div style="display:flex;gap:6px">
+                    <button id="daz-mgr-takes-delete-all" style="${selectedSceneName ? smallBtnRed : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete All</button>
+                    <button id="daz-mgr-take-delete" style="${selectedVersion ? smallBtnRed : smallBtnDisabled}" ${selectedVersion ? '' : 'disabled'}>Delete Take</button>
+                  </div>
+                </fieldset>
+              </fieldset>
             </div>
             ${lastError ? `<div style="color:#f88;font-size:11px;padding:0 16px 8px">${esc(lastError)}</div>` : ''}
             <div style="display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #444">
