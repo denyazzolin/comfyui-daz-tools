@@ -2424,13 +2424,20 @@ export function buildWorkflowConfigExtension(cfg) {
         syncWidget(node)
 
         const cw = node.widgets?.find(w => w.name === 'scene')
+
+        if (classMismatch) {
+          await reloadVersionWidget(node, cw?.value ?? null)
+          renderUseMode(node, {})
+          return
+        }
+
         if (cw) cw.value = sceneLabel
 
         await reloadVersionWidget(node, sceneLabel, version)
         node._dazCurrentVersion = rawVersion(version)
 
         await loadDetail(node, sceneLabel, version)
-        if (!classMismatch) await enterEditForm(node, false)
+        await enterEditForm(node, false)
       }
 
       async function reloadClassFilteredState(node) {
