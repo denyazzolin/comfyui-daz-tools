@@ -908,6 +908,7 @@ export function buildWorkflowConfigExtension(cfg) {
              </div>`
           : `<div style="display:flex;gap:4px;align-items:center;flex:1;min-width:0">
                <button id="daz-duplicate-btn" style="${btnBase} #555;background:#333;color:#ddd">Duplicate</button>
+               <button id="daz-duplicate-other-btn" style="${btnBase} #555;background:#333;color:#ddd">Duplicate In Another Movie File</button>
                <button id="daz-del-config-btn" style="${btnBase} #cc2222;background:#3d0f0f;color:#f99">Del All</button>
                ${errSpan}
              </div>
@@ -1231,6 +1232,11 @@ export function buildWorkflowConfigExtension(cfg) {
           panel.querySelector('#daz-duplicate-btn')?.addEventListener('click', () => {
             if (node._dazEditPanelDirty) showPreDuplicateModal(node, panel)
             else showDuplicateModal(node, panel)
+          })
+          panel.querySelector('#daz-duplicate-other-btn')?.addEventListener('click', () => {
+            const openPicker = () => showMovieFilePickerModal(node, panel)
+            if (node._dazEditPanelDirty) showPreDuplicateModal(node, panel, openPicker)
+            else openPicker()
           })
           panel.querySelector('#daz-del-version-btn')?.addEventListener('click', () => showDeleteVersionConfirm(node, panel))
           panel.querySelector('#daz-del-config-btn')?.addEventListener('click', () => showDeleteConfigConfirm(node, panel))
@@ -2082,7 +2088,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Pre-duplicate: handle unsaved changes ─────────────────────────────
 
-      function showPreDuplicateModal(node, wrap) {
+      function showPreDuplicateModal(node, wrap, nextFn = () => showDuplicateModal(node, wrap)) {
         const overlay = document.createElement('div')
         overlay.style.cssText = [
           'position:fixed;top:0;left:0;right:0;bottom:0',
@@ -2129,11 +2135,11 @@ export function buildWorkflowConfigExtension(cfg) {
         box.querySelector('#pdm-cancel')?.addEventListener('click', () => overlay.remove())
 
         // Save current version, then show duplicate options (panel stays open).
-        // thenFn ensures showDuplicateModal fires even if a name-change or name-clash
+        // thenFn ensures nextFn fires even if a name-change or name-clash
         // sub-dialog intercepts the save flow.
         box.querySelector('#pdm-save-first')?.addEventListener('click', () => {
           overlay.remove()
-          saveConfig(node, wrap, 'current', false, false, true, () => showDuplicateModal(node, wrap))
+          saveConfig(node, wrap, 'current', false, false, true, nextFn)
         })
 
         // Discard prompt-editor changes, then show duplicate options
@@ -2167,7 +2173,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const fpsInput = wrap.querySelector('#daz-fps')
           if (fpsInput) fpsInput.value = fValue(detail.fps)
           node._dazEditPanelDirty = false
-          showDuplicateModal(node, wrap)
+          nextFn()
         })
 
         // Save normally and return to use mode (no duplicate)
@@ -2179,7 +2185,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Duplicate config ──────────────────────────────────────────────────
 
-      function showDuplicateModal(node, wrap) {
+      function showDuplicateModal(node, wrap, targetFile = null) {
         const data         = node[keys.detail] || {}
         const originalName = data.name || ''
         if (!originalName) return
@@ -2197,14 +2203,21 @@ export function buildWorkflowConfigExtension(cfg) {
         ].join(';')
         const fieldStyle = 'width:100%;background:#000;color:#ddd;border:1px solid #555;border-radius:4px;font-size:11px;font-family:monospace;padding:4px 8px;box-sizing:border-box'
         const btnStyle   = 'font-family:monospace;font-size:11px;padding:7px 12px;border-radius:3px;cursor:pointer;border:1px solid #555;width:100%;text-align:left;margin-bottom:6px;background:#1a1a1a;color:#ddd'
+        const newVerBtnHtml = targetFile ? '' :
+          `<button id="dup-new-ver"  style="${btnStyle};border-color:#2a5080;color:#9cd">Duplicate as a new version in this config</button>`
+        const nameHint = targetFile ? 'New config name:' : 'New config name (options 1 &amp; 2):'
+        const destHtml = targetFile
+          ? `<p style="font-size:11px;color:#888;margin:0 0 12px">Destination movie file: <span style="color:#9cd">${esc(targetFile.replace(/\.json$/, ''))}</span></p>`
+          : ''
         box.innerHTML = `
           <p style="font-size:13px;color:#ddd;margin:0 0 12px">Duplicate &ldquo;${esc(originalName)}&rdquo;</p>
-          <p style="font-size:11px;color:#888;margin:0 0 4px">New config name (options 1 &amp; 2):</p>
+          ${destHtml}
+          <p style="font-size:11px;color:#888;margin:0 0 4px">${nameHint}</p>
           <input id="dup-name" type="text" value="${esc('Copy of ' + originalName)}"
             style="${fieldStyle};margin-bottom:14px">
           <button id="dup-all-sets" style="${btnStyle}">Duplicate as a new config with all versions</button>
           <button id="dup-cur-set"  style="${btnStyle}">Duplicate as a new config with the current version</button>
-          <button id="dup-new-ver"  style="${btnStyle};border-color:#2a5080;color:#9cd">Duplicate as a new version in this config</button>
+          ${newVerBtnHtml}
           <div style="display:flex;justify-content:flex-end;margin-top:10px">
             <button id="dup-cancel" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
           </div>
@@ -2216,12 +2229,12 @@ export function buildWorkflowConfigExtension(cfg) {
         box.querySelector('#dup-all-sets')?.addEventListener('click', () => {
           const n = box.querySelector('#dup-name')?.value.trim() || `Copy of ${originalName}`
           overlay.remove()
-          duplicateConfigToNew(node, wrap, n, 'all_sets')
+          duplicateConfigToNew(node, wrap, n, 'all_sets', targetFile)
         })
         box.querySelector('#dup-cur-set')?.addEventListener('click', () => {
           const n = box.querySelector('#dup-name')?.value.trim() || `Copy of ${originalName}`
           overlay.remove()
-          duplicateConfigToNew(node, wrap, n, 'current_set')
+          duplicateConfigToNew(node, wrap, n, 'current_set', targetFile)
         })
         box.querySelector('#dup-new-ver')?.addEventListener('click', () => {
           overlay.remove()
@@ -2229,12 +2242,80 @@ export function buildWorkflowConfigExtension(cfg) {
         })
       }
 
-      async function duplicateConfigToNew(node, wrap, newName, duplicateMode) {
+      // ── Duplicate into another movie file ─────────────────────────────────
+
+      async function showMovieFilePickerModal(node, wrap) {
+        let files = []
+        try {
+          const r = await fetch('/daz/config-files')
+          if (r.ok) files = await r.json()
+        } catch (e) {
+          console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not load movie files`, e)
+        }
+        const curFile = currentFile(node) || 'dx_workflow_configs.json'
+        files = files.filter(f => f.file !== curFile)
+
+        const overlay = document.createElement('div')
+        overlay.style.cssText = [
+          'position:fixed;top:0;left:0;right:0;bottom:0',
+          'background:rgba(0,0,0,0.75);z-index:10000',
+          'display:flex;align-items:center;justify-content:center',
+        ].join(';')
+        const box = document.createElement('div')
+        box.style.cssText = [
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px',
+          'padding:20px 24px;width:380px;font-family:monospace',
+        ].join(';')
+        const itemStyle = 'padding:6px 8px;border-radius:3px;cursor:pointer;color:#ddd;font-size:11px'
+        const listHtml = files.length
+          ? files.map((f, i) => `
+              <div class="daz-mf-item" data-file="${esc(f.file)}"
+                style="${itemStyle}${i === 0 ? ';background:#1a3a5c' : ''}">
+                ${esc(fileLabel(f))}
+              </div>`).join('')
+          : `<div style="color:#888;font-size:11px;padding:6px 2px">No other movie files available.</div>`
+        box.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 12px">Available Movie Files</p>
+          <div id="daz-mf-list" style="max-height:220px;overflow-y:auto;border:1px solid #444;border-radius:4px;margin-bottom:14px;background:#1a1a1a;padding:4px">
+            ${listHtml}
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button id="daz-mf-cancel" style="font-family:monospace;font-size:11px;padding:4px 14px;background:#444;color:#ccc;border:1px solid #666;border-radius:3px;cursor:pointer">Cancel</button>
+            <button id="daz-mf-duplicate" style="font-family:monospace;font-size:11px;padding:4px 14px;border-radius:3px;cursor:pointer;${
+              files.length
+                ? 'background:#1a5c35;color:#cde;border:1px solid #2a8050'
+                : 'background:#333;color:#777;border:1px solid #555;cursor:default'
+            }" ${files.length ? '' : 'disabled'}>Duplicate</button>
+          </div>
+        `
+        overlay.appendChild(box)
+        document.body.appendChild(overlay)
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+        box.querySelector('#daz-mf-cancel')?.addEventListener('click', () => overlay.remove())
+
+        let selectedFile = files[0]?.file ?? null
+        box.querySelectorAll('.daz-mf-item').forEach(el => {
+          el.addEventListener('click', () => {
+            box.querySelectorAll('.daz-mf-item').forEach(o => { o.style.background = '' })
+            el.style.background = '#1a3a5c'
+            selectedFile = el.dataset.file
+          })
+        })
+
+        box.querySelector('#daz-mf-duplicate')?.addEventListener('click', () => {
+          if (!selectedFile) return
+          overlay.remove()
+          showDuplicateModal(node, wrap, selectedFile)
+        })
+      }
+
+      async function duplicateConfigToNew(node, wrap, newName, duplicateMode, targetFile = null) {
         const cw    = node.widgets?.find(w => w.name === 'scene')
         const label = cw?.value
         if (!label || label === '(no configs)') return
         const errDiv = wrap.querySelector('#daz-save-error')
-        const dupBtn = wrap.querySelector('#daz-duplicate-btn')
+        const dupBtn = wrap.querySelector(targetFile ? '#daz-duplicate-other-btn' : '#daz-duplicate-btn')
+        const dupBtnText = dupBtn?.textContent
         if (dupBtn) { dupBtn.textContent = 'Duplicating…'; dupBtn.disabled = true }
         if (errDiv) errDiv.textContent = ''
 
@@ -2247,12 +2328,13 @@ export function buildWorkflowConfigExtension(cfg) {
             body: JSON.stringify({
               label, class: CLASS, file: currentFile(node), new_name: newName,
               version: node._dazCurrentVersion || '1', duplicate_mode: duplicateMode,
+              target_file: targetFile,
             }),
           })
           if (r.status === 409) {
-            if (dupBtn) { dupBtn.textContent = 'Duplicate'; dupBtn.disabled = false }
+            if (dupBtn) { dupBtn.textContent = dupBtnText; dupBtn.disabled = false }
             const fakeInput = { value: newName }
-            showNameClashModal(fakeInput, () => duplicateConfigToNew(node, wrap, fakeInput.value, duplicateMode))
+            showNameClashModal(fakeInput, () => duplicateConfigToNew(node, wrap, fakeInput.value, duplicateMode, targetFile))
             return
           }
           const result = await r.json()
@@ -2260,6 +2342,26 @@ export function buildWorkflowConfigExtension(cfg) {
 
           if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
           node[keys.editMode] = false
+
+          if (targetFile) {
+            node._dazConfigFile = targetFile
+            try {
+              const fr = await fetch(`/daz/config-files?class=${encodeURIComponent(CLASS)}`)
+              if (fr.ok) {
+                _configFiles = await fr.json()
+                if (node._dazConfigFileWidget) {
+                  node._dazConfigFileWidget.options.values = _configFiles.length > 0
+                    ? _configFiles.map(f => fileLabel(f))
+                    : ['(default)']
+                  node._dazConfigFileWidget.hidden = _configFiles.length <= 1
+                  const match = _configFiles.find(f => f.file === targetFile)
+                  if (match) node._dazConfigFileWidget.value = fileLabel(match)
+                }
+              }
+            } catch (e) {
+              console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not refresh movie files after duplicate`, e)
+            }
+          }
 
           await reloadNodeConfigs(node)
           if (node._dazTypeFilter !== 'All') {
@@ -2284,7 +2386,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
           renderUseMode(node, node[keys.detail] || {})
         } catch (e) {
-          if (dupBtn) { dupBtn.textContent = 'Duplicate'; dupBtn.disabled = false }
+          if (dupBtn) { dupBtn.textContent = dupBtnText; dupBtn.disabled = false }
           if (errDiv) errDiv.textContent = `Duplicate failed: ${e.message}`
         }
       }
