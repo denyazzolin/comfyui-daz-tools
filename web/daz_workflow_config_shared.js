@@ -2892,7 +2892,8 @@ export function buildWorkflowConfigExtension(cfg) {
           const selectedFileObj = filesData.find(f => f.file === selectedFile) || null
           const scene           = currentScene()
           const takes            = scene?.takes || []
-          const canLoad          = !!(selectedVersion && scene && scene.class === CLASS)
+          const canLoad          = !!(selectedVersion && scene)
+          const classMismatch    = canLoad && scene.class !== CLASS
 
           const clamp2 = 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden'
 
@@ -3007,8 +3008,17 @@ export function buildWorkflowConfigExtension(cfg) {
           box.querySelector('#daz-mgr-load')?.addEventListener('click', () => {
             if (!canLoad) return
             const file = selectedFile, sceneLabel = scene.label, version = selectedVersion
-            close()
-            applyManagerSelectionToNode(node, file, sceneLabel, version)
+            const doLoad = () => { close(); applyManagerSelectionToNode(node, file, sceneLabel, version) }
+            if (classMismatch) {
+              showManagerConfirm(
+                `This take belongs to a "${scene.class}" scene, not "${CLASS}". ` +
+                `The node will not be able to load it entirely. Continue anyway?`,
+                'Continue',
+                doLoad,
+              )
+            } else {
+              doLoad()
+            }
           })
           box.querySelector('#daz-mgr-back')?.addEventListener('click', () => {
             close()
