@@ -42,6 +42,21 @@ You can have as many movie files as you like — any `dx_*.json` file in that fo
 
 > **Custom location:** To store movie files somewhere else, create `dx_root_dir_config.json` in the plugin folder (`custom_nodes/comfyui-daz-tools/`) with the key `"workflows_root_dir"` pointing to your preferred path. An annotated example is included as `dx_root_dir_config.example.jsonc`.
 
+#### Movie Manager
+
+Click the **Movie Manager** button on any WorkflowConfig node to open a full-screen popup for managing movie files across all node classes at once — not just the ones matching the node you opened it from.
+
+The popup has two panels:
+
+- **Current Movie** (left) — every `dx_*.json` file found, with name, filename, and scene counts. Buttons let you **Delete**, **Duplicate**, or create a **New Movie** file.
+- **Selected Movie** (right) — the chosen file's **Scenes** (any class, not just the current node's) and, nested inside, that scene's **Takes**. Each take also shows its type/group and note. Buttons let you delete a single scene/take or all scenes/all takes at once.
+
+All destructive actions ask for confirmation first, and the popup stays open and refreshes in place after every change so you can keep working without reopening it.
+
+**Load and open in Editor** applies the selected movie/scene/take to the node and opens the edit panel on it — this is how you switch a node to a scene stored in a different movie file. If the selected take belongs to a scene of a different class than the node you opened the Manager from, a warning pops up first (since the node won't be able to load that take's data). Continuing anyway still switches the node to that movie file and shows the node's normal empty state with a **Create** button — letting you create a brand-new scene for the node's class right there, which is handy for reusing an existing movie file across classes instead of creating a new one just to hold a different class's scenes.
+
+**Back** closes the popup without loading anything, reconciling the node's dropdowns to whatever still exists on disk (in case something was deleted while the Manager was open).
+
 #### Filters
 
 Five possible filters at the top of the node let you narrow down which scenes/takes are shown:

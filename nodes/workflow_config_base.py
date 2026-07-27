@@ -4,6 +4,7 @@ Imported by each class-specific node file (workflow_config_wan22.py, etc.).
 Python's module cache guarantees routes are registered exactly once.
 """
 import os
+import re
 import json
 from datetime import datetime
 from typing import Optional
@@ -176,6 +177,45 @@ def scan_config_files(cls: str = None) -> list[dict]:
             "path": path,
         })
     return results
+
+
+# ── Movie Manager helpers ─────────────────────────────────────────────────────
+
+def _sanitize_movie_filename(raw: str) -> str:
+    """Turn arbitrary user input into a safe 'dx_<name>.json' basename."""
+    stem = os.path.splitext(os.path.basename(str(raw or "").strip()))[0]
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "_", stem).strip("_")
+    if stem.startswith("dx_"):
+        stem = stem[3:]
+    if not stem:
+        raise ValueError("Filename is required.")
+    return f"dx_{stem}.json"
+
+
+def _movie_file_summary(filename: str, path: str) -> dict:
+    configs, meta_extra, _ = _load_file(path)
+    scene_counts: dict[str, int] = {}
+    for entry in configs.values():
+        cls = entry.get("class", "")
+        if cls:
+            scene_counts[cls] = scene_counts.get(cls, 0) + 1
+    created_at = meta_extra.get("created_at", "")
+    updated_at = meta_extra.get("updated_at", "")
+    if not created_at or not updated_at:
+        try:
+            stat = os.stat(path)
+            created_at = created_at or datetime.fromtimestamp(stat.st_ctime).isoformat()
+            updated_at = updated_at or datetime.fromtimestamp(stat.st_mtime).isoformat()
+        except OSError:
+            pass
+    return {
+        "file":         filename,
+        "name":         meta_extra.get("name") or os.path.splitext(filename)[0],
+        "created_at":   created_at,
+        "updated_at":   updated_at,
+        "scene_counts": scene_counts,
+        "total_scenes": sum(scene_counts.values()),
+    }
 
 
 # ── Sets helpers ──────────────────────────────────────────────────────────────
@@ -1417,34 +1457,42 @@ try:
         except Exception:
             return web.json_response({"error": "Invalid JSON body"}, status=400)
 
-        label    = data.get("label", "")
-        cls      = data.get("class", "")
-        file     = data.get("file") or None
-        new_name = data.get("new_name", "").strip()
-        dup_mode = data.get("duplicate_mode", "current_set")  # "all_sets" or "current_set"
-        _v       = data.get("version")
-        version  = (str(_v).strip() or None) if _v is not None else None
+        label       = data.get("label", "")
+        cls         = data.get("class", "")
+        file        = data.get("file") or None
+        target_file = data.get("target_file") or None
+        new_name    = data.get("new_name", "").strip()
+        dup_mode    = data.get("duplicate_mode", "current_set")  # "all_sets" or "current_set"
+        _v          = data.get("version")
+        version     = (str(_v).strip() or None) if _v is not None else None
 
         if not new_name:
             return web.json_response({"error": "Config name is required."}, status=400)
         if new_name == _META_KEY:
             return web.json_response({"error": f"'{_META_KEY}' is a reserved name."}, status=400)
 
-        path = _resolve_path(file)
-        configs, meta_extra, effective = _load_file(path)
-
-        if new_name in configs:
-            return web.json_response({"error": f"A config named '{new_name}' already exists."}, status=409)
+        source_path = _resolve_path(file)
+        source_configs, source_meta_extra, source_effective = _load_file(source_path)
 
         source_name = next(
-            (n for n, e in configs.items()
+            (n for n, e in source_configs.items()
              if e.get("class") == cls and make_label(n, e.get("created_at", "")) == label),
             None,
         )
         if source_name is None:
             return web.json_response({"error": f"Config '{label}' not found."}, status=404)
 
-        source_entry = configs[source_name]
+        source_entry = source_configs[source_name]
+
+        target_path = _resolve_path(target_file) if target_file else source_path
+        if target_path == source_path:
+            configs, meta_extra, effective = source_configs, source_meta_extra, source_effective
+        else:
+            configs, meta_extra, effective = _load_file(target_path)
+
+        if new_name in configs:
+            return web.json_response({"error": f"A config named '{new_name}' already exists."}, status=409)
+
         now = datetime.now().isoformat()
 
         if dup_mode == "all_sets":
@@ -1474,14 +1522,231 @@ try:
         configs[new_name] = new_entry
 
         try:
-            _write_file(path, configs, meta_extra, effective)
+            _write_file(target_path, configs, meta_extra, effective)
         except Exception as e:
             return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
 
         result_sets = new_entry["sets"]
         result_ver  = str(result_sets[0].get("version", "1")) if result_sets else "1"
         new_label   = make_label(new_name, new_entry["created_at"])
-        return web.json_response({"ok": True, "label": new_label, "version": result_ver})
+        resp = {"ok": True, "label": new_label, "version": result_ver}
+        if target_file:
+            resp["file"] = target_file
+        return web.json_response(resp)
+
+    # ── Movie Manager routes ──────────────────────────────────────────────
+
+    @PromptServer.instance.routes.get("/daz/movie-manager/files")
+    async def _daz_movie_manager_files(request):
+        os.makedirs(_MGR_DIR, exist_ok=True)
+        preset_filename = os.path.basename(_resolve_preset_path())
+        try:
+            candidates = sorted(
+                f for f in os.listdir(_MGR_DIR)
+                if f.startswith("dx_") and f.endswith(".json") and f != preset_filename
+            )
+        except OSError:
+            candidates = []
+        files = [_movie_file_summary(f, os.path.join(_MGR_DIR, f)) for f in candidates]
+        return web.json_response({
+            "folder": os.path.basename(_WORKFLOWS_DIR),
+            "files":  files,
+        })
+
+    @PromptServer.instance.routes.get("/daz/movie-manager/scenes")
+    async def _daz_movie_manager_scenes(request):
+        file = request.rel_url.query.get("file") or None
+        try:
+            path = _resolve_path(file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        configs, _, _ = _load_file(path)
+        result = []
+        for name, entry in configs.items():
+            takes = [
+                {
+                    "version":    str(s.get("version", "")),
+                    "label":      str(s.get("label", "")),
+                    "type":       str(s.get("type", "")),
+                    "group":      str(_get_name(s.get("group", {}))),
+                    "note":       _get_custom_value(s.get("note")),
+                    "created_at": s.get("created_at", ""),
+                    "updated_at": s.get("updated_at", ""),
+                }
+                for s in entry.get("sets", [])
+            ]
+            result.append({
+                "name":       name,
+                "label":      make_label(name, entry.get("created_at", "")),
+                "class":      entry.get("class", ""),
+                "take_count": len(takes),
+                "takes":      takes,
+            })
+        return web.json_response(result)
+
+    @PromptServer.instance.routes.post("/daz/movie-manager/file-create")
+    async def _daz_movie_manager_file_create(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        name = data.get("name", "").strip() or "New Movie"
+        try:
+            filename = _sanitize_movie_filename(data.get("filename", ""))
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        path = os.path.join(_MGR_DIR, filename)
+        if os.path.exists(path):
+            return web.json_response({"error": f"'{filename}' already exists."}, status=409)
+
+        now = datetime.now().isoformat()
+        meta_extra = {"name": name, "version": "1.0", "created_at": now}
+        try:
+            _write_file(path, {}, meta_extra, CURRENT_SCHEMA)
+        except Exception as e:
+            return web.json_response({"error": f"Could not create file: {e}"}, status=500)
+        return web.json_response({"ok": True, "file": filename})
+
+    @PromptServer.instance.routes.post("/daz/movie-manager/file-duplicate")
+    async def _daz_movie_manager_file_duplicate(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        source_file = data.get("source_file") or None
+        name = data.get("name", "").strip() or "Copy"
+        try:
+            filename = _sanitize_movie_filename(data.get("filename", ""))
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        try:
+            source_path = _resolve_path(source_file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        target_path = os.path.join(_MGR_DIR, filename)
+        if os.path.exists(target_path):
+            return web.json_response({"error": f"'{filename}' already exists."}, status=409)
+
+        source_configs, _, source_effective = _load_file(source_path)
+        configs = json.loads(json.dumps(source_configs))
+        now = datetime.now().isoformat()
+        meta_extra = {"name": name, "version": "1.0", "created_at": now}
+        try:
+            _write_file(target_path, configs, meta_extra, source_effective)
+        except Exception as e:
+            return web.json_response({"error": f"Could not duplicate file: {e}"}, status=500)
+        return web.json_response({"ok": True, "file": filename})
+
+    @PromptServer.instance.routes.post("/daz/movie-manager/file-delete")
+    async def _daz_movie_manager_file_delete(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        file = data.get("file") or None
+        try:
+            path = _resolve_path(file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            return web.json_response({"error": "File not found."}, status=404)
+        except Exception as e:
+            return web.json_response({"error": f"Could not delete file: {e}"}, status=500)
+        return web.json_response({"ok": True})
+
+    @PromptServer.instance.routes.post("/daz/movie-manager/scenes-delete-all")
+    async def _daz_movie_manager_scenes_delete_all(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        file = data.get("file") or None
+        try:
+            path = _resolve_path(file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        _, meta_extra, effective = _load_file(path)
+        try:
+            _write_file(path, {}, meta_extra, effective)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
+        return web.json_response({"ok": True})
+
+    @PromptServer.instance.routes.post("/daz/movie-manager/scene-delete")
+    async def _daz_movie_manager_scene_delete(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        file       = data.get("file") or None
+        scene_name = data.get("scene_name", "")
+        try:
+            path = _resolve_path(file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        configs, meta_extra, effective = _load_file(path)
+        if scene_name not in configs:
+            return web.json_response({"error": f"Scene '{scene_name}' not found."}, status=404)
+        del configs[scene_name]
+        try:
+            _write_file(path, configs, meta_extra, effective)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
+        return web.json_response({"ok": True})
+
+    @PromptServer.instance.routes.post("/daz/movie-manager/take-delete")
+    async def _daz_movie_manager_take_delete(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        file       = data.get("file") or None
+        scene_name = data.get("scene_name", "")
+        version    = str(data.get("version", "")).strip()
+        try:
+            path = _resolve_path(file)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        configs, meta_extra, effective = _load_file(path)
+        entry = configs.get(scene_name)
+        if entry is None:
+            return web.json_response({"error": f"Scene '{scene_name}' not found."}, status=404)
+
+        sets = entry.get("sets", [])
+        idx = next((i for i, s in enumerate(sets) if str(s.get("version", "")) == version), None)
+        if idx is None:
+            return web.json_response({"error": f"Take '{version}' not found."}, status=404)
+        sets.pop(idx)
+
+        scene_deleted = False
+        if not sets:
+            del configs[scene_name]
+            scene_deleted = True
+        else:
+            entry["sets"]       = sets
+            entry["updated_at"] = datetime.now().isoformat()
+
+        try:
+            _write_file(path, configs, meta_extra, effective)
+        except Exception as e:
+            return web.json_response({"error": f"Could not write config file: {e}"}, status=500)
+        return web.json_response({"ok": True, "scene_deleted": scene_deleted})
 
     @PromptServer.instance.routes.get("/daz/presets")
     async def _daz_presets(request):
