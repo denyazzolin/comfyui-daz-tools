@@ -2925,6 +2925,7 @@ export function buildWorkflowConfigExtension(cfg) {
                          background:${t.version === selectedVersion ? '#1a3a5c' : '#1a1a1a'};border:1px solid #444;
                          color:#ddd;font-size:12px">
                   <div style="word-break:break-word;${clamp2}">${esc(t.label ? `${t.version} - ${t.label}` : String(t.version))}</div>
+                  ${(t.type || t.group) ? `<div style="font-weight:normal;font-size:12px;color:#ddd;margin-top:2px;word-break:break-word;${clamp2}">${esc([t.type, t.group].filter(Boolean).join(' - '))}</div>` : ''}
                   ${t.note ? `<div style="font-style:italic;font-size:10px;color:#999;margin-top:2px;word-break:break-word;${clamp2}">${esc(t.note)}</div>` : ''}
                 </div>`).join('')
             : `<div style="color:#777;font-size:11px;padding:6px">No takes.</div>`
