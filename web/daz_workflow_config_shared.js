@@ -2887,12 +2887,14 @@ export function buildWorkflowConfigExtension(cfg) {
           const takes            = scene?.takes || []
           const canLoad          = !!(selectedVersion && scene && scene.class === CLASS)
 
+          const clamp2 = 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden'
+
           const filesListHtml = filesData.length
             ? filesData.map(f => `
                 <div class="daz-mgr-file-item" data-file="${esc(f.file)}"
                   style="padding:8px;border-radius:3px;cursor:pointer;margin-bottom:4px;
                          background:${f.file === selectedFile ? '#1a3a5c' : '#1a1a1a'};border:1px solid #444">
-                  <div style="color:#ddd;font-size:12px;word-break:break-word">${esc(f.name)}</div>
+                  <div style="color:#ddd;font-size:12px;word-break:break-word;${clamp2}">${esc(f.name)}</div>
                   <div style="color:#888;font-size:10px">${esc(f.file)}</div>
                   <div style="color:#888;font-size:10px">Added: ${esc(fmtManagerDate(f.created_at))}</div>
                   <div style="color:#888;font-size:10px">${esc(mgrFormatSceneCounts(f))}</div>
@@ -2904,7 +2906,7 @@ export function buildWorkflowConfigExtension(cfg) {
                 <div class="daz-mgr-scene-item" data-scene="${esc(s.name)}"
                   style="padding:6px 8px;border-radius:3px;cursor:pointer;margin-bottom:4px;
                          background:${s.name === selectedSceneName ? '#1a3a5c' : '#1a1a1a'};border:1px solid #444">
-                  <div style="color:#ddd;font-size:12px">${esc(s.name)} (${s.take_count} take${s.take_count === 1 ? '' : 's'})</div>
+                  <div style="color:#ddd;font-size:12px;word-break:break-word;${clamp2}">${esc(s.name)} (${s.take_count} take${s.take_count === 1 ? '' : 's'})</div>
                   <div style="color:#888;font-size:10px">${esc(s.class || '—')}</div>
                 </div>`).join('')
             : `<div style="color:#777;font-size:11px;padding:6px">No scenes.</div>`
@@ -2915,13 +2917,12 @@ export function buildWorkflowConfigExtension(cfg) {
                   style="padding:5px 8px;border-radius:3px;cursor:pointer;margin-bottom:3px;
                          background:${t.version === selectedVersion ? '#1a3a5c' : '#1a1a1a'};border:1px solid #444;
                          color:#ddd;font-size:12px">
-                  <div>${esc(t.label ? `${t.version} - ${t.label}` : String(t.version))}</div>
-                  ${t.note ? `<div style="font-style:italic;font-size:10px;color:#999;margin-top:2px;
-                    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(t.note)}</div>` : ''}
+                  <div style="word-break:break-word;${clamp2}">${esc(t.label ? `${t.version} - ${t.label}` : String(t.version))}</div>
+                  ${t.note ? `<div style="font-style:italic;font-size:10px;color:#999;margin-top:2px;word-break:break-word;${clamp2}">${esc(t.note)}</div>` : ''}
                 </div>`).join('')
             : `<div style="color:#777;font-size:11px;padding:6px">No takes.</div>`
 
-          const listBoxStyle = 'border:1px solid #444;border-radius:3px;padding:4px;box-sizing:border-box'
+          const listBoxStyle = 'border:1px solid #444;border-radius:3px;padding:4px;box-sizing:border-box;background:#1f1f1f'
 
           box.innerHTML = `
             <div style="padding:10px 16px;border-bottom:1px solid #444;font-size:13px;color:#ddd">
@@ -2947,7 +2948,7 @@ export function buildWorkflowConfigExtension(cfg) {
                   </div>` : `<div style="font-size:11px;color:#777;margin-bottom:8px">No movie selected.</div>`}
                 <fieldset style="${mgrFieldset};margin-bottom:8px">
                   <legend style="${mgrLegend}">Scenes</legend>
-                  <div id="daz-mgr-scenes" style="${listBoxStyle};max-height:130px;overflow-y:auto;margin-bottom:6px">${scenesListHtml}</div>
+                  <div id="daz-mgr-scenes" style="${listBoxStyle};height:130px;overflow-y:auto;margin-bottom:6px">${scenesListHtml}</div>
                   <div style="display:flex;gap:6px">
                     <button id="daz-mgr-scenes-delete-all" style="${selectedFile ? smallBtnRed : smallBtnDisabled}" ${selectedFile ? '' : 'disabled'}>Delete All</button>
                     <button id="daz-mgr-scene-delete" style="${selectedSceneName ? smallBtnRed : smallBtnDisabled}" ${selectedSceneName ? '' : 'disabled'}>Delete Scene</button>
