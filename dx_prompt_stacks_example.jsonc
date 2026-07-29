@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "schema_version": 1, // internal schema version; do not change
+    "name": "Default Prompt Stack", // prompt stack file identifier
+    "version": "1.0", // file format version string
+    "created_at": "2026-06-02T00:00:00", // file creation timestamp (ISO 8601)
+    "updated_at": "2026-06-02T00:00:00" // file last-modified timestamp (ISO 8601)
+  },
+  "My Prompt Stack 1": { // "Prompt stack" name
+    "class": "Wan2.2", // node class these prompts do target
+    "created_at": "2026-06-02T00:00:00", // entry creation timestamp
+    "updated_at": "2026-06-02T00:00:00", // entry last-modified timestamp
+    "fps": 0,
+    "frame_count": 0,
+    "stack": [ // array of versioned stacks
+      {
+        "sequence": 0, // the sequence number (effectively an identity number)
+        "label": "Default Prompt Stack", // name of this sequence
+        "prompts": [ //arbitrary number of prompts
+          {
+            "master_prompt": {
+              "text": "",
+              "position": "before"
+            }, // base prompt; combined with positive when type is not "smart"
+            "positive_prompt": {
+              "text": "A cinematic shot of ...",
+              "type": "smart"
+            }, // type "smart" forwards only this text to the relay node
+            "negative_prompt": {
+              "text": ""
+            } // negative prompt text
+          }
+        ]
+      }
+    ]
+  },
+  "My Prompt Stack 2": { // "Prompt stack" name
+    "class": "ltx2.3", // node class these prompts do target
+    "created_at": "2026-06-02T00:00:00", // entry creation timestamp
+    "updated_at": "2026-06-02T00:00:00", // entry last-modified timestamp
+    "fps": 0,
+    "frame_count": 0,
+    "stack": [ // array of versioned stacks
+      {
+        "sequence": 0, // the sequence number (effectively an identity number)
+        "label": "Default Prompt Stack", // name of this sequence
+        "prompts": [ //arbitrary number of prompts
+          {
+            "master_prompt": {
+              "text": "",
+              "position": "before"
+            }, // base prompt; combined with positive when type is not "smart"
+            "positive_prompt": {
+              "text": "A cinematic shot of ...",
+              "type": "smart"
+            }, // type "smart" forwards only this text to the relay node
+            "negative_prompt": {
+              "text": ""
+            } // negative prompt text
+          }
+        ]
+      }
+    ]
+  },
+  "My Prompt Stack 3": { // "Prompt stack" name
+    "class": "ImageInference", // node class these prompts do target
+    "created_at": "2026-06-02T00:00:00", // entry creation timestamp
+    "updated_at": "2026-06-02T00:00:00", // entry last-modified timestamp
+    "fps": 0,
+    "frame_count": 0,
+    "stack": [ // array of versioned stacks
+      {
+        "sequence": 0, // the sequence number (effectively an identity number)
+        "label": "Default Prompt Stack", // name of this sequence
+        "prompts": [ //arbitrary number of prompts
+          {
+            "master_prompt": {
+              "text": "",
+              "position": "before"
+            }, // base prompt; combined with positive when type is not "smart"
+            "positive_prompt": {
+              "text": "A cinematic shot of ...",
+              "type": "smart"
+            }, // type "smart" forwards only this text to the relay node
+            "negative_prompt": {
+              "text": ""
+            } // negative prompt text
+          }
+        ]
+      }
+    ]
+  }
+}

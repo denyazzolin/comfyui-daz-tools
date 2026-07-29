@@ -264,6 +264,26 @@ def _get_master_position(val, default: str = "before") -> str:
         return pos if pos in ("before", "after") else default
     return default
 
+
+def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
+    """Combine a set/prompt's master_prompt + positive_prompt into the effective
+    positive text, per the smart/beats/timecode/simple relay rule shared by
+    every WorkflowConfig class. Returns (master_text, pos_out, neg_text, is_relay)."""
+    pos_prompt_val    = entry.get("positive_prompt")
+    prompt_type       = pos_prompt_val.get("type", "smart") if isinstance(pos_prompt_val, dict) else "smart"
+    master_prompt_val = entry.get("master_prompt")
+    master_text       = _get_text(master_prompt_val)
+    pos_text          = _get_text(pos_prompt_val)
+    neg_text          = _get_text(entry.get("negative_prompt"))
+    is_relay          = prompt_type == "smart"
+    if is_relay:
+        pos_out = pos_text
+    elif prompt_type in ("beats", "timecode", "simple") and _get_master_position(master_prompt_val) == "after":
+        pos_out = "\n\n".join(p for p in (pos_text, master_text) if p)
+    else:
+        pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
+    return master_text, pos_out, neg_text, is_relay
+
 def _get_path(val, default: str = "") -> str:
     if isinstance(val, dict):
         return str(val.get("path") or default)
