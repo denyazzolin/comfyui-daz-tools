@@ -24,6 +24,15 @@ const PROMPT_TYPE_LABELS = { smart: 'Smart', beats: 'Beats', simple: 'Simple', t
 const CLASS_FILTER_VALUES = ['All', 'Wan 2.2', 'LTX 2.3', 'Images']
 const CLASS_FILTER_TO_VALUE = { 'All': '', 'Wan 2.2': 'Wan2.2', 'LTX 2.3': 'ltx2.3', 'Images': 'ImageInference' }
 
+// Same set as the Class filter, but "All" -> "<no class>" (stored as ''),
+// for use in the New Prompt Stack class dropdown.
+const CLASS_CREATE_OPTIONS = [
+  { label: '<no class>', value: '' },
+  { label: 'Wan 2.2',    value: 'Wan2.2' },
+  { label: 'LTX 2.3',    value: 'ltx2.3' },
+  { label: 'Images',     value: 'ImageInference' },
+]
+
 // ── HTML helpers ────────────────────────────────────────────────────────────
 
 function esc(s) {
@@ -124,12 +133,24 @@ function smallFormModal(title, fields, okLabel, onSubmit) {
   const { box, close } = overlayShell(340)
   box.innerHTML = `
     <p style="font-size:13px;color:#ddd;margin:0 0 10px">${esc(title)}</p>
-    ${fields.map(f => `
-      <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">${esc(f.label)}</label>
-      <input id="sf-${f.id}" type="text" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}"
-        style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
-               border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:10px">
-    `).join('')}
+    ${fields.map(f => {
+      const labelHtml = `<label style="display:block;font-size:10px;color:#888;margin-bottom:2px">${esc(f.label)}</label>`
+      if (f.type === 'select') {
+        const opts = (f.options || []).map(o =>
+          `<option value="${esc(o.value)}"${o.value === (f.value ?? '') ? ' selected' : ''}>${esc(o.label)}</option>`
+        ).join('')
+        return `${labelHtml}
+          <select id="sf-${f.id}"
+            style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
+                   border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:10px">
+            ${opts}
+          </select>`
+      }
+      return `${labelHtml}
+        <input id="sf-${f.id}" type="text" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}"
+          style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
+                 border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:10px">`
+    }).join('')}
     <p id="sf-error" style="font-size:11px;color:#f88;margin:0 0 8px;display:none"></p>
     <div style="display:flex;justify-content:flex-end;gap:8px">
       ${mkBtn('sf-cancel', 'Cancel', '#666', '#444', '#ccc')}
@@ -350,7 +371,7 @@ app.registerExtension({
     function doCreateStack(node) {
       smallFormModal('New Prompt Stack', [
         { id: 'name', label: 'Name' },
-        { id: 'class', label: 'Class (optional)' },
+        { id: 'class', label: 'Class', type: 'select', options: CLASS_CREATE_OPTIONS },
       ], 'Create', async (values) => {
         const name = values.name.trim()
         if (!name) throw new Error('Name is required.')
