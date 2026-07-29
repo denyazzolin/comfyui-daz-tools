@@ -13,15 +13,15 @@ class PromptStackManager:
         sequences = all_sequences()
         return {
             "required": {
+                "fps":         ("FLOAT", {"default": 0.0, "min": 0.0, "max": 240.0, "step": 0.1}),
+                "frame_count": ("INT", {"default": 0, "min": 0, "max": 100000}),
                 "stack":       (labels if labels else [_NO_STACKS],),
                 "sequence":    (sequences,),
-                "fps":         ("INT", {"default": 0, "min": 0, "max": 240}),
-                "frame_count": ("INT", {"default": 0, "min": 0, "max": 100000}),
             }
         }
 
     RETURN_TYPES = ("DX_PROMPT_SET",) * MAX_PROMPTS
-    RETURN_NAMES = tuple(f"prompt_{i}" for i in range(1, MAX_PROMPTS + 1))
+    RETURN_NAMES = tuple(f"prompt_seq_{i}" for i in range(1, MAX_PROMPTS + 1))
     FUNCTION     = "load_stack"
     CATEGORY     = "utils"
     OUTPUT_NODE  = False
@@ -32,7 +32,7 @@ class PromptStackManager:
             return f"Value not in list: stack: '{stack}' not in valid options"
         return True
 
-    def load_stack(self, stack: str, sequence: str, fps: int, frame_count: int):
+    def load_stack(self, stack: str, sequence: str, fps: float, frame_count: int):
         stacks = load_stacks()
         name = next(
             (n for n, e in stacks.items() if make_label(n, e.get("created_at", "")) == stack),

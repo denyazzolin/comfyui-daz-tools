@@ -1,13 +1,16 @@
-// Full CRUD panel for the "Prompt Stack Manager" node.
+// Panel for the "Prompt Stack Manager" node: read-only display (Class/Stack/
+// Sequence info + per-prompt Master/Positive/Negative/Type panels, styled
+// like the WorkflowConfig "use mode" detail table) plus an "Edit Sequence"
+// modal that hosts stack/sequence/prompt CRUD.
 // Self-contained (not folded into daz_workflow_config_shared.js, whose ~3500
 // lines are built around the models/dims/loras WorkflowConfig schema).
 
 import { app } from '../../scripts/app.js'
 
 const MAX_PROMPTS = 10
-const PANEL_H = 320
+const PANEL_H = 360
 const NODE_W  = 340
-const NODE_H  = 480
+const NODE_H  = 520
 
 const TA_STYLE =
   'box-sizing:border-box;width:100%;background:#000;color:#ddd;' +
@@ -15,6 +18,11 @@ const TA_STYLE =
   'font-size:11px;padding:4px 6px;resize:vertical'
 
 const VALID_PROMPT_TYPES = ['smart', 'beats', 'simple', 'timecode']
+const PROMPT_TYPE_LABELS = { smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode' }
+
+// Class filter display <-> stored class value
+const CLASS_FILTER_VALUES = ['All', 'Wan 2.2', 'LTX 2.3', 'Images']
+const CLASS_FILTER_TO_VALUE = { 'All': '', 'Wan 2.2': 'Wan2.2', 'LTX 2.3': 'ltx2.3', 'Images': 'ImageInference' }
 
 // ── HTML helpers ────────────────────────────────────────────────────────────
 
@@ -38,6 +46,42 @@ function mkRadio(id, name, value, label, checked) {
       style="cursor:pointer;accent-color:#54af7b;margin:0">
     ${label}
   </label>`
+}
+
+function trunc(s, n = 60) {
+  if (!s) return ''
+  return s.length > n ? s.substring(0, n) + '…' : s
+}
+
+// Detail-table row helpers — mirror `row`/`rowPair`/`rowDiv` in
+// daz_workflow_config_shared.js so the read-only display matches the
+// WorkflowConfig "use mode" panel styling exactly.
+function row(label, value) {
+  const v = value !== undefined && value !== '' && value !== 0
+    ? `<span style="color:#ddd">${esc(value)}</span>`
+    : `<span style="color:#555">—</span>`
+  return `<tr>
+    <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">${label}</td>
+    <td colspan="3" style="color:#ddd;padding:3px 10px;word-break:break-all">${v}</td>
+  </tr>`
+}
+
+function rowPair(l1, v1, l2, v2) {
+  function val(v) {
+    return v !== undefined && v !== '' && v !== 0
+      ? `<span style="color:#ddd">${esc(v)}</span>`
+      : `<span style="color:#555">—</span>`
+  }
+  const tdL = 'style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top"'
+  const tdV = 'style="color:#ddd;padding:3px 10px;width:30%"'
+  return `<tr>
+    <td ${tdL}>${l1}</td><td ${tdV}>${val(v1)}</td>
+    <td ${tdL}>${l2}</td><td ${tdV}>${val(v2)}</td>
+  </tr>`
+}
+
+function rowDivider() {
+  return `<div style="border-top:1px solid #555;margin:4px 8px"></div>`
 }
 
 function overlayShell(width) {
@@ -131,17 +175,38 @@ app.registerExtension({
       }
     }
 
-    async function reloadStackWidget(node) {
+    function clonePrompts(prompts) {
+      return (prompts || []).map(p => ({
+        label: p.label || '',
+        master_prompt:   { ...(p.master_prompt   || {}) },
+        positive_prompt: { ...(p.positive_prompt || {}) },
+        negative_prompt: { ...(p.negative_prompt || {}) },
+      }))
+    }
+
+    // ── Class filter ─────────────────────────────────────────────────────
+
+    function applyClassFilter(node) {
       const w = node.widgets?.find(w => w.name === 'stack')
       if (!w) return
+      const all = node._dazAllStacks || []
+      const filterVal = node._dazClassFilterWidget?.value || 'All'
+      const classValue = CLASS_FILTER_TO_VALUE[filterVal] || ''
+      const filtered = classValue ? all.filter(s => s.class === classValue) : all
+      const labels = filtered.map(s => s.label)
+      w.options.values = labels.length ? labels : ['(no prompt stacks)']
+      if (!labels.includes(w.value)) w.value = labels[0] ?? '(no prompt stacks)'
+    }
+
+    async function reloadStackWidget(node) {
       try {
         const r = await fetch('/daz/prompt-stack-list')
-        const labels = r.ok ? await r.json() : []
-        w.options.values = labels.length ? labels : ['(no prompt stacks)']
-        if (!labels.includes(w.value)) w.value = labels[0] ?? '(no prompt stacks)'
+        node._dazAllStacks = r.ok ? await r.json() : []
       } catch (e) {
         console.warn('[DAZ TOOLS] PromptStackManager: could not reload stack list', e)
+        node._dazAllStacks = node._dazAllStacks || []
       }
+      applyClassFilter(node)
     }
 
     async function reloadSequenceWidget(node, stackLabel, selectRawSeq = null) {
@@ -171,7 +236,7 @@ app.registerExtension({
         const out = node.outputs[i]
         if (!out) continue
         const p = prompts[i]
-        out.label = (p && p.label) ? p.label : `prompt_${i + 1}`
+        out.label = (p && p.label) ? p.label : `prompt_seq_${i + 1}`
       }
     }
 
@@ -206,17 +271,35 @@ app.registerExtension({
       }
     }
 
-    // ── Per-prompt edit modal ─────────────────────────────────────────────
+    async function reloadPrompts(node) {
+      const sw = node.widgets?.find(w => w.name === 'stack')
+      await reloadStackWidget(node)
+      await reloadSequenceWidget(node, sw?.value)
+      await loadDetail(node, sw?.value, node._dazSeqWidget?.value)
+    }
 
-    function openRowEditor(node, idx) {
-      const prompts = node._dazPrompts || []
-      const p = prompts[idx] || emptyPrompt()
+    async function refreshAfterStackChange(node, selectLabel, selectSeqRaw) {
+      // Reset the Class filter so the affected stack is guaranteed to be
+      // visible even if it doesn't match whatever filter was active.
+      if (selectLabel && node._dazClassFilterWidget) node._dazClassFilterWidget.value = 'All'
+      await reloadStackWidget(node)
+      const sw = node.widgets?.find(w => w.name === 'stack')
+      if (selectLabel && sw) sw.value = selectLabel
+      const label = sw?.value
+      await reloadSequenceWidget(node, label, selectSeqRaw)
+      await loadDetail(node, label, node._dazSeqWidget?.value)
+    }
+
+    // ── Per-prompt edit modal (nested inside Edit Sequence) ────────────────
+
+    function openRowEditor(prompt, onSave) {
+      const p = prompt || emptyPrompt()
       const posType   = VALID_PROMPT_TYPES.includes(p.positive_prompt?.type) ? p.positive_prompt.type : 'smart'
       const masterPos = p.master_prompt?.position === 'after' ? 'after' : 'before'
 
       const { box, close } = overlayShell(480)
       box.innerHTML = `
-        <p style="font-size:13px;color:#ddd;margin:0 0 10px">Edit prompt ${idx + 1}</p>
+        <p style="font-size:13px;color:#ddd;margin:0 0 10px">Edit prompt</p>
         <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Label</label>
         <input id="pe-label" type="text" value="${esc(p.label || '')}"
           style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
@@ -257,25 +340,12 @@ app.registerExtension({
           },
           negative_prompt: { text: box.querySelector('#pe-negative').value },
         }
-        const list = (node._dazPrompts || []).slice()
-        list[idx] = updated
-        node._dazPrompts = list
         close()
-        renderPanel(node)
-        updateOutputLabels(node, node._dazPrompts)
+        onSave(updated)
       })
     }
 
     // ── CRUD actions ────────────────────────────────────────────────────────
-
-    async function refreshAfterStackChange(node, selectLabel, selectSeqRaw) {
-      await reloadStackWidget(node)
-      const sw = node.widgets?.find(w => w.name === 'stack')
-      if (selectLabel && sw) sw.value = selectLabel
-      const label = sw?.value
-      await reloadSequenceWidget(node, label, selectSeqRaw)
-      await loadDetail(node, label, node._dazSeqWidget?.value)
-    }
 
     function doCreateStack(node) {
       smallFormModal('New Prompt Stack', [
@@ -294,134 +364,223 @@ app.registerExtension({
       })
     }
 
-    function doRenameStack(node) {
-      const sw = node.widgets?.find(w => w.name === 'stack')
-      if (!sw || sw.value === '(no prompt stacks)') return
-      smallFormModal('Rename Stack', [
-        { id: 'name', label: 'New name', value: node._dazStackName || '' },
-        { id: 'class', label: 'Class', value: node._dazStackClass || '' },
-      ], 'Rename', async (values) => {
-        const newName = values.name.trim()
-        if (!newName) throw new Error('Name is required.')
-        const r = await fetch('/daz/prompt-stack-save', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            label: sw.value, sequence: node._dazSeqRaw, sequence_name: node._dazSeqName,
-            prompts: node._dazPrompts || [], save_mode: 'current',
-            new_name: newName, class: values.class,
-            fps: node._dazFpsWidget?.value, frame_count: node._dazFrameCountWidget?.value,
-          }),
-        })
-        const result = await r.json()
-        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-        await refreshAfterStackChange(node, result.label, result.sequence)
-      })
-    }
+    // ── Edit Sequence modal ─────────────────────────────────────────────────
 
-    function doDuplicateStack(node) {
+    function openEditSequenceModal(node) {
       const sw = node.widgets?.find(w => w.name === 'stack')
-      if (!sw || sw.value === '(no prompt stacks)') return
-      smallFormModal('Duplicate Stack', [
-        { id: 'name', label: 'New stack name' },
-      ], 'Duplicate', async (values) => {
-        const newName = values.name.trim()
-        if (!newName) throw new Error('Name is required.')
-        const r = await fetch('/daz/prompt-stack-duplicate', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            label: sw.value, new_name: newName,
-            duplicate_mode: 'current_sequence', sequence: node._dazSeqRaw,
-          }),
-        })
-        const result = await r.json()
-        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-        await refreshAfterStackChange(node, result.label, result.sequence)
-      })
-    }
+      if (!sw || sw.value === '(no prompt stacks)' || !node._dazStackName) return
 
-    function doDeleteStack(node) {
-      const sw = node.widgets?.find(w => w.name === 'stack')
-      if (!sw || sw.value === '(no prompt stacks)') return
-      confirmModal(
-        `Delete stack "${node._dazStackName || sw.value}" and all its sequences? This cannot be undone.`,
-        'Delete',
-        async () => {
-          const r = await fetch('/daz/prompt-stack-delete', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ label: sw.value, delete_mode: 'stack' }),
+      let workingPrompts = clonePrompts(node._dazPrompts)
+      let seqNameVal      = node._dazSeqName || ''
+      let stackNameVal    = node._dazStackName || ''
+      let classVal        = node._dazStackClass || ''
+
+      const { box, close } = overlayShell(440)
+
+      function render() {
+        const rowsHtml = workingPrompts.map((p, i) => `
+          <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+            <span style="color:#666;font-size:10px;width:14px">${i + 1}</span>
+            <span style="flex:1;color:#ccc;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              ${esc(p.label || trunc(p.positive_prompt?.text || '', 30) || '(empty)')}
+            </span>
+            ${mkBtn(`es-edit-${i}`, 'Edit', '#555', '#333', '#ccc')}
+            ${mkBtn(`es-del-${i}`, '✕', '#663333', '#3a1e1e', '#e88')}
+          </div>`).join('')
+
+        box.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 10px">Edit Sequence</p>
+
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <div style="flex:1">
+              <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Stack name</label>
+              <input id="es-stack-name" type="text" value="${esc(stackNameVal)}"
+                style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
+                       border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px">
+            </div>
+            <div style="flex:1">
+              <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Class</label>
+              <input id="es-class" type="text" value="${esc(classVal)}"
+                style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
+                       border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px">
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:12px">
+            ${mkBtn('es-dup-stack', 'Duplicate Stack', '#555', '#333', '#ccc')}
+            ${mkBtn('es-del-stack', 'Delete Stack', '#663333', '#3a1e1e', '#e88')}
+          </div>
+
+          <div style="border-top:1px solid #444;margin:0 0 10px"></div>
+
+          <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Sequence name</label>
+          <input id="es-seq-name" type="text" value="${esc(seqNameVal)}"
+            style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
+                   border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:8px">
+          <div style="display:flex;gap:6px;margin-bottom:12px">
+            ${mkBtn('es-new-seq', 'New Sequence', '#555', '#333', '#ccc')}
+            ${mkBtn('es-del-seq', 'Delete Sequence', '#663333', '#3a1e1e', '#e88')}
+          </div>
+
+          <div style="border-top:1px solid #444;border-bottom:1px solid #444;padding:4px 0;margin-bottom:8px">
+            ${rowsHtml || '<p style="padding:6px 0;color:#666;font-size:11px">No prompts yet.</p>'}
+          </div>
+          <div style="margin-bottom:14px">
+            ${mkBtn('es-add', '+ Prompt', '#3a5a7a', '#1e2e4a', '#9cf', workingPrompts.length >= MAX_PROMPTS)}
+          </div>
+
+          <p id="es-error" style="font-size:11px;color:#f88;margin:0 0 8px;display:none"></p>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            ${mkBtn('es-cancel', 'Cancel', '#666', '#444', '#ccc')}
+            ${mkBtn('es-save', 'Save', '#3a7a3a', '#1e4a1e', '#9f9')}
+          </div>`
+
+        box.querySelector('#es-stack-name').addEventListener('change', e => { stackNameVal = e.target.value })
+        box.querySelector('#es-class').addEventListener('change', e => { classVal = e.target.value })
+        box.querySelector('#es-seq-name').addEventListener('change', e => { seqNameVal = e.target.value })
+
+        workingPrompts.forEach((_, i) => {
+          box.querySelector(`#es-edit-${i}`)?.addEventListener('click', () => {
+            openRowEditor(workingPrompts[i], (updated) => {
+              workingPrompts[i] = updated
+              render()
+            })
           })
-          const result = await r.json()
-          if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-          await refreshAfterStackChange(node, null, null)
-        },
-      )
-    }
-
-    function doNewSequence(node) {
-      const sw = node.widgets?.find(w => w.name === 'stack')
-      if (!sw || sw.value === '(no prompt stacks)') return
-      smallFormModal('New Sequence', [
-        { id: 'name', label: 'Sequence name', placeholder: 'e.g. v2' },
-      ], 'Create', async (values) => {
-        const r = await fetch('/daz/prompt-stack-save', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            label: sw.value, sequence_name: values.name.trim(),
-            prompts: node._dazPrompts || [], save_mode: 'new_sequence',
-          }),
-        })
-        const result = await r.json()
-        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-        await reloadSequenceWidget(node, sw.value, result.sequence)
-        await loadDetail(node, sw.value, node._dazSeqWidget?.value)
-      })
-    }
-
-    function doDeleteSequence(node) {
-      const sw = node.widgets?.find(w => w.name === 'stack')
-      if (!sw || sw.value === '(no prompt stacks)') return
-      confirmModal(
-        `Delete sequence "${node._dazSeqName || node._dazSeqRaw}"? This cannot be undone.`,
-        'Delete',
-        async () => {
-          const r = await fetch('/daz/prompt-stack-delete', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ label: sw.value, sequence: node._dazSeqRaw, delete_mode: 'sequence' }),
+          box.querySelector(`#es-del-${i}`)?.addEventListener('click', () => {
+            workingPrompts.splice(i, 1)
+            render()
           })
-          const result = await r.json()
-          if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-          if (result.stack_deleted) {
-            await refreshAfterStackChange(node, null, null)
-          } else {
-            await reloadSequenceWidget(node, sw.value)
+        })
+        box.querySelector('#es-add')?.addEventListener('click', () => {
+          if (workingPrompts.length >= MAX_PROMPTS) return
+          workingPrompts.push(emptyPrompt())
+          render()
+        })
+
+        box.querySelector('#es-dup-stack')?.addEventListener('click', () => {
+          smallFormModal('Duplicate Stack', [
+            { id: 'name', label: 'New stack name' },
+          ], 'Duplicate', async (values) => {
+            const newName = values.name.trim()
+            if (!newName) throw new Error('Name is required.')
+            const r = await fetch('/daz/prompt-stack-duplicate', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                label: sw.value, new_name: newName,
+                duplicate_mode: 'current_sequence', sequence: node._dazSeqRaw,
+              }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            close()
+            await refreshAfterStackChange(node, result.label, result.sequence)
+          })
+        })
+
+        box.querySelector('#es-del-stack')?.addEventListener('click', () => {
+          confirmModal(
+            `Delete stack "${stackNameVal}" and all its sequences? This cannot be undone.`,
+            'Delete',
+            async () => {
+              const r = await fetch('/daz/prompt-stack-delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label: sw.value, delete_mode: 'stack' }),
+              })
+              const result = await r.json()
+              if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+              close()
+              await refreshAfterStackChange(node, null, null)
+            },
+          )
+        })
+
+        box.querySelector('#es-new-seq')?.addEventListener('click', () => {
+          smallFormModal('New Sequence', [
+            { id: 'name', label: 'Sequence name', placeholder: 'e.g. v2' },
+          ], 'Create', async (values) => {
+            const r = await fetch('/daz/prompt-stack-save', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                label: sw.value, sequence_name: values.name.trim(),
+                prompts: workingPrompts, save_mode: 'new_sequence',
+              }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            close()
+            await reloadSequenceWidget(node, sw.value, result.sequence)
             await loadDetail(node, sw.value, node._dazSeqWidget?.value)
-          }
-        },
-      )
-    }
-
-    async function doSaveSequence(node) {
-      const sw = node.widgets?.find(w => w.name === 'stack')
-      if (!sw || sw.value === '(no prompt stacks)') return
-      try {
-        const r = await fetch('/daz/prompt-stack-save', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            label: sw.value, sequence: node._dazSeqRaw, sequence_name: node._dazSeqName,
-            prompts: node._dazPrompts || [], save_mode: 'current',
-            fps: node._dazFpsWidget?.value, frame_count: node._dazFrameCountWidget?.value,
-          }),
+          })
         })
-        const result = await r.json()
-        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-        await refreshAfterStackChange(node, result.label, result.sequence)
-      } catch (e) {
-        console.warn('[DAZ TOOLS] PromptStackManager: save failed', e)
-        alert(`Save failed: ${e.message}`)
+
+        box.querySelector('#es-del-seq')?.addEventListener('click', () => {
+          confirmModal(
+            `Delete sequence "${seqNameVal || node._dazSeqRaw}"? This cannot be undone.`,
+            'Delete',
+            async () => {
+              const r = await fetch('/daz/prompt-stack-delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label: sw.value, sequence: node._dazSeqRaw, delete_mode: 'sequence' }),
+              })
+              const result = await r.json()
+              if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+              close()
+              if (result.stack_deleted) {
+                await refreshAfterStackChange(node, null, null)
+              } else {
+                await reloadSequenceWidget(node, sw.value)
+                await loadDetail(node, sw.value, node._dazSeqWidget?.value)
+              }
+            },
+          )
+        })
+
+        box.querySelector('#es-cancel')?.addEventListener('click', close)
+        box.querySelector('#es-save')?.addEventListener('click', async () => {
+          const newName = stackNameVal.trim()
+          if (!newName) {
+            const errEl = box.querySelector('#es-error')
+            errEl.textContent = 'Stack name is required.'
+            errEl.style.display = 'block'
+            return
+          }
+          try {
+            const r = await fetch('/daz/prompt-stack-save', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                label: sw.value, sequence: node._dazSeqRaw, sequence_name: seqNameVal,
+                prompts: workingPrompts, save_mode: 'current',
+                new_name: newName, class: classVal,
+                fps: node._dazFpsWidget?.value, frame_count: node._dazFrameCountWidget?.value,
+              }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            close()
+            await refreshAfterStackChange(node, result.label, result.sequence)
+          } catch (e) {
+            const errEl = box.querySelector('#es-error')
+            errEl.textContent = e.message || String(e)
+            errEl.style.display = 'block'
+          }
+        })
       }
+
+      render()
     }
 
-    // ── Panel render ────────────────────────────────────────────────────────
+    // ── Panel render (read-only display) ────────────────────────────────────
+
+    function promptPanelHtml(p, idx) {
+      const posType = VALID_PROMPT_TYPES.includes(p.positive_prompt?.type) ? p.positive_prompt.type : 'smart'
+      return `
+        <div style="padding:4px 10px 0;color:#54af7b;font-size:10px;font-weight:bold">Prompt ${idx + 1}${p.label ? ` — ${esc(p.label)}` : ''}</div>
+        <table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
+          ${row('Master',      trunc(p.master_prompt?.text || ''))}
+          ${row('Positive',    trunc(p.positive_prompt?.text || ''))}
+          ${row('Negative',    trunc(p.negative_prompt?.text || ''))}
+          ${row('Prompt Type', PROMPT_TYPE_LABELS[posType] || 'Smart')}
+        </table>`
+    }
 
     function renderPanel(node) {
       const wrap = node._dazWrap
@@ -431,89 +590,37 @@ app.registerExtension({
 
       if (!hasStack) {
         wrap.innerHTML = `
-          <div style="padding:10px;font-family:monospace;font-size:11px;color:#888;text-align:center">
+          <div style="padding:20px 10px;font-family:monospace;font-size:11px;color:#888;text-align:center">
             No prompt stack selected.<br><br>
-            ${mkBtn('ps-new-stack', '+ New Stack', '#3a7a3a', '#1e4a1e', '#9f9')}
+            ${mkBtn('ps-new-stack-empty', '+ New Prompt Stack', '#3a7a3a', '#1e4a1e', '#9f9')}
           </div>`
-        wrap.querySelector('#ps-new-stack')?.addEventListener('click', () => doCreateStack(node))
+        wrap.querySelector('#ps-new-stack-empty')?.addEventListener('click', () => doCreateStack(node))
         return
       }
 
-      const rowsHtml = prompts.map((p, i) => `
-        <div style="display:flex;align-items:center;gap:6px;padding:3px 8px">
-          <span style="color:#666;font-size:10px;width:14px">${i + 1}</span>
-          <input data-idx="${i}" class="ps-label" type="text" value="${esc(p.label || '')}" placeholder="label"
-            style="flex:1;box-sizing:border-box;background:#000;color:#ddd;border:1px solid #444;
-                   border-radius:3px;font-family:monospace;font-size:11px;padding:3px 5px">
-          ${mkBtn(`ps-edit-${i}`, 'Edit', '#555', '#333', '#ccc')}
-          ${mkBtn(`ps-del-${i}`, '✕', '#663333', '#3a1e1e', '#e88')}
-        </div>`).join('')
+      const promptsHtml = prompts.length
+        ? prompts.map((p, i) => promptPanelHtml(p, i)).join('')
+        : `<p style="padding:6px 10px;color:#666;font-size:11px">No prompts in this sequence.</p>`
 
       wrap.innerHTML = `
-        <div style="padding:0 8px 6px;font-size:10px;color:#777">
-          Class: ${esc(node._dazStackClass || '(none)')}
+        <div style="display:flex;justify-content:space-between;padding:4px 8px 6px">
+          ${mkBtn('ps-new-stack', 'New Prompt Stack', '#3a7a3a', '#1e4a1e', '#9f9')}
+          ${mkBtn('ps-edit-seq', 'Edit Sequence', '#555', '#333', '#ccc')}
         </div>
-        <div style="padding:0 8px 6px">
-          <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Sequence name</label>
-          <input id="ps-seq-name" type="text" value="${esc(node._dazSeqName || '')}"
-            style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
-                   border-radius:3px;font-family:monospace;font-size:11px;padding:3px 5px">
-        </div>
-        <div style="border-top:1px solid #444;border-bottom:1px solid #444">
-          ${rowsHtml || '<p style="padding:6px 8px;color:#666;font-size:11px">No prompts yet.</p>'}
-        </div>
-        <div style="padding:6px 8px;display:flex;gap:6px">
-          ${mkBtn('ps-add', '+ Prompt', '#3a5a7a', '#1e2e4a', '#9cf', prompts.length >= MAX_PROMPTS)}
-        </div>
-        <div style="padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid #444">
-          ${mkBtn('ps-new-stack', 'New Stack', '#555', '#333', '#ccc')}
-          ${mkBtn('ps-rename-stack', 'Rename Stack', '#555', '#333', '#ccc')}
-          ${mkBtn('ps-dup-stack', 'Duplicate Stack', '#555', '#333', '#ccc')}
-          ${mkBtn('ps-del-stack', 'Delete Stack', '#663333', '#3a1e1e', '#e88')}
-        </div>
-        <div style="padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid #444">
-          ${mkBtn('ps-new-seq', 'New Sequence', '#555', '#333', '#ccc')}
-          ${mkBtn('ps-del-seq', 'Delete Sequence', '#663333', '#3a1e1e', '#e88')}
-          ${mkBtn('ps-save', 'Save', '#3a7a3a', '#1e4a1e', '#9f9')}
-        </div>`
+        ${rowDivider()}
+        <table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
+          ${row('Class',    node._dazStackClass || '')}
+          ${row('Stack',    node._dazStackName || '')}
+          ${row('Sequence', node._dazSeqName || '')}
+          ${row('Prompts',  String(prompts.length))}
+          ${rowPair('FPS', node._dazFpsWidget?.value, 'Frame Count', node._dazFrameCountWidget?.value)}
+        </table>
+        ${rowDivider()}
+        ${promptsHtml}
+      `
 
-      wrap.querySelectorAll('.ps-label').forEach(inp => {
-        inp.addEventListener('change', () => {
-          const idx  = Number(inp.dataset.idx)
-          const list = (node._dazPrompts || []).slice()
-          if (list[idx]) list[idx] = { ...list[idx], label: inp.value }
-          node._dazPrompts = list
-          updateOutputLabels(node, node._dazPrompts)
-        })
-      })
-      prompts.forEach((_, i) => {
-        wrap.querySelector(`#ps-edit-${i}`)?.addEventListener('click', () => openRowEditor(node, i))
-        wrap.querySelector(`#ps-del-${i}`)?.addEventListener('click', () => {
-          const list = (node._dazPrompts || []).slice()
-          list.splice(i, 1)
-          node._dazPrompts = list
-          renderPanel(node)
-          updateOutputLabels(node, node._dazPrompts)
-        })
-      })
-      wrap.querySelector('#ps-seq-name')?.addEventListener('change', (e) => {
-        node._dazSeqName = e.target.value
-      })
-      wrap.querySelector('#ps-add')?.addEventListener('click', () => {
-        if ((node._dazPrompts || []).length >= MAX_PROMPTS) return
-        const list = (node._dazPrompts || []).slice()
-        list.push(emptyPrompt())
-        node._dazPrompts = list
-        renderPanel(node)
-        updateOutputLabels(node, node._dazPrompts)
-      })
       wrap.querySelector('#ps-new-stack')?.addEventListener('click', () => doCreateStack(node))
-      wrap.querySelector('#ps-rename-stack')?.addEventListener('click', () => doRenameStack(node))
-      wrap.querySelector('#ps-dup-stack')?.addEventListener('click', () => doDuplicateStack(node))
-      wrap.querySelector('#ps-del-stack')?.addEventListener('click', () => doDeleteStack(node))
-      wrap.querySelector('#ps-new-seq')?.addEventListener('click', () => doNewSequence(node))
-      wrap.querySelector('#ps-del-seq')?.addEventListener('click', () => doDeleteSequence(node))
-      wrap.querySelector('#ps-save')?.addEventListener('click', () => doSaveSequence(node))
+      wrap.querySelector('#ps-edit-seq')?.addEventListener('click', () => openEditSequenceModal(node))
     }
 
     // ── Lifecycle hooks ─────────────────────────────────────────────────────
@@ -527,12 +634,39 @@ app.registerExtension({
       this._dazSeqRaw     = '0'
       this._dazSeqName    = ''
       this._dazPrompts    = []
+      this._dazAllStacks  = []
 
       const stackWidget = this.widgets?.find(w => w.name === 'stack')
       const seqWidget   = this.widgets?.find(w => w.name === 'sequence')
       this._dazSeqWidget        = seqWidget
       this._dazFpsWidget        = this.widgets?.find(w => w.name === 'fps')
       this._dazFrameCountWidget = this.widgets?.find(w => w.name === 'frame_count')
+
+      if (stackWidget) stackWidget.label = 'Prompt Stack'
+      if (seqWidget)   seqWidget.label   = 'Prompt Sequence'
+
+      // JS-only "Class" filter widget — narrows the visible options of the
+      // real `stack` combo client-side, same pattern as the Type/Group
+      // filters in daz_workflow_config_shared.js.
+      const classFilterWidget = this.addWidget(
+        'combo', 'Class', 'All',
+        async (value) => {
+          applyClassFilter(this)
+          const sw = this.widgets?.find(w => w.name === 'stack')
+          await reloadSequenceWidget(this, sw?.value)
+          await loadDetail(this, sw?.value, this._dazSeqWidget?.value)
+        },
+        { values: CLASS_FILTER_VALUES },
+      )
+      this._dazClassFilterWidget = classFilterWidget
+      {
+        const stackIdx = this.widgets.findIndex(w => w.name === 'stack')
+        const fi = this.widgets.indexOf(classFilterWidget)
+        if (stackIdx >= 0 && fi > stackIdx) {
+          this.widgets.splice(fi, 1)
+          this.widgets.splice(stackIdx, 0, classFilterWidget)
+        }
+      }
 
       if (stackWidget) {
         const origCb = stackWidget.callback
@@ -555,6 +689,8 @@ app.registerExtension({
         `box-sizing:border-box;padding:6px 0;overflow-y:auto;overflow-x:hidden;width:100%;height:${PANEL_H}px`
       this._dazWrap = wrap
 
+      this.addWidget('button', 'Reload Prompts', null, () => reloadPrompts(this))
+
       this.addDOMWidget('promptStackPanel', 'html', wrap, {
         getValue:     () => '',
         setValue:     () => {},
@@ -562,19 +698,13 @@ app.registerExtension({
         hideOnZoom:   false,
       })
 
-      this.addWidget('button', '↺  Reload Stacks', null, async () => {
-        await reloadStackWidget(this)
-        const sw = this.widgets?.find(w => w.name === 'stack')
-        await reloadSequenceWidget(this, sw?.value)
-        await loadDetail(this, sw?.value, this._dazSeqWidget?.value)
-      })
-
       this.size    = [NODE_W, NODE_H]
       this.minSize = [NODE_W, NODE_H]
 
       if (stackWidget && stackWidget.value !== '(no prompt stacks)') {
-        reloadSequenceWidget(this, stackWidget.value).then(() => {
-          loadDetail(this, stackWidget.value, this._dazSeqWidget?.value)
+        reloadStackWidget(this).then(() => {
+          const sw = this.widgets?.find(w => w.name === 'stack')
+          return reloadSequenceWidget(this, sw?.value).then(() => loadDetail(this, sw?.value, this._dazSeqWidget?.value))
         })
       } else {
         renderPanel(this)

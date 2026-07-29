@@ -56,6 +56,13 @@ def _get_int(val, default: int = 0) -> int:
         return default
 
 
+def _get_float(val, default: float = 0.0) -> float:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 # ── Core file I/O ────────────────────────────────────────────────────────────
 
 def _load_file(path: str = STACKS_FILE) -> tuple[dict, dict, int]:
@@ -204,7 +211,11 @@ try:
 
     @PromptServer.instance.routes.get("/daz/prompt-stack-list")
     async def _daz_prompt_stack_list(request):
-        return web.json_response(stack_labels())
+        stacks = load_stacks()
+        return web.json_response([
+            {"label": make_label(name, entry.get("created_at", "")), "class": entry.get("class", "")}
+            for name, entry in stacks.items()
+        ])
 
     @PromptServer.instance.routes.get("/daz/prompt-stack-sequences")
     async def _daz_prompt_stack_sequences(request):
@@ -247,7 +258,7 @@ try:
         return web.json_response({
             "name":         name,
             "class":        entry.get("class", ""),
-            "fps":          _get_int(entry.get("fps")),
+            "fps":          _get_float(entry.get("fps")),
             "frame_count":  _get_int(entry.get("frame_count")),
             "sequence":     str(active.get("sequence", "0")),
             "seq_name":     str(active.get("name", "")),
@@ -263,7 +274,7 @@ try:
 
         name = data.get("name", "").strip()
         cls  = data.get("class", "")
-        fps  = _get_int(data.get("fps"))
+        fps  = _get_float(data.get("fps"))
         frame_count = _get_int(data.get("frame_count"))
 
         if not name:
@@ -364,7 +375,7 @@ try:
         if new_class is not None:
             entry["class"] = str(new_class)
         if new_fps is not None:
-            entry["fps"] = _get_int(new_fps)
+            entry["fps"] = _get_float(new_fps)
         if new_frame_count is not None:
             entry["frame_count"] = _get_int(new_frame_count)
 
@@ -486,7 +497,7 @@ try:
             "class":       source_entry.get("class", ""),
             "created_at":  now,
             "updated_at":  now,
-            "fps":         _get_int(source_entry.get("fps")),
+            "fps":         _get_float(source_entry.get("fps")),
             "frame_count": _get_int(source_entry.get("frame_count")),
             "stack":       new_stack,
         }
