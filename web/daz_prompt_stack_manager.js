@@ -245,7 +245,7 @@ app.registerExtension({
         const out = node.outputs[i]
         if (!out) continue
         const p = prompts[i]
-        out.label = (p && p.label) ? p.label : `prompt_seq_${i + 1}`
+        out.label = (p && p.label) ? p.label : String(i + 1)
       }
     }
 
@@ -437,8 +437,12 @@ app.registerExtension({
             })
             const result = await r.json()
             if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            // refreshSeqList already syncs the node's real sequence widget to
+            // whatever was just saved — saving a sequence here means the user
+            // is done, so close the outer Edit Stack popup too instead of
+            // making them come back and hit its Save button separately.
             await hooks.refreshSeqList(result.sequence)
-            if (seqRaw === node._dazSeqRaw) await loadDetail(node, sw.value, node._dazSeqWidget?.value)
+            hooks.closeOuter()
           } catch (e) {
             console.warn('[DAZ TOOLS] PromptStackManager: could not save sequence', e)
             alert(e.message || String(e))
@@ -726,7 +730,13 @@ app.registerExtension({
           const result = await r.json()
           if (!r.ok || result.error) throw new Error(result.error || r.statusText)
           close()
-          await refreshAfterStackChange(node, result.label, result.sequence)
+          // The save call above always targets the node's already-active
+          // sequence (it exists only to persist stack name/class, since the
+          // backend requires a sequence+prompts pair for any "current" save)
+          // — so `result.sequence` just echoes that back. What the node
+          // should switch to is whatever sequence is picked in this modal's
+          // own dropdown.
+          await refreshAfterStackChange(node, result.label, selectedSeqRaw)
         } catch (e) {
           const errEl = panelBody.querySelector('#es-error')
           errEl.textContent = e.message || String(e)

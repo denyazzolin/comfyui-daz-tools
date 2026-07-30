@@ -542,13 +542,13 @@
     }
 
     function makeStackSelectorRow() {
-      const wrap = el('div', 'display:flex;gap:6px;padding:6px 10px 2px')
+      const wrap = el('div', 'display:flex;gap:4px;padding:6px 10px 2px')
       for (let i = 0; i < MAX_STACK_PROMPTS; i++) {
         const has = i < prompts.length
-        const col = el('div', 'display:flex;flex-direction:column;align-items:center;gap:3px')
+        const col = el('div', 'display:flex;flex-direction:column;align-items:stretch;gap:3px;flex:1;min-width:0')
         const slot = el('div', [
-          'width:40px;height:36px;display:flex;align-items:center;justify-content:center',
-          'border-radius:4px;cursor:pointer;font-family:monospace;font-size:14px;box-sizing:border-box',
+          'height:40px;display:flex;align-items:center;justify-content:center',
+          'border-radius:4px;cursor:pointer;font-family:monospace;font-size:16px;box-sizing:border-box',
           `border:${has && i === activeIdx ? '2px solid #6adf9a' : '1px solid #444'}`,
           `background:${has ? (i === activeIdx ? '#1e4a2e' : '#111') : '#181818'}`,
           `color:${has ? '#ddd' : '#555'}`,
@@ -557,14 +557,25 @@
         slot.addEventListener('click', () => { has ? selectPrompt(i) : addPrompt() })
         col.appendChild(slot)
         if (has) {
+          const labelInput = el('input',
+            'box-sizing:border-box;width:100%;background:#000;color:#ccc;border:1px solid #444;' +
+            'border-radius:3px;padding:2px 3px;font-family:monospace;font-size:9px;text-align:center')
+          labelInput.type        = 'text'
+          labelInput.placeholder = `${i + 1}`
+          labelInput.value       = prompts[i].label || ''
+          labelInput.title       = 'Prompt label (used as the output name on the node)'
+          labelInput.addEventListener('input', e => { prompts[i].label = e.target.value })
+          col.appendChild(labelInput)
+
           const del = el('button',
-            'width:40px;font-size:10px;padding:1px 0;border-radius:3px;cursor:pointer;' +
+            'width:100%;font-size:10px;padding:1px 0;border-radius:3px;cursor:pointer;' +
             'border:1px solid #803030;background:#3a1e1e;color:#f88')
           del.textContent = '-'
           del.addEventListener('click', e => { e.stopPropagation(); deletePromptBox(i) })
           col.appendChild(del)
         } else {
-          col.appendChild(el('div', 'width:40px;height:18px'))
+          col.appendChild(el('div', 'height:18px'))
+          col.appendChild(el('div', 'height:18px'))
         }
         wrap.appendChild(col)
       }
