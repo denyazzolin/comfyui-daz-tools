@@ -93,6 +93,15 @@ function rowDivider() {
   return `<div style="border-top:1px solid #555;margin:4px 8px"></div>`
 }
 
+// Round box with title — mirrors `box()` in daz_workflow_config_shared.js,
+// used by the Edit Sequence modal's "Stack details" / "Prompt Sequences" panels.
+function box(title, html) {
+  return `<fieldset style="border:1px solid #444;border-radius:4px;padding:7px 8px;margin:0;min-width:0;box-sizing:border-box">
+    <legend style="color:#888;font-size:11px;padding:0 5px;font-family:monospace">${esc(title)}</legend>
+    ${html}
+  </fieldset>`
+}
+
 function overlayShell(width) {
   const overlay = document.createElement('div')
   overlay.style.cssText =
@@ -396,11 +405,44 @@ app.registerExtension({
       let stackNameVal    = node._dazStackName || ''
       let classVal        = node._dazStackClass || ''
 
-      const { box, close } = overlayShell(440)
+      // Raw DOM overlay/panel/header/body/footer — mirrors enterEditForm's
+      // skeleton in daz_workflow_config_shared.js. Deliberately has NO
+      // backdrop-click-to-close listener: only Cancel/Save dismiss this modal.
+      const overlay = document.createElement('div')
+      overlay.style.cssText =
+        'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9999;' +
+        'display:flex;align-items:flex-start;justify-content:center;padding:16px 8px;overflow-y:auto'
+
+      const panel = document.createElement('div')
+      panel.style.cssText =
+        'background:#1a1a1a;border:1px solid #444;border-radius:6px;display:flex;' +
+        'flex-direction:column;width:420px;min-width:340px;font-family:monospace;' +
+        'flex-shrink:0;max-height:calc(100vh - 32px)'
+
+      const panelHeader = document.createElement('div')
+      panelHeader.style.cssText =
+        'padding:7px 14px;border-bottom:1px solid #333;color:#aaa;font-size:12px;flex-shrink:0'
+      panelHeader.textContent = `Edit Stack: ${stackNameVal}`
+
+      const panelBody = document.createElement('div')
+      panelBody.style.cssText =
+        'display:flex;flex-direction:column;gap:10px;padding:10px;overflow-y:auto;overflow-x:hidden;flex:1'
+
+      const panelFooter = document.createElement('div')
+      panelFooter.style.cssText =
+        'display:flex;justify-content:flex-end;gap:8px;padding:7px 12px;border-top:1px solid #333;flex-shrink:0'
+
+      panel.appendChild(panelHeader)
+      panel.appendChild(panelBody)
+      panel.appendChild(panelFooter)
+      overlay.appendChild(panel)
+      document.body.appendChild(overlay)
+
+      const close = () => overlay.remove()
 
       function render() {
         const rowsHtml = workingPrompts.map((p, i) => `
-          <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+          <div style="display:flex;align-items:center;gap:6px;padding:3px 6px;${i > 0 ? 'border-top:1px solid #222' : ''}">
             <span style="color:#666;font-size:10px;width:14px">${i + 1}</span>
             <span style="flex:1;color:#ccc;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
               ${esc(p.label || trunc(p.positive_prompt?.text || '', 30) || '(empty)')}
@@ -409,75 +451,77 @@ app.registerExtension({
             ${mkBtn(`es-del-${i}`, '✕', '#663333', '#3a1e1e', '#e88')}
           </div>`).join('')
 
-        box.innerHTML = `
-          <p style="font-size:13px;color:#ddd;margin:0 0 10px">Edit Sequence</p>
+        panelBody.innerHTML = `
+          ${box('Stack details', `
+            <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Stack name</label>
+            <input id="es-stack-name" type="text" value="${esc(stackNameVal)}"
+              style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
+                     border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:8px">
+            <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Class</label>
+            <select id="es-class"
+              style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
+                     border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:10px">
+              ${CLASS_CREATE_OPTIONS.map(o =>
+                `<option value="${esc(o.value)}"${o.value === classVal ? ' selected' : ''}>${esc(o.label)}</option>`
+              ).join('')}
+            </select>
+            <div style="display:flex;gap:6px">
+              ${mkBtn('es-dup-stack', 'Duplicate', '#555', '#333', '#ccc')}
+              ${mkBtn('es-del-stack', 'Delete', '#663333', '#3a1e1e', '#e88')}
+            </div>`)}
 
-          <div style="display:flex;gap:8px;margin-bottom:10px">
-            <div style="flex:1">
-              <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Stack name</label>
-              <input id="es-stack-name" type="text" value="${esc(stackNameVal)}"
-                style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
-                       border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px">
+          ${box('Prompt Sequences', `
+            <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Sequence name</label>
+            <input id="es-seq-name" type="text" value="${esc(seqNameVal)}"
+              style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
+                     border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:8px">
+            <div style="border-top:1px solid #444;margin:0 0 8px"></div>
+            <div id="es-prompt-list" style="height:156px;overflow-y:auto;border:1px solid #222;
+                 background:#141414;border-radius:3px;margin-bottom:8px">
+              ${rowsHtml || '<p style="padding:6px 8px;color:#666;font-size:11px">No prompts yet.</p>'}
             </div>
-            <div style="flex:1">
-              <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Class</label>
-              <input id="es-class" type="text" value="${esc(classVal)}"
-                style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
-                       border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+              ${mkBtn('es-del-all', 'Delete All', '#663333', '#3a1e1e', '#e88', workingPrompts.length === 0)}
+              ${mkBtn('es-add', '+ Prompt', '#3a5a7a', '#1e2e4a', '#9cf', workingPrompts.length >= MAX_PROMPTS)}
             </div>
-          </div>
-          <div style="display:flex;gap:6px;margin-bottom:12px">
-            ${mkBtn('es-dup-stack', 'Duplicate Stack', '#555', '#333', '#ccc')}
-            ${mkBtn('es-del-stack', 'Delete Stack', '#663333', '#3a1e1e', '#e88')}
-          </div>
+            <div style="border-top:1px solid #444;margin:0 0 8px"></div>
+            <div style="display:flex;gap:6px">
+              ${mkBtn('es-new-seq', 'New Sequence', '#555', '#333', '#ccc')}
+              ${mkBtn('es-del-seq', 'Delete Sequence', '#663333', '#3a1e1e', '#e88')}
+            </div>`)}
 
-          <div style="border-top:1px solid #444;margin:0 0 10px"></div>
+          <p id="es-error" style="font-size:11px;color:#f88;margin:0;display:none"></p>`
 
-          <label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Sequence name</label>
-          <input id="es-seq-name" type="text" value="${esc(seqNameVal)}"
-            style="box-sizing:border-box;width:100%;background:#000;color:#ddd;border:1px solid #444;
-                   border-radius:4px;font-family:monospace;font-size:11px;padding:4px 6px;margin-bottom:8px">
-          <div style="display:flex;gap:6px;margin-bottom:12px">
-            ${mkBtn('es-new-seq', 'New Sequence', '#555', '#333', '#ccc')}
-            ${mkBtn('es-del-seq', 'Delete Sequence', '#663333', '#3a1e1e', '#e88')}
-          </div>
-
-          <div style="border-top:1px solid #444;border-bottom:1px solid #444;padding:4px 0;margin-bottom:8px">
-            ${rowsHtml || '<p style="padding:6px 0;color:#666;font-size:11px">No prompts yet.</p>'}
-          </div>
-          <div style="margin-bottom:14px">
-            ${mkBtn('es-add', '+ Prompt', '#3a5a7a', '#1e2e4a', '#9cf', workingPrompts.length >= MAX_PROMPTS)}
-          </div>
-
-          <p id="es-error" style="font-size:11px;color:#f88;margin:0 0 8px;display:none"></p>
-          <div style="display:flex;justify-content:flex-end;gap:8px">
-            ${mkBtn('es-cancel', 'Cancel', '#666', '#444', '#ccc')}
-            ${mkBtn('es-save', 'Save', '#3a7a3a', '#1e4a1e', '#9f9')}
-          </div>`
-
-        box.querySelector('#es-stack-name').addEventListener('change', e => { stackNameVal = e.target.value })
-        box.querySelector('#es-class').addEventListener('change', e => { classVal = e.target.value })
-        box.querySelector('#es-seq-name').addEventListener('change', e => { seqNameVal = e.target.value })
+        panelBody.querySelector('#es-stack-name').addEventListener('change', e => { stackNameVal = e.target.value })
+        panelBody.querySelector('#es-class').addEventListener('change', e => { classVal = e.target.value })
+        panelBody.querySelector('#es-seq-name').addEventListener('change', e => { seqNameVal = e.target.value })
 
         workingPrompts.forEach((_, i) => {
-          box.querySelector(`#es-edit-${i}`)?.addEventListener('click', () => {
+          panelBody.querySelector(`#es-edit-${i}`)?.addEventListener('click', () => {
             openRowEditor(workingPrompts[i], (updated) => {
               workingPrompts[i] = updated
               render()
             })
           })
-          box.querySelector(`#es-del-${i}`)?.addEventListener('click', () => {
+          panelBody.querySelector(`#es-del-${i}`)?.addEventListener('click', () => {
             workingPrompts.splice(i, 1)
             render()
           })
         })
-        box.querySelector('#es-add')?.addEventListener('click', () => {
+        panelBody.querySelector('#es-add')?.addEventListener('click', () => {
           if (workingPrompts.length >= MAX_PROMPTS) return
           workingPrompts.push(emptyPrompt())
           render()
         })
+        panelBody.querySelector('#es-del-all')?.addEventListener('click', () => {
+          if (workingPrompts.length === 0) return
+          confirmModal('Delete all prompts in this sequence? This cannot be undone.', 'Delete All', async () => {
+            workingPrompts = []
+            render()
+          })
+        })
 
-        box.querySelector('#es-dup-stack')?.addEventListener('click', () => {
+        panelBody.querySelector('#es-dup-stack')?.addEventListener('click', () => {
           smallFormModal('Duplicate Stack', [
             { id: 'name', label: 'New stack name' },
           ], 'Duplicate', async (values) => {
@@ -497,7 +541,7 @@ app.registerExtension({
           })
         })
 
-        box.querySelector('#es-del-stack')?.addEventListener('click', () => {
+        panelBody.querySelector('#es-del-stack')?.addEventListener('click', () => {
           confirmModal(
             `Delete stack "${stackNameVal}" and all its sequences? This cannot be undone.`,
             'Delete',
@@ -514,7 +558,7 @@ app.registerExtension({
           )
         })
 
-        box.querySelector('#es-new-seq')?.addEventListener('click', () => {
+        panelBody.querySelector('#es-new-seq')?.addEventListener('click', () => {
           smallFormModal('New Sequence', [
             { id: 'name', label: 'Sequence name', placeholder: 'e.g. v2' },
           ], 'Create', async (values) => {
@@ -533,7 +577,7 @@ app.registerExtension({
           })
         })
 
-        box.querySelector('#es-del-seq')?.addEventListener('click', () => {
+        panelBody.querySelector('#es-del-seq')?.addEventListener('click', () => {
           confirmModal(
             `Delete sequence "${seqNameVal || node._dazSeqRaw}"? This cannot be undone.`,
             'Delete',
@@ -554,39 +598,43 @@ app.registerExtension({
             },
           )
         })
-
-        box.querySelector('#es-cancel')?.addEventListener('click', close)
-        box.querySelector('#es-save')?.addEventListener('click', async () => {
-          const newName = stackNameVal.trim()
-          if (!newName) {
-            const errEl = box.querySelector('#es-error')
-            errEl.textContent = 'Stack name is required.'
-            errEl.style.display = 'block'
-            return
-          }
-          try {
-            const r = await fetch('/daz/prompt-stack-save', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                label: sw.value, sequence: node._dazSeqRaw, sequence_name: seqNameVal,
-                prompts: workingPrompts, save_mode: 'current',
-                new_name: newName, class: classVal,
-                fps: node._dazFpsWidget?.value, frame_count: node._dazFrameCountWidget?.value,
-              }),
-            })
-            const result = await r.json()
-            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-            close()
-            await refreshAfterStackChange(node, result.label, result.sequence)
-          } catch (e) {
-            const errEl = box.querySelector('#es-error')
-            errEl.textContent = e.message || String(e)
-            errEl.style.display = 'block'
-          }
-        })
       }
 
       render()
+
+      panelFooter.innerHTML = `
+        ${mkBtn('es-cancel', 'Cancel', '#666', '#444', '#ccc')}
+        ${mkBtn('es-save', 'Save', '#3a7a3a', '#1e4a1e', '#9f9')}`
+
+      panelFooter.querySelector('#es-cancel').addEventListener('click', close)
+      panelFooter.querySelector('#es-save').addEventListener('click', async () => {
+        const newName = stackNameVal.trim()
+        if (!newName) {
+          const errEl = panelBody.querySelector('#es-error')
+          errEl.textContent = 'Stack name is required.'
+          errEl.style.display = 'block'
+          return
+        }
+        try {
+          const r = await fetch('/daz/prompt-stack-save', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              label: sw.value, sequence: node._dazSeqRaw, sequence_name: seqNameVal,
+              prompts: workingPrompts, save_mode: 'current',
+              new_name: newName, class: classVal,
+              fps: node._dazFpsWidget?.value, frame_count: node._dazFrameCountWidget?.value,
+            }),
+          })
+          const result = await r.json()
+          if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+          close()
+          await refreshAfterStackChange(node, result.label, result.sequence)
+        } catch (e) {
+          const errEl = panelBody.querySelector('#es-error')
+          errEl.textContent = e.message || String(e)
+          errEl.style.display = 'block'
+        }
+      })
     }
 
     // ── Panel render (read-only display) ────────────────────────────────────
