@@ -8,6 +8,7 @@
 import { app } from '../../scripts/app.js'
 
 const MAX_PROMPTS = 10
+const MAX_SEQUENCES = 10 // sequences per stack, capped to match MAX_PROMPTS
 const PANEL_H = 360
 const NODE_W  = 340
 const NODE_H  = 520
@@ -265,13 +266,19 @@ app.registerExtension({
         const r = await fetch(url)
         const data = await r.json()
         if (!r.ok || data.error) throw new Error(data.error || r.statusText)
+        // Only sync fps/frame_count from the stored stack when actually
+        // switching to a different stack — otherwise this would stomp a
+        // value the user just typed into the node before it's been saved.
+        const stackChanged  = node._dazStackName !== data.name
         node._dazStackName  = data.name
         node._dazStackClass = data.class || ''
         node._dazSeqRaw     = data.sequence || '0'
         node._dazSeqName    = data.seq_name || ''
         node._dazPrompts    = (data.prompts || []).slice(0, MAX_PROMPTS)
-        if (node._dazFpsWidget)         node._dazFpsWidget.value = data.fps ?? 0
-        if (node._dazFrameCountWidget)  node._dazFrameCountWidget.value = data.frame_count ?? 0
+        if (stackChanged) {
+          if (node._dazFpsWidget)        node._dazFpsWidget.value = data.fps ?? 0
+          if (node._dazFrameCountWidget) node._dazFrameCountWidget.value = data.frame_count ?? 0
+        }
         renderPanel(node)
         updateOutputLabels(node, node._dazPrompts)
       } catch (e) {
@@ -284,6 +291,29 @@ app.registerExtension({
       await reloadStackWidget(node)
       await reloadSequenceWidget(node, sw?.value)
       await loadDetail(node, sw?.value, node._dazSeqWidget?.value)
+    }
+
+    // Persists the node's live fps/frame_count widget values into the
+    // currently-loaded stack entry. Called whenever either widget changes,
+    // since those inputs aren't otherwise saved anywhere on their own.
+    async function saveFrameSettings(node) {
+      const sw = node.widgets?.find(w => w.name === 'stack')
+      if (!sw || sw.value === '(no prompt stacks)' || !node._dazStackName) return
+      try {
+        const r = await fetch('/daz/prompt-stack-save', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            label: sw.value, sequence: node._dazSeqRaw,
+            sequence_name: node._dazSeqName, prompts: node._dazPrompts,
+            save_mode: 'current',
+            fps: node._dazFpsWidget?.value, frame_count: node._dazFrameCountWidget?.value,
+          }),
+        })
+        const result = await r.json()
+        if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+      } catch (e) {
+        console.warn('[DAZ TOOLS] PromptStackManager: could not save fps/frame_count', e)
+      }
     }
 
     async function refreshAfterStackChange(node, selectLabel, selectSeqRaw) {
@@ -309,7 +339,10 @@ app.registerExtension({
         if (!name) throw new Error('Name is required.')
         const r = await fetch('/daz/prompt-stack-create', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, class: values.class || '' }),
+          body: JSON.stringify({
+            name, class: values.class || '',
+            fps: node._dazFpsWidget?.value, frame_count: node._dazFrameCountWidget?.value,
+          }),
         })
         const result = await r.json()
         if (!r.ok || result.error) throw new Error(result.error || r.statusText)
@@ -338,6 +371,9 @@ app.registerExtension({
           frameCount:   { value: seqDetail.frame_count ?? 0 },
 
           onNewSequence: async () => {
+            if (hooks.getSeqCount() >= MAX_SEQUENCES) {
+              throw new Error(`A prompt stack can have at most ${MAX_SEQUENCES} sequences.`)
+            }
             const r = await fetch('/daz/prompt-stack-save', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -460,6 +496,26 @@ app.registerExtension({
         render()
       }
 
+      // Fetches one sequence's detail and opens it in the shared prompt
+      // editor (stack mode) — used by Edit/New/Duplicate Sequence so all
+      // three land the user directly in the editor for that sequence.
+      async function openSequenceInEditor(seqRawToOpen) {
+        await refreshSeqList(seqRawToOpen)
+        try {
+          const url = `/daz/prompt-stack-detail?label=${encodeURIComponent(sw.value)}` +
+            `&sequence=${encodeURIComponent(seqRawToOpen)}`
+          const r = await fetch(url)
+          const data = await r.json()
+          if (!r.ok || data.error) throw new Error(data.error || r.statusText)
+          openStackPromptEditor(node, sw, data, {
+            refreshSeqList, closeOuter: close, getSeqCount: () => seqList.length,
+          })
+        } catch (e) {
+          const errEl = panelBody.querySelector('#es-error')
+          if (errEl) { errEl.textContent = e.message || String(e); errEl.style.display = 'block' }
+        }
+      }
+
       function render() {
         panelBody.innerHTML = `
           ${box('Stack details', `
@@ -497,7 +553,8 @@ app.registerExtension({
             </div>
             <div style="border-top:1px solid #444;margin:0 0 8px"></div>
             <div style="display:flex;gap:6px">
-              ${mkBtn('es-new-seq', 'New Sequence', '#555', '#333', '#ccc')}
+              ${mkBtn('es-new-seq', 'New Sequence', '#555', '#333', '#ccc', seqList.length >= MAX_SEQUENCES)}
+              ${mkBtn('es-dup-seq', 'Duplicate Sequence', '#555', '#333', '#ccc', seqList.length === 0 || seqList.length >= MAX_SEQUENCES)}
               ${mkBtn('es-del-seq', 'Delete Sequence', '#663333', '#3a1e1e', '#e88', seqList.length === 0)}
             </div>`)}
 
@@ -507,19 +564,8 @@ app.registerExtension({
         panelBody.querySelector('#es-class').addEventListener('change', e => { classVal = e.target.value })
         panelBody.querySelector('#es-seq-select')?.addEventListener('change', e => { selectedSeqRaw = e.target.value })
 
-        panelBody.querySelector('#es-edit-seq')?.addEventListener('click', async () => {
-          const errEl = panelBody.querySelector('#es-error')
-          try {
-            const url = `/daz/prompt-stack-detail?label=${encodeURIComponent(sw.value)}` +
-              `&sequence=${encodeURIComponent(selectedSeqRaw)}`
-            const r = await fetch(url)
-            const data = await r.json()
-            if (!r.ok || data.error) throw new Error(data.error || r.statusText)
-            openStackPromptEditor(node, sw, data, { refreshSeqList, closeOuter: close })
-          } catch (e) {
-            errEl.textContent = e.message || String(e)
-            errEl.style.display = 'block'
-          }
+        panelBody.querySelector('#es-edit-seq')?.addEventListener('click', () => {
+          openSequenceInEditor(selectedSeqRaw)
         })
 
         panelBody.querySelector('#es-dup-stack')?.addEventListener('click', () => {
@@ -563,6 +609,9 @@ app.registerExtension({
           smallFormModal('New Sequence', [
             { id: 'name', label: 'Sequence name', placeholder: 'e.g. v2' },
           ], 'Create', async (values) => {
+            if (seqList.length >= MAX_SEQUENCES) {
+              throw new Error(`A prompt stack can have at most ${MAX_SEQUENCES} sequences.`)
+            }
             const r = await fetch('/daz/prompt-stack-save', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -572,9 +621,32 @@ app.registerExtension({
             })
             const result = await r.json()
             if (!r.ok || result.error) throw new Error(result.error || r.statusText)
-            close()
-            await reloadSequenceWidget(node, sw.value, result.sequence)
-            await loadDetail(node, sw.value, node._dazSeqWidget?.value)
+            await openSequenceInEditor(result.sequence)
+          })
+        })
+
+        panelBody.querySelector('#es-dup-seq')?.addEventListener('click', () => {
+          if (!selectedSeqRaw) return
+          smallFormModal('Duplicate Sequence', [
+            { id: 'name', label: 'New sequence name' },
+          ], 'Duplicate', async (values) => {
+            if (seqList.length >= MAX_SEQUENCES) {
+              throw new Error(`A prompt stack can have at most ${MAX_SEQUENCES} sequences.`)
+            }
+            const dr = await fetch(`/daz/prompt-stack-detail?label=${encodeURIComponent(sw.value)}` +
+              `&sequence=${encodeURIComponent(selectedSeqRaw)}`)
+            const detail = await dr.json()
+            if (!dr.ok || detail.error) throw new Error(detail.error || dr.statusText)
+            const r = await fetch('/daz/prompt-stack-save', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                label: sw.value, sequence_name: values.name.trim(),
+                prompts: detail.prompts || [], save_mode: 'new_sequence',
+              }),
+            })
+            const result = await r.json()
+            if (!r.ok || result.error) throw new Error(result.error || r.statusText)
+            await openSequenceInEditor(result.sequence)
           })
         })
 
@@ -755,6 +827,20 @@ app.registerExtension({
         seqWidget.callback = async (value) => {
           origCb?.call(this, value)
           await loadDetail(this, stackWidget?.value, value)
+        }
+      }
+      if (this._dazFpsWidget) {
+        const origCb = this._dazFpsWidget.callback
+        this._dazFpsWidget.callback = async (value) => {
+          origCb?.call(this, value)
+          await saveFrameSettings(this)
+        }
+      }
+      if (this._dazFrameCountWidget) {
+        const origCb = this._dazFrameCountWidget.callback
+        this._dazFrameCountWidget.callback = async (value) => {
+          origCb?.call(this, value)
+          await saveFrameSettings(this)
         }
       }
 
