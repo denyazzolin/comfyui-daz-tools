@@ -451,6 +451,49 @@ app.registerExtension({
       })
     }
 
+    // Opens the shared prompt editor directly for the node's currently
+    // active sequence — used by the main panel's "Edit Sequence" button so
+    // editing the active sequence no longer requires going through the
+    // "Edit Stack" popup first. Mirrors the hooks openSequenceInEditor
+    // builds for that popup, minus anything tied to its own DOM/dropdown.
+    async function openSequenceEditorDirect(node) {
+      const sw = node.widgets?.find(w => w.name === 'stack')
+      if (!sw || sw.value === '(no prompt stacks)' || !node._dazStackName) return
+
+      let seqCount = 0
+      async function refreshCount(selectRaw) {
+        try {
+          const r = await fetch(`/daz/prompt-stack-sequences?label=${encodeURIComponent(sw.value)}`)
+          const seqs = r.ok ? await r.json() : []
+          seqCount = seqs.length
+        } catch (e) {
+          console.warn('[DAZ TOOLS] PromptStackManager: could not reload sequence count', e)
+        }
+        if (selectRaw != null) {
+          await reloadSequenceWidget(node, sw.value, selectRaw)
+          await loadDetail(node, sw.value, node._dazSeqWidget?.value)
+        }
+      }
+
+      await refreshCount()
+      const seqRawToOpen = node._dazSeqRaw || '0'
+      try {
+        const url = `/daz/prompt-stack-detail?label=${encodeURIComponent(sw.value)}` +
+          `&sequence=${encodeURIComponent(seqRawToOpen)}`
+        const r = await fetch(url)
+        const data = await r.json()
+        if (!r.ok || data.error) throw new Error(data.error || r.statusText)
+        openStackPromptEditor(node, sw, data, {
+          refreshSeqList: refreshCount,
+          closeOuter:     () => {},
+          getSeqCount:    () => seqCount,
+        })
+      } catch (e) {
+        console.warn('[DAZ TOOLS] PromptStackManager: could not open sequence editor', e)
+        alert(e.message || String(e))
+      }
+    }
+
     // ── Edit Sequence modal ─────────────────────────────────────────────────
 
     function openEditSequenceModal(node) {
@@ -780,8 +823,9 @@ app.registerExtension({
         : `<p style="padding:6px 10px;color:#666;font-size:11px">No prompts in this sequence.</p>`
 
       wrap.innerHTML = `
-        <div style="display:flex;justify-content:space-between;padding:4px 8px 6px">
+        <div style="display:flex;justify-content:space-between;gap:6px;padding:4px 8px 6px">
           ${mkBtn('ps-new-stack', 'New Prompt Stack', '#3a7a3a', '#1e4a1e', '#9f9')}
+          ${mkBtn('ps-edit-stack', 'Edit Stack', '#555', '#333', '#ccc')}
           ${mkBtn('ps-edit-seq', 'Edit Sequence', '#555', '#333', '#ccc')}
         </div>
         ${rowDivider()}
@@ -797,7 +841,8 @@ app.registerExtension({
       `
 
       wrap.querySelector('#ps-new-stack')?.addEventListener('click', () => doCreateStack(node))
-      wrap.querySelector('#ps-edit-seq')?.addEventListener('click', () => openEditSequenceModal(node))
+      wrap.querySelector('#ps-edit-stack')?.addEventListener('click', () => openEditSequenceModal(node))
+      wrap.querySelector('#ps-edit-seq')?.addEventListener('click', () => openSequenceEditorDirect(node))
     }
 
     // ── Lifecycle hooks ─────────────────────────────────────────────────────
