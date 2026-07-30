@@ -414,7 +414,12 @@ app.registerExtension({
               await refreshAfterStackChange(node, null, null)
             } else {
               await hooks.refreshSeqList()
-              if (seqRaw === node._dazSeqRaw) await loadDetail(node, sw.value, node._dazSeqWidget?.value)
+              // Always resync (not just when the deleted sequence matched
+              // the node's active one) — the real widget's option list just
+              // changed and, if it was pointing at the now-deleted sequence,
+              // it needs to fall back to a valid one rather than sit stale.
+              await reloadSequenceWidget(node, sw.value)
+              await loadDetail(node, sw.value, node._dazSeqWidget?.value)
             }
           },
         },
@@ -500,6 +505,16 @@ app.registerExtension({
           selectedSeqRaw = seqList.length ? String(seqList[seqList.length - 1].sequence) : '0'
         }
         render()
+        // This modal's own dropdown is otherwise fully decoupled from the
+        // node's real `sequence` widget (the one actually serialized for
+        // graph execution) — whenever a sequence is explicitly selected here
+        // (edited/created/duplicated), keep that widget pointed at it too,
+        // or the executed graph silently keeps using whatever sequence was
+        // active before this modal was opened.
+        if (selectRaw != null) {
+          await reloadSequenceWidget(node, sw.value, selectedSeqRaw)
+          await loadDetail(node, sw.value, node._dazSeqWidget?.value)
+        }
       }
 
       // Fetches one sequence's detail and opens it in the shared prompt
