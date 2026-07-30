@@ -363,12 +363,18 @@ app.registerExtension({
       // sequence is currently loaded in the editor, not the one it opened on.
       let seqRaw = String(seqDetail.sequence)
 
+      // fps/frame_count are entry-level (stack-wide) node inputs, not stored
+      // sequence data — the live widget always wins over whatever's on file,
+      // so the editor is fed straight from the node, not from seqDetail.
+      const liveFps        = () => node._dazFpsWidget?.value        ?? seqDetail.fps ?? 0
+      const liveFrameCount = () => node._dazFrameCountWidget?.value ?? seqDetail.frame_count ?? 0
+
       window.DazPromptEditor.open({
         stackMode: {
           sequenceName: seqDetail.seq_name || '',
           prompts:      seqDetail.prompts || [],
-          fps:          { value: seqDetail.fps ?? 0 },
-          frameCount:   { value: seqDetail.frame_count ?? 0 },
+          fps:          { value: liveFps() },
+          frameCount:   { value: liveFrameCount() },
 
           onNewSequence: async () => {
             if (hooks.getSeqCount() >= MAX_SEQUENCES) {
@@ -392,7 +398,7 @@ app.registerExtension({
             await hooks.refreshSeqList(result.sequence)
             return {
               sequenceName: d.seq_name || '', prompts: d.prompts || [],
-              fps: { value: d.fps ?? 0 }, frameCount: { value: d.frame_count ?? 0 },
+              fps: { value: liveFps() }, frameCount: { value: liveFrameCount() },
             }
           },
 
@@ -421,7 +427,7 @@ app.registerExtension({
                 label: sw.value, sequence: seqRaw,
                 sequence_name: updates.sequence_name, prompts: updates.prompts,
                 save_mode: 'current',
-                fps: updates.fps?.value, frame_count: updates.frame_count?.value,
+                fps: liveFps(), frame_count: liveFrameCount(),
               }),
             })
             const result = await r.json()
