@@ -25,6 +25,9 @@
     '#5c1e1e','#1e5c5c','#6a6a1e','#4a2a1e',
   ]
 
+  // Max prompt slots in stack mode — mirrors PromptStackManager's MAX_PROMPTS.
+  const MAX_STACK_PROMPTS = 10
+
   // ── HTML helpers ──────────────────────────────────────────────────────────
 
   function esc(s) {
@@ -253,7 +256,7 @@
 
   // ── Main open ─────────────────────────────────────────────────────────────
 
-  function open({ detail, onSave, defaultNegativePrompt = '' }) {
+  function open({ detail, onSave, defaultNegativePrompt = '', stackMode = null }) {
     if (_overlay) _overlay.remove()
 
     const fText     = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
@@ -261,16 +264,46 @@
     const fPosition = v => (v && typeof v === 'object' && (v.position === 'before' || v.position === 'after'))
                              ? v.position : 'before'
 
-    let totalFrames    = Math.max(1, fValue(detail.total_frames))
-    let fps            = fValue(detail.fps)
-    let masterText     = fText(detail.master_prompt)
-    let masterPosition = fPosition(detail.master_prompt)
-    let negText        = fText(detail.negative_prompt)
-    let promptType  = (detail.positive_prompt && typeof detail.positive_prompt === 'object')
-                        ? (detail.positive_prompt.type || 'smart') : 'smart'
-    if (!VALID_PROMPT_TYPES.has(promptType)) promptType = 'smart'
-    let segments    = parseSegments(fText(detail.positive_prompt), promptType, totalFrames, fps)
-    let selIdx      = 0
+    function normalizeStackPrompt(p) {
+      return {
+        label:           p?.label || '',
+        master_prompt:   { ...(p?.master_prompt   || {}) },
+        positive_prompt: { ...(p?.positive_prompt || {}) },
+        negative_prompt: { ...(p?.negative_prompt || {}) },
+      }
+    }
+    const emptyStackPrompt = () => normalizeStackPrompt(null)
+
+    let prompts      = null
+    let activeIdx    = 0
+    let sequenceName = ''
+    let totalFrames, fps
+
+    if (stackMode) {
+      totalFrames  = Math.max(1, fValue(stackMode.frameCount))
+      fps          = fValue(stackMode.fps)
+      prompts      = (stackMode.prompts || []).map(normalizeStackPrompt)
+      if (!prompts.length) prompts.push(emptyStackPrompt())
+      sequenceName = stackMode.sequenceName || ''
+    } else {
+      totalFrames  = Math.max(1, fValue(detail.total_frames))
+      fps          = fValue(detail.fps)
+    }
+
+    let masterText, masterPosition, negText, promptType, segments
+
+    function loadActivePromptFields() {
+      const src = stackMode ? prompts[activeIdx] : detail
+      masterText     = fText(src.master_prompt)
+      masterPosition = fPosition(src.master_prompt)
+      negText        = fText(src.negative_prompt)
+      promptType     = (src.positive_prompt && typeof src.positive_prompt === 'object')
+                          ? (src.positive_prompt.type || 'smart') : 'smart'
+      if (!VALID_PROMPT_TYPES.has(promptType)) promptType = 'smart'
+      segments       = parseSegments(fText(src.positive_prompt), promptType, totalFrames, fps)
+    }
+    loadActivePromptFields()
+    let selIdx = 0
 
     // ── Overlay / panel ───────────────────────────────────────────────────
 
@@ -281,7 +314,7 @@
 
     const panel = el('div',
       'background:#1a1a1a;border:1px solid #444;border-radius:6px;' +
-      'width:640px;max-height:97vh;overflow-y:auto;overflow-x:hidden;' +
+      `width:${stackMode ? 680 : 640}px;max-height:97vh;overflow-y:auto;overflow-x:hidden;` +
       'font-family:monospace;font-size:12px;color:#ddd;' +
       'display:flex;flex-direction:column')
 
@@ -420,6 +453,27 @@
       if (old) old.replaceWith(makeSegBar())
     }
 
+    function infoPopup(message) {
+      const ov  = el('div',
+        'position:fixed;top:0;left:0;right:0;bottom:0;' +
+        'background:rgba(0,0,0,0.6);z-index:10001;' +
+        'display:flex;align-items:center;justify-content:center')
+      const box = el('div',
+        'background:#252525;border:1px solid #555;border-radius:6px;' +
+        'padding:20px 24px;font-family:monospace;font-size:12px;color:#ddd;' +
+        'display:flex;flex-direction:column;gap:16px;max-width:300px;text-align:center')
+      const msgDiv = el('div', null)
+      msgDiv.textContent = message
+      const btnRow = el('div', 'display:flex;justify-content:center')
+      btnRow.innerHTML = mkBtn('pe-info-ok', 'OK', '#2a8050', '#1a5c35', '#cde')
+      box.appendChild(msgDiv)
+      box.appendChild(btnRow)
+      ov.appendChild(box)
+      document.body.appendChild(ov)
+      box.addEventListener('click', e => e.stopPropagation())
+      btnRow.querySelector('#pe-info-ok').addEventListener('click', () => ov.remove())
+    }
+
     function confirmPopup(message, callback) {
       const ov  = el('div',
         'position:fixed;top:0;left:0;right:0;bottom:0;' +
@@ -444,13 +498,119 @@
       btnRow.querySelector('#pe-popup-no' ).addEventListener('click', () => { ov.remove(); callback(false) })
     }
 
+    // ── Stack-mode: prompt-slot selection ───────────────────────────────────
+
+    function commitActivePrompt() {
+      if (!stackMode) return
+      saveDomState()
+      prompts[activeIdx] = {
+        label:           prompts[activeIdx].label || '',
+        master_prompt:   { text: masterText, position: masterPosition },
+        positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
+        negative_prompt: { text: negText },
+      }
+    }
+
+    function selectPrompt(i) {
+      if (i === activeIdx) return
+      commitActivePrompt()
+      activeIdx = i
+      loadActivePromptFields()
+      selIdx = 0
+      render()
+    }
+
+    function addPrompt() {
+      if (prompts.length >= MAX_STACK_PROMPTS) return
+      commitActivePrompt()
+      prompts.push(emptyStackPrompt())
+      activeIdx = prompts.length - 1
+      loadActivePromptFields()
+      selIdx = 0
+      render()
+    }
+
+    function deletePromptBox(i) {
+      if (prompts.length <= 1) return
+      commitActivePrompt()
+      prompts.splice(i, 1)
+      if (activeIdx >= prompts.length) activeIdx = prompts.length - 1
+      else if (activeIdx > i)          activeIdx--
+      loadActivePromptFields()
+      selIdx = 0
+      render()
+    }
+
+    function makeStackSelectorRow() {
+      const wrap = el('div', 'display:flex;gap:6px;padding:6px 10px 2px')
+      for (let i = 0; i < MAX_STACK_PROMPTS; i++) {
+        const has = i < prompts.length
+        const col = el('div', 'display:flex;flex-direction:column;align-items:center;gap:3px')
+        const slot = el('div', [
+          'width:40px;height:36px;display:flex;align-items:center;justify-content:center',
+          'border-radius:4px;cursor:pointer;font-family:monospace;font-size:14px;box-sizing:border-box',
+          `border:${has && i === activeIdx ? '2px solid #6adf9a' : '1px solid #444'}`,
+          `background:${has ? (i === activeIdx ? '#1e4a2e' : '#111') : '#181818'}`,
+          `color:${has ? '#ddd' : '#555'}`,
+        ].join(';'))
+        slot.textContent = has ? String(i + 1) : '+'
+        slot.addEventListener('click', () => { has ? selectPrompt(i) : addPrompt() })
+        col.appendChild(slot)
+        if (has) {
+          const del = el('button',
+            'width:40px;font-size:10px;padding:1px 0;border-radius:3px;cursor:pointer;' +
+            'border:1px solid #803030;background:#3a1e1e;color:#f88')
+          del.textContent = '-'
+          del.addEventListener('click', e => { e.stopPropagation(); deletePromptBox(i) })
+          col.appendChild(del)
+        } else {
+          col.appendChild(el('div', 'width:40px;height:18px'))
+        }
+        wrap.appendChild(col)
+      }
+      return wrap
+    }
+
+    async function doSeqNew() {
+      if (!stackMode?.onNewSequence) return
+      try {
+        const result = await stackMode.onNewSequence()
+        sequenceName = result.sequenceName || ''
+        prompts      = (result.prompts && result.prompts.length ? result.prompts : [emptyStackPrompt()]).map(normalizeStackPrompt)
+        activeIdx    = 0
+        if (result.fps)        fps         = fValue(result.fps)
+        if (result.frameCount) totalFrames = Math.max(1, fValue(result.frameCount))
+        loadActivePromptFields()
+        selIdx = 0
+        render()
+      } catch (e) {
+        console.warn('[DAZ TOOLS] PromptEditor: could not create new sequence', e)
+        alert(e.message || String(e))
+      }
+    }
+
+    function doSeqDelete() {
+      if (!stackMode?.onDeleteSequence) return
+      confirmPopup(`Delete sequence "${sequenceName || ''}"? This cannot be undone.`, async (yes) => {
+        if (!yes) return
+        try {
+          await stackMode.onDeleteSequence()
+          doCancel()
+        } catch (e) {
+          console.warn('[DAZ TOOLS] PromptEditor: could not delete sequence', e)
+          alert(e.message || String(e))
+        }
+      })
+    }
+
     // ── Full render ───────────────────────────────────────────────────────
 
     function render() {
       clampSel()
       panel.innerHTML = ''
 
-      // ── Top row: Frames / FPS / Master label ────────────────────────────
+      // ── Top row: Frames / FPS / Master label (stack mode swaps the master
+      // label for the sequence name + New/Delete Sequence controls) ────────
       const topRow = el('div',
         'display:flex;align-items:center;gap:8px;padding:8px 10px 4px;border-bottom:1px solid #2a2a2a')
       topRow.innerHTML = `
@@ -459,19 +619,51 @@
         <label style="color:#999;font-size:11px">FPS:</label>
         <input id="pe-fps" type="number" step="0.01" min="0" value="${esc(fps)}" style="${NUM_STYLE}">
         <span style="flex:1"></span>
-        ${sectionLabel('MASTER')}
+        ${stackMode ? `
+          <label style="color:#999;font-size:11px">Editing:</label>
+          <input id="pe-seq-name" type="text" value="${esc(sequenceName)}"
+            style="flex:1;min-width:120px;background:#000;color:#ddd;border:1px solid #555;
+                   border-radius:3px;padding:2px 6px;font-family:monospace;font-size:11px">
+          ${mkBtn('pe-seq-delete', 'Delete', '#803030', '#5c1a1a', '#f99')}
+          ${mkBtn('pe-seq-new',    'New',    '#2a5878', '#1a3c52', '#cde')}
+        ` : sectionLabel('MASTER')}
       `
       panel.appendChild(topRow)
 
+      const STACK_FRAMES_LOCKED_MSG =
+        'FPS and Frame Count are inputs to the Prompt Stack node and cannot be changed here — ' +
+        'update them at the source.'
+
       topRow.querySelector('#pe-tf').addEventListener('change', e => {
+        if (stackMode) {
+          e.target.value = totalFrames
+          infoPopup(STACK_FRAMES_LOCKED_MSG)
+          return
+        }
         const nv = Math.max(1, parseInt(e.target.value) || 1)
         e.target.value = nv
         changeTotalFrames(nv)
       })
       topRow.querySelector('#pe-fps').addEventListener('change', e => {
+        if (stackMode) {
+          e.target.value = fps
+          infoPopup(STACK_FRAMES_LOCKED_MSG)
+          return
+        }
         fps = parseFloat(e.target.value) || 0
         render()
       })
+
+      if (stackMode) {
+        topRow.querySelector('#pe-seq-name').addEventListener('input', e => { sequenceName = e.target.value })
+        topRow.querySelector('#pe-seq-delete').addEventListener('click', doSeqDelete)
+        topRow.querySelector('#pe-seq-new').addEventListener('click', doSeqNew)
+
+        panel.appendChild(makeStackSelectorRow())
+        const masterDivRow = el('div', 'display:flex;align-items:center;gap:8px;padding:4px 10px 0')
+        masterDivRow.innerHTML = `<div style="flex:1;border-top:1px solid #54af7b"></div>${sectionLabel('MASTER')}`
+        panel.appendChild(masterDivRow)
+      }
 
       // ── Master ──────────────────────────────────────────────────────────
       const showMasterPosition = promptType !== 'smart'
@@ -797,18 +989,31 @@
 
     function doSave() {
       if (!_overlay) return
-      saveDomState()
       const fpsEl = panel.querySelector('#pe-fps')
       if (fpsEl) fps = parseFloat(fpsEl.value) || fps
       const tfEl = panel.querySelector('#pe-tf')
       if (tfEl) totalFrames = Math.max(1, parseInt(tfEl.value) || 1)
-      onSave({
-        master_prompt:   { text: masterText, position: masterPosition },
-        positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
-        negative_prompt: { text: negText },
-        total_frames:    { value: totalFrames },
-        fps:             { value: fps },
-      })
+
+      if (stackMode) {
+        const seqNameEl = panel.querySelector('#pe-seq-name')
+        if (seqNameEl) sequenceName = seqNameEl.value
+        commitActivePrompt()
+        onSave({
+          sequence_name: sequenceName,
+          prompts:       prompts,
+          fps:           { value: fps },
+          frame_count:   { value: totalFrames },
+        })
+      } else {
+        saveDomState()
+        onSave({
+          master_prompt:   { text: masterText, position: masterPosition },
+          positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
+          negative_prompt: { text: negText },
+          total_frames:    { value: totalFrames },
+          fps:             { value: fps },
+        })
+      }
       _overlay.remove()
       _overlay = null
     }
