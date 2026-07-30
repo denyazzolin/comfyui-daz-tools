@@ -232,6 +232,37 @@ Three buttons in the edit panel footer give access to the library:
 
 ---
 
+### Prompt Stack Manager (`utils`) · Prompt Stack Splitter (`utils`)
+
+A **prompt stack** is a library that can hold an arbitrary collection of named **prompt sequences**. A sequence is up to 10 ordered slots, each slot a full prompt made of a **Master prompt**, a **Positive prompt** (typed as **Smart** (relay), **Beats**, **Timecode**, or **Simple** — see [Managing prompts](#managing-prompts) for what each type means), and a **Negative prompt**.
+
+This sequencing is particularly useful for video workflows made up of several sequential parts with their own prompts — e.g. WAN2.2 SVI 2.0 flows — where each part of the video needs its own prompt fed to a downstream sampler/relay in order.
+
+![Sample nodes](content/PromptStack.png)
+
+- **Prompt Stack Manager** stores and edits named prompt stacks, each holding one or more sequences (versions of the stack). It outputs each slot's prompt as a single bundled `DX_PROMPT_SET` value on `prompt_seq_1`…`prompt_seq_10`; slots beyond the sequence's prompt count output nothing (`None`).
+- **Prompt Stack Splitter** takes one `DX_PROMPT_SET` input and unpacks it into `master_prmt`, `pos_prompt`, `neg_prompt`, and `is_relay_prompt` (STRING/STRING/STRING/BOOLEAN), using the same master+positive combination rule as the WorkflowConfig nodes' prompt handling. Feed it `None` (an unused slot) and it outputs `("", "", "", False)`.
+
+Stacks are stored in a single file, `dx_prompt_stacks.json` inside `.dx_mgr/`, alongside the movie files. Unlike WorkflowConfig, there's no per-class node or movie-file switching — one node handles every class, and a stack's **Class** (`Wan 2.2`, `LTX 2.3`, `Images`, or none) is just an informational tag you can filter by.
+
+#### Prompt Stack Manager panel
+
+The node has **Class** (filters the Prompt Stack dropdown), **Prompt Stack**, and **Prompt Sequence** dropdowns, plus **FPS** and **Frame Count** fields (stored per-stack, changing them saves immediately). Below that, a read-only panel lists the active sequence's prompts — Master, Positive, Negative, and Prompt Type for each.
+
+Three buttons above the panel:
+
+| Button | What it does |
+|---|---|
+| **New Prompt Stack** | Opens a small form for a name and class, creates the stack with one empty sequence, and switches the node to it |
+| **Edit Stack** | Opens a popup to rename the stack, change its class, **Duplicate** or **Delete** it, and manage its sequences — **New**, **Duplicate**, **Delete**, or **Edit Sequence** (which opens the prompt editor below) |
+| **Edit Sequence** | Jumps straight into the prompt editor for the currently active sequence |
+
+The **prompt editor for stacks** is the same full-screen editor used by the WorkflowConfig nodes' **Prompt Editor**, opened here in a mode that edits a whole sequence's list of prompts at once (add/remove/reorder prompts, each with its own label, Master/Positive/Negative text, and Prompt Type — Smart/Beats/Timecode/Simple, same rules as described under [Managing prompts](#managing-prompts)). Saving there writes the sequence back to the stack file and closes both the editor and the Edit Stack popup. A stack is capped at 10 sequences, and each sequence at 10 prompts, matching the node's fixed 10 outputs.
+
+![Sample Prompt Stack Editor](content/prompt_editor_stacks.png)
+
+---
+
 ### Check Null (`utils`)
 - **Input:** any value (optional)
 - **Output:** `is_null` (BOOLEAN) — `True` if the value is null, None, NaN, or empty string
