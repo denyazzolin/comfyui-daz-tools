@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from .prompt_stack_base import (
     load_stacks, stack_labels, all_sequences, make_label,
     _get_active_sequence, _normalize_prompt, MAX_PROMPTS,
@@ -31,6 +34,19 @@ class PromptStackManager:
         if stack not in set(stack_labels()):
             return f"Value not in list: stack: '{stack}' not in valid options"
         return True
+
+    @classmethod
+    def IS_CHANGED(cls, stack: str, sequence: str, fps: float, frame_count: int):
+        stacks = load_stacks()
+        name = next(
+            (n for n, e in stacks.items() if make_label(n, e.get("created_at", "")) == stack),
+            None,
+        )
+        if name is None:
+            return stack
+        active = _get_active_sequence(stacks[name], sequence)
+        fingerprint = json.dumps(active.get("prompts", []), sort_keys=True)
+        return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
 
     def load_stack(self, stack: str, sequence: str, fps: float, frame_count: int):
         stacks = load_stacks()
