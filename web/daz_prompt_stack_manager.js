@@ -203,6 +203,11 @@ app.registerExtension({
       return s.name ? `${s.sequence} - ${s.name}` : String(s.sequence)
     }
 
+    function promptDisplay(idx, p) {
+      const label = (p && p.label) ? String(p.label).trim() : ''
+      return label ? `${idx + 1} - ${label}` : String(idx + 1)
+    }
+
     function emptyPrompt() {
       return {
         label: '',
@@ -258,10 +263,29 @@ app.registerExtension({
       }
     }
 
+    // Options are derived from the already-loaded node._dazPrompts (set by
+    // loadDetail) rather than a separate fetch — the active sequence's
+    // prompts are already on hand by the time this runs.
+    function reloadPromptWidget(node) {
+      const pw = node._dazPromptWidget
+      if (!pw) return
+      const prompts = node._dazPrompts || []
+      const list = ['All', ...prompts.map((p, i) => promptDisplay(i, p))]
+      pw.options.values = list
+      const curRaw = rawSeq(pw.value)
+      if (curRaw === 'All' || curRaw === '') {
+        if (!list.includes(pw.value)) pw.value = 'All'
+      } else {
+        const match = list.find(d => rawSeq(d) === curRaw)
+        pw.value = match ?? 'All'
+      }
+    }
+
     function updateOutputLabels(node, prompts) {
       if (!node.outputs) return
+      if (node.outputs[0]) node.outputs[0].label = 'selected prompt'
       for (let i = 0; i < MAX_PROMPTS; i++) {
-        const out = node.outputs[i]
+        const out = node.outputs[i + 1]
         if (!out) continue
         const p = prompts[i]
         out.label = (p && p.label) ? p.label : String(i + 1)
@@ -275,6 +299,7 @@ app.registerExtension({
         node._dazSeqRaw     = '0'
         node._dazSeqName    = ''
         node._dazPrompts    = []
+        reloadPromptWidget(node)
         renderPanel(node)
         updateOutputLabels(node, [])
         return
@@ -298,6 +323,7 @@ app.registerExtension({
           if (node._dazFpsWidget)        node._dazFpsWidget.value = data.fps ?? 0
           if (node._dazFrameCountWidget) node._dazFrameCountWidget.value = data.frame_count ?? 0
         }
+        reloadPromptWidget(node)
         renderPanel(node)
         updateOutputLabels(node, node._dazPrompts)
       } catch (e) {
@@ -837,8 +863,18 @@ app.registerExtension({
         return
       }
 
-      const promptsHtml = prompts.length
-        ? prompts.map((p, i) => promptPanelHtml(p, i)).join('')
+      // "Prompt" widget narrows the panel to a single slot; "All" (the
+      // default) keeps every prompt visible, unchanged from before this
+      // filter existed. Slot numbers in the display always reflect the
+      // prompt's real position in the sequence, even when filtered down.
+      const promptFilterRaw = rawSeq(node._dazPromptWidget?.value || 'All')
+      const selectedIdx = (promptFilterRaw && promptFilterRaw !== 'All') ? parseInt(promptFilterRaw, 10) - 1 : null
+      const visiblePrompts = (selectedIdx != null && prompts[selectedIdx])
+        ? [[selectedIdx, prompts[selectedIdx]]]
+        : prompts.map((p, i) => [i, p])
+
+      const promptsHtml = visiblePrompts.length
+        ? visiblePrompts.map(([i, p]) => promptPanelHtml(p, i)).join('')
         : `<p style="padding:6px 10px;color:#666;font-size:11px">No prompts in this sequence.</p>`
 
       wrap.innerHTML = `
@@ -877,14 +913,17 @@ app.registerExtension({
       this._dazPrompts    = []
       this._dazAllStacks  = []
 
-      const stackWidget = this.widgets?.find(w => w.name === 'stack')
-      const seqWidget   = this.widgets?.find(w => w.name === 'sequence')
+      const stackWidget  = this.widgets?.find(w => w.name === 'stack')
+      const seqWidget    = this.widgets?.find(w => w.name === 'sequence')
+      const promptWidget = this.widgets?.find(w => w.name === 'prompt')
       this._dazSeqWidget        = seqWidget
+      this._dazPromptWidget     = promptWidget
       this._dazFpsWidget        = this.widgets?.find(w => w.name === 'fps')
       this._dazFrameCountWidget = this.widgets?.find(w => w.name === 'frame_count')
 
-      if (stackWidget) stackWidget.label = 'Prompt Stack'
-      if (seqWidget)   seqWidget.label   = 'Prompt Sequence'
+      if (stackWidget)  stackWidget.label  = 'Prompt Stack'
+      if (seqWidget)    seqWidget.label    = 'Prompt Sequence'
+      if (promptWidget) promptWidget.label = 'Prompt'
 
       // JS-only "Class" filter widget — narrows the visible options of the
       // real `stack` combo client-side, same pattern as the Type/Group
@@ -922,6 +961,16 @@ app.registerExtension({
         seqWidget.callback = async (value) => {
           origCb?.call(this, value)
           await loadDetail(this, stackWidget?.value, value)
+        }
+      }
+      if (promptWidget) {
+        // Purely a display filter + which slot feeds "selected prompt" at
+        // execution time — the prompt data itself is already cached in
+        // node._dazPrompts, so no re-fetch is needed, just a re-render.
+        const origCb = promptWidget.callback
+        promptWidget.callback = (value) => {
+          origCb?.call(this, value)
+          renderPanel(this)
         }
       }
       if (this._dazFpsWidget) {

@@ -2,7 +2,7 @@ import hashlib
 import json
 
 from .prompt_stack_base import (
-    load_stacks, stack_labels, all_sequences, make_label,
+    load_stacks, stack_labels, all_sequences, all_prompt_labels, make_label,
     _get_active_sequence, _normalize_prompt, MAX_PROMPTS,
 )
 
@@ -14,17 +14,19 @@ class PromptStackManager:
     def INPUT_TYPES(cls):
         labels    = stack_labels()
         sequences = all_sequences()
+        prompts   = all_prompt_labels()
         return {
             "required": {
                 "fps":         ("FLOAT", {"default": 0.0, "min": 0.0, "max": 240.0, "step": 0.1}),
                 "frame_count": ("INT", {"default": 0, "min": 0, "max": 100000}),
                 "stack":       (labels if labels else [_NO_STACKS],),
                 "sequence":    (sequences,),
+                "prompt":      (prompts,),
             }
         }
 
-    RETURN_TYPES = ("DX_PROMPT_SET",) * MAX_PROMPTS
-    RETURN_NAMES = tuple(f"prompt_seq_{i}" for i in range(1, MAX_PROMPTS + 1))
+    RETURN_TYPES = ("DX_PROMPT_SET",) * (MAX_PROMPTS + 1)
+    RETURN_NAMES = ("selected_prompt",) + tuple(f"prompt_seq_{i}" for i in range(1, MAX_PROMPTS + 1))
     FUNCTION     = "load_stack"
     CATEGORY     = "utils"
     OUTPUT_NODE  = False
@@ -48,7 +50,7 @@ class PromptStackManager:
         fingerprint = json.dumps(active.get("prompts", []), sort_keys=True)
         return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
 
-    def load_stack(self, stack: str, sequence: str, fps: float, frame_count: int):
+    def load_stack(self, stack: str, sequence: str, prompt: str, fps: float, frame_count: int):
         stacks = load_stacks()
         name = next(
             (n for n, e in stacks.items() if make_label(n, e.get("created_at", "")) == stack),
@@ -64,4 +66,12 @@ class PromptStackManager:
             p["fps"]         = fps
             p["frame_count"] = frame_count
 
-        return tuple(prompts[i] if i < len(prompts) else None for i in range(MAX_PROMPTS))
+        selected_idx = None
+        raw = str(prompt or "").split(" - ")[0].strip()
+        if raw != "All" and raw.isdigit():
+            idx = int(raw) - 1
+            if 0 <= idx < len(prompts):
+                selected_idx = idx
+        selected = prompts[selected_idx] if selected_idx is not None else (prompts[0] if prompts else None)
+
+        return (selected,) + tuple(prompts[i] if i < len(prompts) else None for i in range(MAX_PROMPTS))

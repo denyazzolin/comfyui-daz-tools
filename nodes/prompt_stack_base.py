@@ -158,6 +158,20 @@ def _sequence_sort_key(v: str):
     return (0, int(raw), v) if raw.lstrip("-").isdigit() else (1, raw, v)
 
 
+# ── Prompt (within-sequence) helpers ─────────────────────────────────────────
+
+def _prompt_display(idx: int, p) -> str:
+    label = str(p.get("label") or "").strip() if isinstance(p, dict) else ""
+    return f"{idx + 1} - {label}" if label else str(idx + 1)
+
+
+def _prompt_sort_key(v: str):
+    if v == "All":
+        return (-1, 0, v)
+    raw = v.split(" - ")[0].strip() if " - " in v else v
+    return (0, int(raw), v) if raw.isdigit() else (1, 0, v)
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def load_stacks() -> dict:
@@ -201,6 +215,20 @@ def all_sequences() -> list[str]:
             seen.add(_sequence_display(s))
             seen.add(str(s.get("sequence", "")))
     return sorted(seen, key=_sequence_sort_key)
+
+
+def all_prompt_labels() -> list[str]:
+    """Union of every prompt display string across every stack's sequences —
+    the static universe of values the 'prompt' combo widget can hold. Actual
+    filtering to the active sequence's prompts happens client-side, same
+    pattern as all_sequences()/'sequence'."""
+    seen: set = {"All"}
+    for entry in load_stacks().values():
+        for s in entry.get("stack", []):
+            for i, p in enumerate(s.get("prompts", [])[:MAX_PROMPTS]):
+                seen.add(_prompt_display(i, p))
+                seen.add(str(i + 1))
+    return sorted(seen, key=_prompt_sort_key)
 
 
 # ── REST routes ───────────────────────────────────────────────────────────────

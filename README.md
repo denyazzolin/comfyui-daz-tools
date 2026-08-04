@@ -240,14 +240,14 @@ This sequencing is particularly useful for video workflows made up of several se
 
 ![Sample nodes](content/PromptStack.png)
 
-- **Prompt Stack Manager** stores and edits named prompt stacks, each holding one or more sequences (versions of the stack). It outputs each slot's prompt as a single bundled `DX_PROMPT_SET` value on `prompt_seq_1`…`prompt_seq_10`; slots beyond the sequence's prompt count output nothing (`None`).
+- **Prompt Stack Manager** stores and edits named prompt stacks, each holding one or more sequences (versions of the stack). It outputs each slot's prompt as a single bundled `DX_PROMPT_SET` value on `prompt_seq_1`…`prompt_seq_10`; slots beyond the sequence's prompt count output nothing (`None`). A first output, `selected_prompt`, carries whichever prompt is picked by the **Prompt** dropdown (or the sequence's first prompt when it's set to **All**) — handy for wiring a single slot without picking through `prompt_seq_1`…`prompt_seq_10`.
 - **Prompt Stack Splitter** takes one `DX_PROMPT_SET` input and unpacks it into `master_prmt`, `pos_prompt`, `neg_prompt`, and `is_relay_prompt` (STRING/STRING/STRING/BOOLEAN), using the same master+positive combination rule as the WorkflowConfig nodes' prompt handling. Feed it `None` (an unused slot) and it outputs `("", "", "", False)`.
 
 Stacks are stored in a single file, `dx_prompt_stacks.json` inside `.dx_mgr/`, alongside the movie files. Unlike WorkflowConfig, there's no per-class node or movie-file switching — one node handles every class, and a stack's **Class** (`Wan 2.2`, `LTX 2.3`, `Images`, `Krea2`, `Flux2 Klein 9B`, `Qwen Image`, `Chroma`, `Z-Image Turbo`, `FLux 2`, `Wan Image`, or none) is just an informational tag you can filter by.
 
 #### Prompt Stack Manager panel
 
-The node has **Class** (filters the Prompt Stack dropdown), **Prompt Stack**, and **Prompt Sequence** dropdowns, plus **FPS** and **Frame Count** fields (stored per-stack, changing them saves immediately). Below that, a read-only panel lists the active sequence's prompts — Master, Positive, Negative, and Prompt Type for each.
+The node has **Class** (filters the Prompt Stack dropdown), **Prompt Stack**, **Prompt Sequence**, and **Prompt** dropdowns, plus **FPS** and **Frame Count** fields (stored per-stack, changing them saves immediately). **Prompt** lists every slot in the active sequence and defaults to **All**; picking a single slot narrows the read-only panel below to just that prompt (and drives the `selected_prompt` output) — Master, Positive, Negative, and Prompt Type for each.
 
 Three buttons above the panel:
 
