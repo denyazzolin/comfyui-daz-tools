@@ -63,5 +63,6 @@ class PromptStackManager:
         for p in prompts:
             p["fps"]         = fps
             p["frame_count"] = frame_count
+            p["class"]       = entry.get("class", "")
 
         return tuple(prompts[i] if i < len(prompts) else None for i in range(MAX_PROMPTS))
