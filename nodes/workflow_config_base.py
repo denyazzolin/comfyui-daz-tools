@@ -265,12 +265,6 @@ def _get_master_position(val, default: str = "before") -> str:
     return default
 
 
-# Classes whose native workflow expects master+positive joined on separate
-# lines. Every other class (prompt stacks aren't tied to one workflow class)
-# joins them comma-separated on a single line instead.
-_NEWLINE_JOIN_CLASSES = {"Wan2.2", "ltx2.3"}
-
-
 def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
     """Combine a set/prompt's master_prompt + positive_prompt into the effective
     positive text, per the smart/beats/timecode/simple relay rule shared by
@@ -282,13 +276,12 @@ def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
     pos_text          = _get_text(pos_prompt_val)
     neg_text          = _get_text(entry.get("negative_prompt"))
     is_relay          = prompt_type == "smart"
-    sep = "\n\n" if entry.get("class") in _NEWLINE_JOIN_CLASSES else ", "
     if is_relay:
         pos_out = pos_text
     elif prompt_type in ("beats", "timecode", "simple") and _get_master_position(master_prompt_val) == "after":
-        pos_out = sep.join(p for p in (pos_text, master_text) if p)
+        pos_out = "\n\n".join(p for p in (pos_text, master_text) if p)
     else:
-        pos_out = sep.join(p for p in (master_text, pos_text) if p)
+        pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
     return master_text, pos_out, neg_text, is_relay
 
 def _get_path(val, default: str = "") -> str:
