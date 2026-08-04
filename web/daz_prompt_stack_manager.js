@@ -43,6 +43,11 @@ const CLASS_CREATE_OPTIONS = [
   { label: 'Wan Image',       value: 'wan_img' },
 ]
 
+function classValueToLabel(value) {
+  const opt = CLASS_CREATE_OPTIONS.find(o => o.value === (value || ''))
+  return opt ? opt.label : (value || '')
+}
+
 // ── HTML helpers ────────────────────────────────────────────────────────────
 
 function esc(s) {
@@ -844,7 +849,7 @@ app.registerExtension({
         </div>
         ${rowDivider()}
         <table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
-          ${row('Class',    node._dazStackClass || '')}
+          ${row('Class',    classValueToLabel(node._dazStackClass))}
           ${row('Stack',    node._dazStackName || '')}
           ${row('Sequence', node._dazSeqName || '')}
           ${row('Prompts',  String(prompts.length))}
