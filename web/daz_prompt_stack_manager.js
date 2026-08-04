@@ -17,16 +17,30 @@ const VALID_PROMPT_TYPES = ['smart', 'beats', 'simple', 'timecode']
 const PROMPT_TYPE_LABELS = { smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode' }
 
 // Class filter display <-> stored class value
-const CLASS_FILTER_VALUES = ['All', 'Wan 2.2', 'LTX 2.3', 'Images']
-const CLASS_FILTER_TO_VALUE = { 'All': '', 'Wan 2.2': 'Wan2.2', 'LTX 2.3': 'ltx2.3', 'Images': 'ImageInference' }
+const CLASS_FILTER_VALUES = [
+  'All', 'Wan 2.2', 'LTX 2.3', 'Images',
+  'Krea2', 'Flux2 Klein 9B', 'Qwen Image', 'Chroma', 'Z-Image Turbo', 'FLux 2', 'Wan Image',
+]
+const CLASS_FILTER_TO_VALUE = {
+  'All': '', 'Wan 2.2': 'Wan2.2', 'LTX 2.3': 'ltx2.3', 'Images': 'ImageInference',
+  'Krea2': 'krea2', 'Flux2 Klein 9B': 'klein9b', 'Qwen Image': 'qwen', 'Chroma': 'chroma',
+  'Z-Image Turbo': 'zit', 'FLux 2': 'flux2', 'Wan Image': 'wan_img',
+}
 
 // Same set as the Class filter, but "All" -> "<no class>" (stored as ''),
 // for use in the New Prompt Stack class dropdown.
 const CLASS_CREATE_OPTIONS = [
-  { label: '<no class>', value: '' },
-  { label: 'Wan 2.2',    value: 'Wan2.2' },
-  { label: 'LTX 2.3',    value: 'ltx2.3' },
-  { label: 'Images',     value: 'ImageInference' },
+  { label: '<no class>',      value: '' },
+  { label: 'Wan 2.2',         value: 'Wan2.2' },
+  { label: 'LTX 2.3',         value: 'ltx2.3' },
+  { label: 'Images',          value: 'ImageInference' },
+  { label: 'Krea2',           value: 'krea2' },
+  { label: 'Flux2 Klein 9B',  value: 'klein9b' },
+  { label: 'Qwen Image',      value: 'qwen' },
+  { label: 'Chroma',          value: 'chroma' },
+  { label: 'Z-Image Turbo',   value: 'zit' },
+  { label: 'FLux 2',          value: 'flux2' },
+  { label: 'Wan Image',       value: 'wan_img' },
 ]
 
 // ── HTML helpers ────────────────────────────────────────────────────────────
