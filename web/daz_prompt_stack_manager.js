@@ -948,6 +948,8 @@ app.registerExtension({
 
       const externalPromptInput = this.inputs?.find(i => i.name === 'external_prompt')
       if (externalPromptInput) externalPromptInput.label = 'external prompt'
+      const externalNegPromptInput = this.inputs?.find(i => i.name === 'external_negative_prompt')
+      if (externalNegPromptInput) externalNegPromptInput.label = 'external negative prompt'
 
       // JS-only "Class" filter widget — narrows the visible options of the
       // real `stack` combo client-side, same pattern as the Type/Group

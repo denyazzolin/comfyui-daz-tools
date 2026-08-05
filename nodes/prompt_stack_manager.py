@@ -24,7 +24,8 @@ class PromptStackManager:
                 "prompt":      (prompts,),
             },
             "optional": {
-                "external_prompt": ("STRING", {"forceInput": True}),
+                "external_prompt":          ("STRING", {"forceInput": True}),
+                "external_negative_prompt": ("STRING", {"forceInput": True}),
             },
         }
 
@@ -54,7 +55,7 @@ class PromptStackManager:
         return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
 
     def load_stack(self, stack: str, sequence: str, prompt: str, fps: float, frame_count: int,
-                    external_prompt: str = None):
+                    external_prompt: str = None, external_negative_prompt: str = None):
         stacks = load_stacks()
         name = next(
             (n for n, e in stacks.items() if make_label(n, e.get("created_at", "")) == stack),
@@ -78,9 +79,11 @@ class PromptStackManager:
                     f"[DAZ TOOLS] PromptStackManager: '{EXTERNAL_PROMPT_LABEL}' is selected "
                     "but the external_prompt input is empty or not connected."
                 )
+            neg_text = str(external_negative_prompt) if external_negative_prompt is not None else ""
             selected = _normalize_prompt({
                 "label":           EXTERNAL_PROMPT_LABEL,
                 "positive_prompt": {"text": text, "type": "simple"},
+                "negative_prompt": {"text": neg_text},
             })
             selected["fps"]         = fps
             selected["frame_count"] = frame_count
