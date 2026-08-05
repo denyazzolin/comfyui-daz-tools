@@ -208,6 +208,15 @@ app.registerExtension({
       return label ? `${idx + 1} - ${label}` : String(idx + 1)
     }
 
+    // null when the "Prompt" widget is on "All", else the 0-based slot index
+    // it's narrowed down to.
+    function selectedPromptIndex(node) {
+      const raw = rawSeq(node._dazPromptWidget?.value || 'All')
+      if (!raw || raw === 'All') return null
+      const idx = parseInt(raw, 10) - 1
+      return Number.isInteger(idx) && idx >= 0 ? idx : null
+    }
+
     function emptyPrompt() {
       return {
         label: '',
@@ -420,6 +429,7 @@ app.registerExtension({
           prompts:      seqDetail.prompts || [],
           fps:          { value: liveFps() },
           frameCount:   { value: liveFrameCount() },
+          activeIndex:  Number.isInteger(hooks.activeIndex) ? hooks.activeIndex : null,
 
           onNewSequence: async () => {
             if (hooks.getSeqCount() >= MAX_SEQUENCES) {
@@ -532,6 +542,7 @@ app.registerExtension({
           refreshSeqList: refreshCount,
           closeOuter:     () => {},
           getSeqCount:    () => seqCount,
+          activeIndex:    selectedPromptIndex(node),
         })
       } catch (e) {
         console.warn('[DAZ TOOLS] PromptStackManager: could not open sequence editor', e)
@@ -867,8 +878,7 @@ app.registerExtension({
       // default) keeps every prompt visible, unchanged from before this
       // filter existed. Slot numbers in the display always reflect the
       // prompt's real position in the sequence, even when filtered down.
-      const promptFilterRaw = rawSeq(node._dazPromptWidget?.value || 'All')
-      const selectedIdx = (promptFilterRaw && promptFilterRaw !== 'All') ? parseInt(promptFilterRaw, 10) - 1 : null
+      const selectedIdx = selectedPromptIndex(node)
       const visiblePrompts = (selectedIdx != null && prompts[selectedIdx])
         ? [[selectedIdx, prompts[selectedIdx]]]
         : prompts.map((p, i) => [i, p])
@@ -881,7 +891,7 @@ app.registerExtension({
         <div style="display:flex;justify-content:space-between;gap:6px;padding:4px 8px 6px">
           ${mkBtn('ps-new-stack', 'New Prompt Stack', '#3a7a3a', '#1e4a1e', '#9f9')}
           ${mkBtn('ps-edit-stack', 'Edit Stack', '#555', '#333', '#ccc')}
-          ${mkBtn('ps-edit-seq', 'Edit Sequence', '#555', '#333', '#ccc')}
+          ${mkBtn('ps-edit-seq', selectedIdx != null ? 'Edit Prompt' : 'Edit Sequence', '#555', '#333', '#ccc')}
         </div>
         ${rowDivider()}
         <table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">

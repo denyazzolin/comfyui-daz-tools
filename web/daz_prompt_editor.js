@@ -285,6 +285,9 @@
       prompts      = (stackMode.prompts || []).map(normalizeStackPrompt)
       if (!prompts.length) prompts.push(emptyStackPrompt())
       sequenceName = stackMode.sequenceName || ''
+      if (Number.isInteger(stackMode.activeIndex) && stackMode.activeIndex >= 0 && stackMode.activeIndex < prompts.length) {
+        activeIdx = stackMode.activeIndex
+      }
     } else {
       totalFrames  = Math.max(1, fValue(detail.total_frames))
       fps          = fValue(detail.fps)
