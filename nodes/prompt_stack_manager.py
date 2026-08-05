@@ -3,7 +3,7 @@ import json
 
 from .prompt_stack_base import (
     load_stacks, stack_labels, all_sequences, all_prompt_labels, make_label,
-    _get_active_sequence, _normalize_prompt, MAX_PROMPTS,
+    _get_active_sequence, _normalize_prompt, MAX_PROMPTS, EXTERNAL_PROMPT_LABEL,
 )
 
 _NO_STACKS = "(no prompt stacks)"
@@ -22,7 +22,10 @@ class PromptStackManager:
                 "stack":       (labels if labels else [_NO_STACKS],),
                 "sequence":    (sequences,),
                 "prompt":      (prompts,),
-            }
+            },
+            "optional": {
+                "external_prompt": ("STRING", {"forceInput": True}),
+            },
         }
 
     RETURN_TYPES = ("DX_PROMPT_SET",) * (MAX_PROMPTS + 1)
@@ -50,7 +53,8 @@ class PromptStackManager:
         fingerprint = json.dumps(active.get("prompts", []), sort_keys=True)
         return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
 
-    def load_stack(self, stack: str, sequence: str, prompt: str, fps: float, frame_count: int):
+    def load_stack(self, stack: str, sequence: str, prompt: str, fps: float, frame_count: int,
+                    external_prompt: str = None):
         stacks = load_stacks()
         name = next(
             (n for n, e in stacks.items() if make_label(n, e.get("created_at", "")) == stack),
@@ -66,12 +70,26 @@ class PromptStackManager:
             p["fps"]         = fps
             p["frame_count"] = frame_count
 
-        selected_idx = None
         raw = str(prompt or "").split(" - ")[0].strip()
-        if raw != "All" and raw.isdigit():
-            idx = int(raw) - 1
-            if 0 <= idx < len(prompts):
-                selected_idx = idx
-        selected = prompts[selected_idx] if selected_idx is not None else (prompts[0] if prompts else None)
+        if raw == EXTERNAL_PROMPT_LABEL:
+            text = str(external_prompt) if external_prompt is not None else ""
+            if not text.strip():
+                raise ValueError(
+                    f"[DAZ TOOLS] PromptStackManager: '{EXTERNAL_PROMPT_LABEL}' is selected "
+                    "but the external_prompt input is empty or not connected."
+                )
+            selected = _normalize_prompt({
+                "label":           EXTERNAL_PROMPT_LABEL,
+                "positive_prompt": {"text": text, "type": "simple"},
+            })
+            selected["fps"]         = fps
+            selected["frame_count"] = frame_count
+        else:
+            selected_idx = None
+            if raw != "All" and raw.isdigit():
+                idx = int(raw) - 1
+                if 0 <= idx < len(prompts):
+                    selected_idx = idx
+            selected = prompts[selected_idx] if selected_idx is not None else (prompts[0] if prompts else None)
 
         return (selected,) + tuple(prompts[i] if i < len(prompts) else None for i in range(MAX_PROMPTS))

@@ -13,6 +13,7 @@ from .workflow_config_base import _MGR_DIR, _META_KEY, make_label
 STACKS_FILE       = os.path.join(_MGR_DIR, "dx_prompt_stacks.json")
 PROMPT_STACK_SCHEMA = 1
 MAX_PROMPTS       = 10
+EXTERNAL_PROMPT_LABEL = "External Prompt"
 
 _warned_missing: set = set()
 
@@ -221,8 +222,10 @@ def all_prompt_labels() -> list[str]:
     """Union of every prompt display string across every stack's sequences —
     the static universe of values the 'prompt' combo widget can hold. Actual
     filtering to the active sequence's prompts happens client-side, same
-    pattern as all_sequences()/'sequence'."""
-    seen: set = {"All"}
+    pattern as all_sequences()/'sequence'. Always includes EXTERNAL_PROMPT_LABEL
+    so that value validates regardless of whether external_prompt is wired —
+    the node itself raises at execution time if it's selected but unwired/empty."""
+    seen: set = {"All", EXTERNAL_PROMPT_LABEL}
     for entry in load_stacks().values():
         for s in entry.get("stack", []):
             for i, p in enumerate(s.get("prompts", [])[:MAX_PROMPTS]):

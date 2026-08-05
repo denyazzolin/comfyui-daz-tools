@@ -13,6 +13,8 @@ const PANEL_H = 360
 const NODE_W  = 340
 const NODE_H  = 520
 
+const EXTERNAL_PROMPT_LABEL = 'External Prompt'
+
 const VALID_PROMPT_TYPES = ['smart', 'beats', 'simple', 'timecode']
 const PROMPT_TYPE_LABELS = { smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode' }
 
@@ -217,6 +219,11 @@ app.registerExtension({
       return Number.isInteger(idx) && idx >= 0 ? idx : null
     }
 
+    function isExternalPromptWired(node) {
+      const inp = node.inputs?.find(i => i.name === 'external_prompt')
+      return !!(inp && inp.link != null)
+    }
+
     function emptyPrompt() {
       return {
         label: '',
@@ -279,11 +286,15 @@ app.registerExtension({
       const pw = node._dazPromptWidget
       if (!pw) return
       const prompts = node._dazPrompts || []
-      const list = ['All', ...prompts.map((p, i) => promptDisplay(i, p))]
+      const list = ['All']
+      if (isExternalPromptWired(node)) list.push(EXTERNAL_PROMPT_LABEL)
+      list.push(...prompts.map((p, i) => promptDisplay(i, p)))
       pw.options.values = list
       const curRaw = rawSeq(pw.value)
       if (curRaw === 'All' || curRaw === '') {
         if (!list.includes(pw.value)) pw.value = 'All'
+      } else if (curRaw === EXTERNAL_PROMPT_LABEL) {
+        pw.value = list.includes(EXTERNAL_PROMPT_LABEL) ? EXTERNAL_PROMPT_LABEL : 'All'
       } else {
         const match = list.find(d => rawSeq(d) === curRaw)
         pw.value = match ?? 'All'
@@ -935,6 +946,9 @@ app.registerExtension({
       if (seqWidget)    seqWidget.label    = 'Prompt Sequence'
       if (promptWidget) promptWidget.label = 'Prompt'
 
+      const externalPromptInput = this.inputs?.find(i => i.name === 'external_prompt')
+      if (externalPromptInput) externalPromptInput.label = 'external prompt'
+
       // JS-only "Class" filter widget — narrows the visible options of the
       // real `stack` combo client-side, same pattern as the Type/Group
       // filters in daz_workflow_config_shared.js.
@@ -1040,6 +1054,20 @@ app.registerExtension({
           renderPanel(self)
         }
       })
+    }
+
+    // The "prompt" dropdown only offers EXTERNAL_PROMPT_LABEL while the
+    // external_prompt socket is actually wired — connecting/disconnecting it
+    // needs to add/remove that option live, and fall back to 'All' if it was
+    // selected and the wire is then pulled.
+    const onConnectionsChange = nodeType.prototype.onConnectionsChange
+    nodeType.prototype.onConnectionsChange = function (type, index, connected, linkInfo, ioSlot) {
+      onConnectionsChange?.apply(this, arguments)
+      if (type !== LiteGraph.INPUT) return
+      const slot = ioSlot || this.inputs?.[index]
+      if (slot?.name !== 'external_prompt') return
+      reloadPromptWidget(this)
+      renderPanel(this)
     }
   },
 })
