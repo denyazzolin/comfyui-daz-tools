@@ -219,9 +219,25 @@ app.registerExtension({
       return Number.isInteger(idx) && idx >= 0 ? idx : null
     }
 
+    // Resolves the node feeding external_prompt, if any — used to check its
+    // mode (a muted source produces no output, so it should count as unwired).
+    function getExternalPromptOriginNode(node) {
+      const inp = node.inputs?.find(i => i.name === 'external_prompt')
+      if (!inp || inp.link == null) return null
+      const link = node.graph?.links?.[inp.link]
+      if (!link) return null
+      return node.graph.getNodeById(link.origin_id) || null
+    }
+
     function isExternalPromptWired(node) {
       const inp = node.inputs?.find(i => i.name === 'external_prompt')
-      return !!(inp && inp.link != null)
+      if (!inp || inp.link == null) return false
+      const origin = getExternalPromptOriginNode(node)
+      // LiteGraph.NEVER (mode 2) === muted — ComfyUI drops a muted node's
+      // links entirely when building the actual execution prompt, so the
+      // dropdown should already treat it as if nothing were connected.
+      if (origin && origin.mode === LiteGraph.NEVER) return false
+      return true
     }
 
     function emptyPrompt() {
@@ -932,6 +948,7 @@ app.registerExtension({
       this._dazSeqRaw     = '0'
       this._dazSeqName    = ''
       this._dazPrompts    = []
+      this._dazLastExtWired = false
       this._dazAllStacks  = []
 
       const stackWidget  = this.widgets?.find(w => w.name === 'stack')
@@ -1068,8 +1085,25 @@ app.registerExtension({
       if (type !== LiteGraph.INPUT) return
       const slot = ioSlot || this.inputs?.[index]
       if (slot?.name !== 'external_prompt') return
+      this._dazLastExtWired = isExternalPromptWired(this)
       reloadPromptWidget(this)
       renderPanel(this)
+    }
+
+    // Muting the node feeding external_prompt (Ctrl+M) doesn't change the
+    // link itself, only that node's `mode` — no connection event fires for
+    // that, so the dropdown can only notice it by polling. Piggybacks on the
+    // canvas's own draw loop rather than a timer; the check is cheap and only
+    // reruns the dropdown refresh when the effective wired state actually flips.
+    const onDrawForeground = nodeType.prototype.onDrawForeground
+    nodeType.prototype.onDrawForeground = function (ctx, canvas) {
+      onDrawForeground?.apply(this, arguments)
+      const nowWired = isExternalPromptWired(this)
+      if (nowWired !== this._dazLastExtWired) {
+        this._dazLastExtWired = nowWired
+        reloadPromptWidget(this)
+        renderPanel(this)
+      }
     }
   },
 })
