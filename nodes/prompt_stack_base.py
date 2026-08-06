@@ -6,12 +6,13 @@ scanning like WorkflowConfig has, since prompt stacks aren't class-scoped.
 """
 import os
 import json
+import uuid
 from datetime import datetime
 
 from .workflow_config_base import _MGR_DIR, _META_KEY, make_label
 
 STACKS_FILE       = os.path.join(_MGR_DIR, "dx_prompt_stacks.json")
-PROMPT_STACK_SCHEMA = 1
+PROMPT_STACK_SCHEMA = 2
 MAX_PROMPTS       = 10
 EXTERNAL_PROMPT_LABEL = "External Prompt"
 
@@ -43,11 +44,58 @@ def _normalize_prompt(p) -> dict:
     np_ = np_ if isinstance(np_, dict) else {"text": str(np_ or "")}
     result["negative_prompt"] = {"text": str(np_.get("text") or "")}
 
+    # Numeric, per-sequence identity for a prompt slot — assigned by
+    # _assign_prompt_indices, never picked here. Strip anything invalid so
+    # missing/garbled values are treated as "needs an index".
+    if not _has_valid_index(result):
+        result.pop("index", None)
+
     return result
 
 
 def _empty_prompt() -> dict:
     return _normalize_prompt({})
+
+
+def _has_valid_index(p) -> bool:
+    idx = p.get("index") if isinstance(p, dict) else None
+    return isinstance(idx, int) and not isinstance(idx, bool)
+
+
+def _assign_prompt_indices(prompts: list) -> bool:
+    """Fill in a numeric 'index' for any prompt missing one, incrementing
+    from the current max index already present in the list — new slots get
+    indices departing from the max, and a deleted slot's index is only ever
+    reused if it was the largest in the array (since the next assignment is
+    always max+1). Returns True if any prompt was changed."""
+    changed = False
+    used = {p["index"] for p in prompts if _has_valid_index(p)}
+    next_idx = (max(used) + 1) if used else 0
+    for p in prompts:
+        if not isinstance(p, dict) or _has_valid_index(p):
+            continue
+        p["index"] = next_idx
+        used.add(next_idx)
+        next_idx += 1
+        changed = True
+    return changed
+
+
+def _backfill_ids_and_indices(stacks: dict) -> bool:
+    """Ensure every stack has a unique 'id' and every prompt has a numeric
+    'index'. Additive and idempotent — safe to run on every load regardless
+    of the file's schema version, mirroring workflow_config_base's
+    _backfill_master_position pattern (covers hand-edited files too, not
+    just ones migrated from schema v1)."""
+    changed = False
+    for entry in stacks.values():
+        if not entry.get("id"):
+            entry["id"] = str(uuid.uuid4())
+            changed = True
+        for s in entry.get("stack", []):
+            if _assign_prompt_indices(s.get("prompts", [])):
+                changed = True
+    return changed
 
 
 def _get_int(val, default: int = 0) -> int:
@@ -94,7 +142,21 @@ def _load_file(path: str = STACKS_FILE) -> tuple[dict, dict, int]:
               f"(node understands v{PROMPT_STACK_SCHEMA}) — skipping migration")
         return stacks, meta_extra, effective
 
-    stacks = _migrate(stacks, file_version)
+    migrated = False
+    if file_version < PROMPT_STACK_SCHEMA:
+        print(f"[DAZ TOOLS] PromptStack: migrating {os.path.basename(path)} "
+              f"v{file_version} → v{PROMPT_STACK_SCHEMA}")
+        stacks   = _migrate(stacks, file_version)
+        migrated = True
+
+    backfilled = _backfill_ids_and_indices(stacks)
+
+    if migrated or backfilled:
+        try:
+            _write_file(path, stacks, meta_extra, effective)
+        except Exception as e:
+            print(f"[DAZ TOOLS] PromptStack: could not write migrated prompt stack file — {e}")
+
     return stacks, meta_extra, effective
 
 
@@ -115,9 +177,12 @@ def _write_file(path: str, stacks: dict, meta_extra: dict, effective_schema: int
 
 
 def _migrate(stacks: dict, from_version: int) -> dict:
-    """Additive-only schema migration. No-op today (schema v1 is the first
-    version) — kept in the same shape as workflow_config_base._migrate so
-    future field additions have a place to land."""
+    """Additive-only, version-gated schema migration. v1 → v2 (stack 'id' and
+    per-prompt 'index') is handled by the always-on _backfill_ids_and_indices
+    instead of here, since that also covers files that already claim v2 but
+    are missing the fields (hand-edited, or created between schema bumps).
+    Kept in the same shape as workflow_config_base._migrate so future
+    version-specific migrations have a place to land."""
     return stacks
 
 
@@ -244,7 +309,11 @@ try:
     async def _daz_prompt_stack_list(request):
         stacks = load_stacks()
         return web.json_response([
-            {"label": make_label(name, entry.get("created_at", "")), "class": entry.get("class", "")}
+            {
+                "label": make_label(name, entry.get("created_at", "")),
+                "class": entry.get("class", ""),
+                "id":    entry.get("id", ""),
+            }
             for name, entry in stacks.items()
         ])
 
@@ -288,6 +357,7 @@ try:
         prompts   = [_normalize_prompt(p) for p in active.get("prompts", [])]
         return web.json_response({
             "name":         name,
+            "id":           entry.get("id", ""),
             "class":        entry.get("class", ""),
             "fps":          _get_float(entry.get("fps")),
             "frame_count":  _get_int(entry.get("frame_count")),
@@ -318,7 +388,10 @@ try:
             return web.json_response({"error": f"A prompt stack named '{name}' already exists."}, status=409)
 
         now = datetime.now().isoformat()
+        initial_prompts = [_empty_prompt()]
+        _assign_prompt_indices(initial_prompts)
         entry: dict = {
+            "id":          str(uuid.uuid4()),
             "class":       cls,
             "created_at":  now,
             "updated_at":  now,
@@ -329,7 +402,7 @@ try:
                 "name":       "Default Prompt Stack",
                 "created_at": now,
                 "updated_at": now,
-                "prompts":    [_empty_prompt()],
+                "prompts":    initial_prompts,
             }],
         }
         stacks[name] = entry
@@ -361,6 +434,7 @@ try:
         if not isinstance(raw_prompts, list):
             return web.json_response({"error": "'prompts' must be a list."}, status=400)
         prompts = [_normalize_prompt(p) for p in raw_prompts[:MAX_PROMPTS]]
+        _assign_prompt_indices(prompts)
 
         stacks, meta_extra, effective = _load_file()
         name = next(
@@ -525,6 +599,7 @@ try:
             new_stack = [new_seq]
 
         new_entry = {
+            "id":          str(uuid.uuid4()),
             "class":       source_entry.get("class", ""),
             "created_at":  now,
             "updated_at":  now,

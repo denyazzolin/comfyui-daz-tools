@@ -264,12 +264,17 @@
     const fPosition = v => (v && typeof v === 'object' && (v.position === 'before' || v.position === 'after'))
                              ? v.position : 'before'
 
+    // 'index' is a numeric per-sequence identity assigned server-side (not
+    // shown in this UI) — passed through untouched when present so editing
+    // a sequence here doesn't strip it and cause the backend to treat an
+    // existing slot as new on the next save.
     function normalizeStackPrompt(p) {
       return {
         label:           p?.label || '',
         master_prompt:   { ...(p?.master_prompt   || {}) },
         positive_prompt: { ...(p?.positive_prompt || {}) },
         negative_prompt: { ...(p?.negative_prompt || {}) },
+        ...(Number.isInteger(p?.index) ? { index: p.index } : {}),
       }
     }
     const emptyStackPrompt = () => normalizeStackPrompt(null)
@@ -506,11 +511,13 @@
     function commitActivePrompt() {
       if (!stackMode) return
       saveDomState()
+      const prev = prompts[activeIdx]
       prompts[activeIdx] = {
-        label:           prompts[activeIdx].label || '',
+        label:           prev.label || '',
         master_prompt:   { text: masterText, position: masterPosition },
         positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
         negative_prompt: { text: negText },
+        ...(Number.isInteger(prev.index) ? { index: prev.index } : {}),
       }
     }
 

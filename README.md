@@ -247,7 +247,7 @@ Stacks are stored in a single file, `dx_prompt_stacks.json` inside `.dx_mgr/`, a
 
 #### Prompt Stack Manager panel
 
-The node has **Class** (filters the Prompt Stack dropdown), **Prompt Stack**, **Prompt Sequence**, and **Prompt** dropdowns, plus **FPS** and **Frame Count** fields (stored per-stack, changing them saves immediately). **Prompt** lists every slot in the active sequence and defaults to **All**; picking a single slot narrows the read-only panel below to just that prompt (and drives the `selected_prompt` output) — Master, Positive, Negative, and Prompt Type for each.
+The node has **Class** (filters the Prompt Stack dropdown), **Prompt Stack**, **Prompt Sequence**, and **Prompt** dropdowns, plus **FPS** and **Frame Count** fields (stored per-stack, changing them saves immediately). The panel also shows the stack's **ID** — a unique string (GUID) assigned automatically when the stack is created, stable across renames, reserved for future referral/integration use. **Prompt** lists every slot in the active sequence and defaults to **All**; picking a single slot narrows the read-only panel below to just that prompt (and drives the `selected_prompt` output) — Master, Positive, Negative, and Prompt Type for each.
 
 Three buttons above the panel:
 

@@ -331,6 +331,7 @@ app.registerExtension({
     async function loadDetail(node, stackLabel, seqValue) {
       if (!stackLabel || stackLabel === '(no prompt stacks)') {
         node._dazStackName  = null
+        node._dazStackId    = ''
         node._dazStackClass = ''
         node._dazSeqRaw     = '0'
         node._dazSeqName    = ''
@@ -351,6 +352,7 @@ app.registerExtension({
         // value the user just typed into the node before it's been saved.
         const stackChanged  = node._dazStackName !== data.name
         node._dazStackName  = data.name
+        node._dazStackId    = data.id || ''
         node._dazStackClass = data.class || ''
         node._dazSeqRaw     = data.sequence || '0'
         node._dazSeqName    = data.seq_name || ''
@@ -924,6 +926,7 @@ app.registerExtension({
         <table style="font-family:monospace;font-size:12px;border-collapse:collapse;width:100%">
           ${row('Class',    classValueToLabel(node._dazStackClass))}
           ${row('Stack',    node._dazStackName || '')}
+          ${row('ID',       node._dazStackId || '')}
           ${row('Sequence', node._dazSeqName || '')}
           ${row('Prompts',  String(prompts.length))}
           ${rowPair('FPS', node._dazFpsWidget?.value, 'Frame Count', node._dazFrameCountWidget?.value)}
@@ -944,6 +947,7 @@ app.registerExtension({
       onNodeCreated?.apply(this, arguments)
 
       this._dazStackName  = null
+      this._dazStackId    = ''
       this._dazStackClass = ''
       this._dazSeqRaw     = '0'
       this._dazSeqName    = ''

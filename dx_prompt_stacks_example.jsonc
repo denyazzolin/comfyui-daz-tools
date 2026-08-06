@@ -1,12 +1,13 @@
 {
   "_meta": {
-    "schema_version": 1, // internal schema version; do not change
+    "schema_version": 2, // internal schema version; do not change
     "name": "Default Prompt Stack", // prompt stack file identifier
     "version": "1.0", // file format version string
     "created_at": "2026-06-02T00:00:00", // file creation timestamp (ISO 8601)
     "updated_at": "2026-06-02T00:00:00" // file last-modified timestamp (ISO 8601)
   },
   "My Prompt Stack 1": { // "Prompt stack" name
+    "id": "3f6e9c2a-2b41-4e3a-9d0a-1a2b3c4d5e6f", // unique stack ID; auto-generated (GUID) on creation and backfilled on migration, shown read-only on the node, used for future referral/integration
     "class": "Wan2.2", // node class these prompts do target
     "created_at": "2026-06-02T00:00:00", // entry creation timestamp
     "updated_at": "2026-06-02T00:00:00", // entry last-modified timestamp
@@ -18,6 +19,7 @@
         "label": "Default Prompt Stack", // name of this sequence
         "prompts": [ //arbitrary number of prompts
           {
+            "index": 0, // numeric identity of this prompt slot within the sequence; auto-assigned, not reused after deletion (unless it was the highest index), not shown in the node UI
             "master_prompt": {
               "text": "",
               "position": "before"
@@ -35,6 +37,7 @@
     ]
   },
   "My Prompt Stack 2": { // "Prompt stack" name
+    "id": "3f6e9c2a-2b41-4e3a-9d0a-1a2b3c4d5e6f", // unique stack ID; auto-generated (GUID) on creation and backfilled on migration, shown read-only on the node, used for future referral/integration
     "class": "ltx2.3", // node class these prompts do target
     "created_at": "2026-06-02T00:00:00", // entry creation timestamp
     "updated_at": "2026-06-02T00:00:00", // entry last-modified timestamp
@@ -46,6 +49,7 @@
         "label": "Default Prompt Stack", // name of this sequence
         "prompts": [ //arbitrary number of prompts
           {
+            "index": 0, // numeric identity of this prompt slot within the sequence; auto-assigned, not reused after deletion (unless it was the highest index), not shown in the node UI
             "master_prompt": {
               "text": "",
               "position": "before"
@@ -63,6 +67,7 @@
     ]
   },
   "My Prompt Stack 3": { // "Prompt stack" name
+    "id": "3f6e9c2a-2b41-4e3a-9d0a-1a2b3c4d5e6f", // unique stack ID; auto-generated (GUID) on creation and backfilled on migration, shown read-only on the node, used for future referral/integration
     "class": "ImageInference", // node class these prompts do target
     "created_at": "2026-06-02T00:00:00", // entry creation timestamp
     "updated_at": "2026-06-02T00:00:00", // entry last-modified timestamp
@@ -74,6 +79,7 @@
         "label": "Default Prompt Stack", // name of this sequence
         "prompts": [ //arbitrary number of prompts
           {
+            "index": 0, // numeric identity of this prompt slot within the sequence; auto-assigned, not reused after deletion (unless it was the highest index), not shown in the node UI
             "master_prompt": {
               "text": "",
               "position": "before"
