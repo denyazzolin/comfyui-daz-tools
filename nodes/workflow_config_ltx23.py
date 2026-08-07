@@ -10,6 +10,7 @@ from .workflow_config_base import (
     _get_active_set,
     _resolve_path, _load_file, _write_file,
 )
+from .audio_utils import decode_audio_file
 
 try:
     import comfy.sd
@@ -100,25 +101,7 @@ def _load_audio(path: str):
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: audio not found at '{full}'")
-    import av
-    with av.open(full) as af:
-        if not af.streams.audio:
-            raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: no audio stream in '{full}'")
-        stream = af.streams.audio[0]
-        sr = stream.codec_context.sample_rate
-        n_channels = stream.channels
-        frames = []
-        for frame in af.decode(streams=stream.index):
-            buf = torch.from_numpy(frame.to_ndarray())
-            if buf.shape[0] != n_channels:
-                buf = buf.view(-1, n_channels).t()
-            frames.append(buf)
-        if not frames:
-            raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: no audio frames in '{full}'")
-        wav = torch.cat(frames, dim=1)
-        if not wav.dtype.is_floating_point:
-            wav = wav.float() / (2 ** 15 if wav.dtype == torch.int16 else 2 ** 31)
-    return {"waveform": wav.unsqueeze(0), "sample_rate": sr}
+    return decode_audio_file(full, "WorkflowConfigLtx23")
 
 
 def _load_lora(name: str):
