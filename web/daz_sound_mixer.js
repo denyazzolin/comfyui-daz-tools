@@ -657,6 +657,7 @@ function openMixEditor(node) {
       endNum.value = newEnd.toFixed(4)
       drawWave(canvas, m?.peaks || null, color, { cropStart: newStart, cropEnd: newEnd, dur })
       persist()
+      renderTimeline()
     }
     startNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
     endNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
