@@ -468,8 +468,17 @@ function openMixEditor(node) {
       background:#262626;
     `
     el.draggable = hasFile
+    // Interactive controls (crop sliders, canvas click-to-crop, buttons) must
+    // not be hijacked into starting the box's own HTML5 drag — a custom-styled
+    // range thumb can otherwise lose its native drag recognition and the
+    // ancestor's draggable=true wins instead, showing a no-drop cursor.
+    let suppressBoxDrag = false
+    el.addEventListener("mousedown", (ev) => {
+      suppressBoxDrag = !!ev.target.closest?.("input, canvas, button")
+    })
     if (hasFile) {
       el.addEventListener("dragstart", (ev) => {
+        if (suppressBoxDrag) { ev.preventDefault(); return }
         ev.dataTransfer.setData("text/plain", id)
         ev.dataTransfer.effectAllowed = "copy"
         const ghost = document.createElement("div")
@@ -577,6 +586,19 @@ function openMixEditor(node) {
     endSlider.addEventListener("input", () => applyCrop(Number(startSlider.value), Number(endSlider.value)))
     startNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
     endNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
+
+    // Clicking the waveform itself (not a handle) snaps the nearer crop
+    // boundary to the click position.
+    canvas.addEventListener("mousedown", (ev) => {
+      if (!hasFile || !m?.buffer || !dur) return
+      const rect = canvas.getBoundingClientRect()
+      const t = Math.max(0, Math.min(dur, ((ev.clientX - rect.left) / rect.width) * dur))
+      const curStart = Number(startSlider.value)
+      const curEnd = Number(endSlider.value)
+      if (Math.abs(t - curStart) <= Math.abs(t - curEnd)) applyCrop(t, curEnd)
+      else applyCrop(curStart, t)
+      ev.preventDefault()
+    })
 
     const btnRow = document.createElement("div")
     btnRow.style.cssText = "display:flex; gap:6px; margin-top:2px;"
