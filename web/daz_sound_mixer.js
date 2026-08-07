@@ -19,6 +19,33 @@ function colorFor(source) {
   return COLORS[((i % COLORS.length) + COLORS.length) % COLORS.length]
 }
 
+// Seconds between labeled ruler ticks, picked so ticks stay >=40px apart
+// regardless of zoom (duration vs. timeline width) — otherwise a long
+// duration would generate thousands of DOM nodes.
+const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
+function tickStep(ppS) {
+  for (const s of TICK_STEPS) if (s * ppS >= 40) return s
+  return TICK_STEPS[TICK_STEPS.length - 1]
+}
+
+// Sub-second (0.1s) dots only make sense between whole-second major ticks,
+// and only once they're spaced far enough apart to be legible.
+function computeTicks(dur, ppS) {
+  const step = tickStep(ppS)
+  const majors = []
+  for (let s = 0; s <= dur + 1e-9; s += step) majors.push(s)
+  const minors = []
+  if (step === 1 && ppS * 0.1 >= 3) {
+    for (let s = 0; s < dur - 1e-9; s++) {
+      for (let d = 1; d <= 9; d++) {
+        const ds = s + d * 0.1
+        if (ds < dur - 1e-9) minors.push(ds)
+      }
+    }
+  }
+  return { majors, minors }
+}
+
 function mkBtn(label, opts = {}) {
   const b = document.createElement("button")
   b.textContent = label
@@ -41,7 +68,8 @@ function newId(prefix) {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
 }
 
-function overlayShell(width, onClose) {
+function overlayShell(width, onClose, opts = {}) {
+  const { closeOnBackdropClick = true } = opts
   const overlay = document.createElement("div")
   overlay.style.cssText = `
     position:fixed; inset:0; background:rgba(0,0,0,0.6);
@@ -59,9 +87,11 @@ function overlayShell(width, onClose) {
     overlay.remove()
     if (onClose) onClose()
   }
-  overlay.addEventListener("mousedown", (ev) => {
-    if (ev.target === overlay) close()
-  })
+  if (closeOnBackdropClick) {
+    overlay.addEventListener("mousedown", (ev) => {
+      if (ev.target === overlay) close()
+    })
+  }
   document.body.appendChild(overlay)
   return { overlay, box, close }
 }
@@ -157,6 +187,29 @@ function schedulePreview(buffer, cropStart, cropDur, gain, when = 0) {
   _activeNodes.push(bufSrc)
 }
 
+function ensureCropHandleStyle() {
+  if (document.getElementById("daz-sound-mixer-crop-style")) return
+  const style = document.createElement("style")
+  style.id = "daz-sound-mixer-crop-style"
+  style.textContent = `
+    input.dsm-crop-handle {
+      position:absolute; top:0; left:0; width:100%; height:100%; margin:0; padding:0;
+      background:transparent; -webkit-appearance:none; appearance:none; pointer-events:none;
+    }
+    input.dsm-crop-handle::-webkit-slider-runnable-track { background:transparent; height:100%; }
+    input.dsm-crop-handle::-webkit-slider-thumb {
+      -webkit-appearance:none; pointer-events:auto; width:6px; height:100%;
+      background:#fff; border-radius:2px; cursor:ew-resize; box-shadow:0 0 0 1px rgba(0,0,0,0.7);
+    }
+    input.dsm-crop-handle::-moz-range-track { background:transparent; height:100%; border:none; }
+    input.dsm-crop-handle::-moz-range-thumb {
+      pointer-events:auto; width:6px; height:100%; background:#fff; border:none; border-radius:2px; cursor:ew-resize;
+      box-shadow:0 0 0 1px rgba(0,0,0,0.7);
+    }
+  `
+  document.head.appendChild(style)
+}
+
 function drawWave(canvas, peaks, color, errored) {
   const ctx = canvas.getContext("2d")
   const w = canvas.width, h = canvas.height
@@ -192,7 +245,7 @@ function readState(node) {
   try {
     const parsed = JSON.parse(w?.value || "{}")
     const sources = (parsed && typeof parsed.sources === "object" && parsed.sources) || {}
-    const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : []
+    const blocks = normalizeBlocks(Array.isArray(parsed?.blocks) ? parsed.blocks : [])
     let overall_gain = Number(parsed?.overall_gain)
     if (!Number.isFinite(overall_gain)) overall_gain = 1.0
     return { sources, blocks, overall_gain }
@@ -211,6 +264,33 @@ function nextColorIndex(sources) {
   const used = new Set(Object.values(sources).map((s) => s.colorIndex))
   for (let i = 0; i < COLORS.length; i++) if (!used.has(i)) return i
   return 0
+}
+
+// Row is a display-grid concept only (the timeline renders one block per
+// row via a row->block Map), but nothing else in the app groups by row —
+// two blocks sharing (or missing) a row silently collapse to one visible
+// box while both still get mixed, so any invalid/duplicate row must be
+// repaired before the state is used for anything.
+function normalizeBlocks(blocks) {
+  const seen = new Set()
+  for (const blk of blocks) {
+    if (Number.isInteger(blk.row) && blk.row >= 0 && blk.row < MAX_BLOCK_ROWS && !seen.has(blk.row)) {
+      seen.add(blk.row)
+    } else {
+      blk.row = -1
+    }
+  }
+  for (const blk of blocks) {
+    if (blk.row === -1) {
+      let r = 0
+      while (r < MAX_BLOCK_ROWS && seen.has(r)) r++
+      if (r < MAX_BLOCK_ROWS) {
+        blk.row = r
+        seen.add(r)
+      }
+    }
+  }
+  return blocks.filter((b) => b.row >= 0)
 }
 
 function usedRows(state) {
@@ -237,6 +317,7 @@ function visibleRowCount(state) {
 // ---------------------------------------------------------------------------
 
 function openMixEditor(node) {
+  ensureCropHandleStyle()
   const state = readState(node)
   const meta = {} // sourceId -> {peaks, duration, buffer, error, _filename}
   let selectedBlockId = null
@@ -248,7 +329,7 @@ function openMixEditor(node) {
     stopAllPreviews()
     clearTimeout(errorTimer)
     document.removeEventListener("keydown", onKeyDown)
-  })
+  }, { closeOnBackdropClick: false })
 
   function currentDuration() {
     const w = durationWidget(node)
@@ -307,7 +388,7 @@ function openMixEditor(node) {
   const timelineWrap = document.createElement("div")
   timelineWrap.style.cssText = "padding:10px 14px; flex:1; display:flex; flex-direction:column; min-height:0;"
   const rulerEl = document.createElement("div")
-  rulerEl.style.cssText = "position:relative; height:16px; color:#888; font-size:11px; margin-bottom:2px;"
+  rulerEl.style.cssText = "position:relative; height:22px; color:#888; font-size:10px; margin-bottom:2px;"
   const tracksEl = document.createElement("div")
   tracksEl.style.cssText = "position:relative; height:320px; overflow:hidden; border:1px solid #3a3a3a; border-radius:4px; background:#1c1c1c;"
   timelineWrap.appendChild(rulerEl)
@@ -427,11 +508,14 @@ function openMixEditor(node) {
     labelRow.appendChild(labelInput)
     el.appendChild(labelRow)
 
+    const waveWrap = document.createElement("div")
+    waveWrap.style.cssText = "position:relative; width:100%; height:42px;"
     const canvas = document.createElement("canvas")
     canvas.width = 220
     canvas.height = 42
     canvas.style.cssText = "width:100%; height:42px; display:block; background:#151515; border-radius:3px;"
-    el.appendChild(canvas)
+    waveWrap.appendChild(canvas)
+    el.appendChild(waveWrap)
 
     const m = meta[id]
     if (hasFile) drawWave(canvas, m?.peaks || null, color, m?.error)
@@ -443,20 +527,20 @@ function openMixEditor(node) {
 
     const startSlider = document.createElement("input")
     startSlider.type = "range"
+    startSlider.className = "dsm-crop-handle"
     startSlider.min = "0"; startSlider.max = String(Math.max(dur, CROP_STEP)); startSlider.step = String(CROP_STEP)
     startSlider.value = String(cropStart)
     startSlider.disabled = !hasFile || !m?.buffer
-    startSlider.style.cssText = "width:100%; margin:0;"
 
     const endSlider = document.createElement("input")
     endSlider.type = "range"
+    endSlider.className = "dsm-crop-handle"
     endSlider.min = "0"; endSlider.max = String(Math.max(dur, CROP_STEP)); endSlider.step = String(CROP_STEP)
     endSlider.value = String(cropEnd)
     endSlider.disabled = !hasFile || !m?.buffer
-    endSlider.style.cssText = "width:100%; margin:0;"
 
-    el.appendChild(startSlider)
-    el.appendChild(endSlider)
+    waveWrap.appendChild(startSlider)
+    waveWrap.appendChild(endSlider)
 
     const startEndRow = document.createElement("div")
     startEndRow.style.cssText = "display:flex; gap:6px; align-items:center; font-size:11px; color:#aaa;"
@@ -649,7 +733,24 @@ function openMixEditor(node) {
 
   function renderRuler() {
     const dur = currentDuration()
-    rulerEl.innerHTML = `<span style="position:absolute; left:0;">0</span><span style="position:absolute; right:0;">${dur.toFixed(2)}s</span>`
+    const ppS = pxPerSec()
+    rulerEl.innerHTML = ""
+    const { majors, minors } = computeTicks(dur, ppS)
+    for (const s of majors) {
+      const x = s * ppS
+      const label = document.createElement("div")
+      label.style.cssText = `position:absolute; left:${x}px; top:0; transform:translateX(${s === 0 ? "0" : "-50%"}); white-space:nowrap;`
+      label.textContent = `${s}s`
+      rulerEl.appendChild(label)
+      const bar = document.createElement("div")
+      bar.style.cssText = `position:absolute; left:${x}px; bottom:0; width:1px; height:8px; background:#777;`
+      rulerEl.appendChild(bar)
+    }
+    for (const s of minors) {
+      const dot = document.createElement("div")
+      dot.style.cssText = `position:absolute; left:${s * ppS}px; bottom:2px; width:2px; height:2px; border-radius:50%; background:#555;`
+      rulerEl.appendChild(dot)
+    }
   }
 
   function renderTimeline() {
@@ -659,11 +760,24 @@ function openMixEditor(node) {
     const rows = visibleRowCount(state)
     const rowH = tracksEl.clientHeight > 0 ? tracksEl.clientHeight / rows : 320 / rows
     const ppS = pxPerSec()
+    const dur = currentDuration()
     const byRow = new Map(state.blocks.map((b) => [b.row, b]))
+
+    const { majors, minors } = computeTicks(dur, ppS)
+    for (const s of minors) {
+      const line = document.createElement("div")
+      line.style.cssText = `position:absolute; left:${s * ppS}px; top:0; bottom:0; width:0; border-left:1px dotted #2a2a2a;`
+      tracksEl.appendChild(line)
+    }
+    for (const s of majors) {
+      const line = document.createElement("div")
+      line.style.cssText = `position:absolute; left:${s * ppS}px; top:0; bottom:0; width:0; border-left:1px dotted #444;`
+      tracksEl.appendChild(line)
+    }
 
     for (let r = 0; r < rows; r++) {
       const rowEl = document.createElement("div")
-      rowEl.style.cssText = `position:absolute; left:0; right:0; top:${r * rowH}px; height:${rowH}px; border-bottom:1px solid #2a2a2a; box-sizing:border-box;`
+      rowEl.style.cssText = `position:absolute; left:0; right:0; top:${r * rowH}px; height:${rowH}px; border-bottom:1px dotted #2a2a2a; box-sizing:border-box;`
       tracksEl.appendChild(rowEl)
 
       const blk = byRow.get(r)
@@ -823,7 +937,7 @@ function openMixEditor(node) {
     overallLbl.appendChild(overallInput)
     buttonRow.appendChild(overallLbl)
 
-    buttonRow.appendChild(mkBtn("Close", { onClick: closeOverlay }))
+    buttonRow.appendChild(mkBtn("Ok", { onClick: closeOverlay }))
   }
 
   // Drag-drop from source boxes into the timeline --------------------------
@@ -849,6 +963,7 @@ function openMixEditor(node) {
   }
   document.addEventListener("keydown", onKeyDown)
 
+  persist() // write back any row de-duplication normalizeBlocks() applied on load
   renderSources()
   renderTimeline()
 }
