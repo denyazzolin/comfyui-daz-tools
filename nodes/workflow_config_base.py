@@ -65,6 +65,12 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
 CURRENT_SCHEMA = 8
 _META_KEY      = "_meta"
 
+# Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
+# belong to a different module (e.g. prompt_stack_base.py's STACKS_FILE) and
+# must be excluded from config-file scanning — otherwise they get migrated
+# and rewritten under this module's CURRENT_SCHEMA instead of their owner's.
+_NON_CONFIG_FILENAMES = {"dx_prompt_stacks.json"}
+
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
 
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
@@ -162,7 +168,7 @@ def scan_config_files(cls: str = None) -> list[dict]:
 
     preset_filename = os.path.basename(_resolve_preset_path())
     for filename in candidates:
-        if filename == preset_filename:
+        if filename == preset_filename or filename in _NON_CONFIG_FILENAMES:
             continue
         path = os.path.join(_MGR_DIR, filename)
         try:
@@ -1563,7 +1569,8 @@ try:
         try:
             candidates = sorted(
                 f for f in os.listdir(_MGR_DIR)
-                if f.startswith("dx_") and f.endswith(".json") and f != preset_filename
+                if f.startswith("dx_") and f.endswith(".json")
+                and f != preset_filename and f not in _NON_CONFIG_FILENAMES
             )
         except OSError:
             candidates = []
