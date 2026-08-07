@@ -19,6 +19,13 @@ function colorFor(source) {
   return COLORS[((i % COLORS.length) + COLORS.length) % COLORS.length]
 }
 
+function darken(hex, amount = 0.55) {
+  const n = parseInt(hex.slice(1), 16)
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  const f = (c) => Math.round(c * (1 - amount))
+  return `rgb(${f(r)}, ${f(g)}, ${f(b)})`
+}
+
 // Seconds between labeled ruler ticks, picked so ticks stay >=40px apart
 // regardless of zoom (duration vs. timeline width) — otherwise a long
 // duration would generate thousands of DOM nodes.
@@ -198,19 +205,20 @@ function ensureCropHandleStyle() {
     }
     input.dsm-crop-handle::-webkit-slider-runnable-track { background:transparent; height:100%; }
     input.dsm-crop-handle::-webkit-slider-thumb {
-      -webkit-appearance:none; pointer-events:auto; width:6px; height:100%;
-      background:#fff; border-radius:2px; cursor:ew-resize; box-shadow:0 0 0 1px rgba(0,0,0,0.7);
+      -webkit-appearance:none; pointer-events:auto; width:12px; height:100%; cursor:ew-resize;
+      background:linear-gradient(to right, transparent 0 40%, #fff 40% 60%, transparent 60% 100%);
     }
     input.dsm-crop-handle::-moz-range-track { background:transparent; height:100%; border:none; }
     input.dsm-crop-handle::-moz-range-thumb {
-      pointer-events:auto; width:6px; height:100%; background:#fff; border:none; border-radius:2px; cursor:ew-resize;
-      box-shadow:0 0 0 1px rgba(0,0,0,0.7);
+      pointer-events:auto; width:12px; height:100%; border:none; cursor:ew-resize;
+      background:linear-gradient(to right, transparent 0 40%, #fff 40% 60%, transparent 60% 100%);
     }
   `
   document.head.appendChild(style)
 }
 
-function drawWave(canvas, peaks, color, errored) {
+function drawWave(canvas, peaks, color, opts = {}) {
+  const { errored, cropStart = 0, cropEnd = 0, dur = 0 } = opts
   const ctx = canvas.getContext("2d")
   const w = canvas.width, h = canvas.height
   ctx.clearRect(0, 0, w, h)
@@ -222,9 +230,16 @@ function drawWave(canvas, peaks, color, errored) {
   }
   const mid = h / 2
   const barW = w / peaks.length
-  ctx.fillStyle = color
+  const dimColor = darken(color)
+  const hasCrop = dur > 0 && (cropStart > 0 || cropEnd < dur)
   for (let i = 0; i < peaks.length; i++) {
     const bh = Math.max(1, peaks[i] * (h - 4))
+    let fill = color
+    if (hasCrop) {
+      const t = ((i + 0.5) / peaks.length) * dur
+      if (t < cropStart || t > cropEnd) fill = dimColor
+    }
+    ctx.fillStyle = fill
     ctx.fillRect(i * barW, mid - bh / 2, Math.max(1, barW - 1), bh)
   }
 }
@@ -324,9 +339,12 @@ function openMixEditor(node) {
   let errorTimer = null
   let closeActivePopup = null
   const blockEls = new Map() // block id -> live DOM element, for drag-without-rebuild
+  const sourcePlayheads = new Map() // sourceId -> waveform playhead line element
+  let timelinePlayhead = null
+  let activeRafs = []
 
   const { box, close: closeOverlay } = overlayShell(1040, () => {
-    stopAllPreviews()
+    stopAll()
     clearTimeout(errorTimer)
     document.removeEventListener("keydown", onKeyDown)
   }, { closeOnBackdropClick: false })
@@ -346,6 +364,30 @@ function openMixEditor(node) {
   function persist() {
     writeState(node, state)
     node.setDirtyCanvas(true, true)
+  }
+
+  // Animates `el`'s `left` (in `unit`, "%" or "px") over `durationS` seconds,
+  // hiding it when done; returns nothing, but registers a canceller so
+  // stopAll() can cut every in-flight playhead animation at once.
+  function animatePlayhead(el, getPos, durationS, unit) {
+    if (!el || !(durationS > 0)) return
+    const startT = performance.now()
+    let raf
+    function tick() {
+      const elapsed = (performance.now() - startT) / 1000
+      if (elapsed >= durationS) { el.style.display = "none"; return }
+      el.style.display = "block"
+      el.style.left = `${getPos(elapsed)}${unit}`
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    activeRafs.push(() => { cancelAnimationFrame(raf); el.style.display = "none" })
+  }
+
+  function stopAll() {
+    stopAllPreviews()
+    for (const cancel of activeRafs) cancel()
+    activeRafs = []
   }
 
   // Header ---------------------------------------------------------------
@@ -378,7 +420,7 @@ function openMixEditor(node) {
   sourcesWrap.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a;"
   const sourcesGrid = document.createElement("div")
   sourcesGrid.style.cssText = `
-    display:grid; grid-template-columns:repeat(${GRID_COLS}, 1fr); gap:8px;
+    display:grid; grid-template-columns:repeat(${GRID_COLS}, 1fr); gap:8px; align-items:start;
     max-height:460px; overflow-y:auto; padding-right:4px;
   `
   sourcesWrap.appendChild(sourcesGrid)
@@ -424,15 +466,47 @@ function openMixEditor(node) {
     })
   }
 
-  function addEmptySource() {
-    if (Object.keys(state.sources).length >= MAX_SOURCES) return
+  function createEmptySource() {
+    if (Object.keys(state.sources).length >= MAX_SOURCES) return null
     const id = newId("s")
     state.sources[id] = {
       filename: "", label: "", colorIndex: nextColorIndex(state.sources),
       crop_start_s: 0, crop_end_s: 0,
     }
+    return id
+  }
+
+  function addEmptySource() {
+    const id = createEmptySource()
+    if (!id) return
     persist()
     renderSources()
+  }
+
+  function uploadForSource(id) {
+    const input = document.createElement("input")
+    input.type = "file"
+    input.accept = "audio/*,video/*"
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const src = state.sources[id]
+      if (!src) return
+      try {
+        const filename = await uploadAudioFile(file)
+        src.filename = filename
+        if (!src.label) src.label = file.name.replace(/\.[^.]+$/, "")
+        src.crop_start_s = 0
+        src.crop_end_s = 0
+        delete meta[id]
+        persist()
+        renderSources()
+        ensureMeta(id, filename)
+      } catch (e) {
+        showError(`Upload failed: ${e.message || e}`)
+      }
+    })
+    input.click()
   }
 
   function deleteSource(id) {
@@ -448,12 +522,26 @@ function openMixEditor(node) {
   function buildAddTile() {
     const tile = document.createElement("div")
     tile.style.cssText = `
-      border:1px dashed #555; border-radius:5px; min-height:230px;
-      display:flex; align-items:center; justify-content:center; cursor:pointer;
+      border:1px dashed #555; border-radius:5px; min-height:230px; padding:8px;
+      display:flex; flex-direction:column; gap:8px;
+    `
+    const plus = document.createElement("div")
+    plus.style.cssText = `
+      flex:1; display:flex; align-items:center; justify-content:center; cursor:pointer;
       font-size:32px; color:#777; user-select:none;
     `
-    tile.textContent = "+"
-    tile.addEventListener("click", addEmptySource)
+    plus.textContent = "+"
+    plus.addEventListener("click", addEmptySource)
+    tile.appendChild(plus)
+    tile.appendChild(mkBtn("Upload", {
+      onClick: () => {
+        const id = createEmptySource()
+        if (!id) return
+        persist()
+        renderSources()
+        uploadForSource(id)
+      },
+    }))
     return tile
   }
 
@@ -527,12 +615,12 @@ function openMixEditor(node) {
     el.appendChild(waveWrap)
 
     const m = meta[id]
-    if (hasFile) drawWave(canvas, m?.peaks || null, color, m?.error)
-    else drawWave(canvas, new Float32Array(1), "#3a3a3a")
-
     const dur = m?.duration || 0
     const cropStart = src.crop_start_s || 0
     const cropEnd = src.crop_end_s > 0 ? src.crop_end_s : dur
+
+    if (hasFile) drawWave(canvas, m?.peaks || null, color, { errored: m?.error, cropStart, cropEnd, dur })
+    else drawWave(canvas, new Float32Array(1), "#3a3a3a")
 
     const startSlider = document.createElement("input")
     startSlider.type = "range"
@@ -550,6 +638,14 @@ function openMixEditor(node) {
 
     waveWrap.appendChild(startSlider)
     waveWrap.appendChild(endSlider)
+
+    const playheadEl = document.createElement("div")
+    playheadEl.style.cssText = `
+      position:absolute; top:0; bottom:0; width:2px; background:#3ecf3e; display:none;
+      pointer-events:none; box-shadow:0 0 4px #3ecf3e; z-index:2;
+    `
+    waveWrap.appendChild(playheadEl)
+    sourcePlayheads.set(id, playheadEl)
 
     const startEndRow = document.createElement("div")
     startEndRow.style.cssText = "display:flex; gap:6px; align-items:center; font-size:11px; color:#aaa;"
@@ -579,7 +675,7 @@ function openMixEditor(node) {
       endSlider.value = String(newEnd)
       startNum.value = newStart.toFixed(4)
       endNum.value = newEnd.toFixed(4)
-      drawWave(canvas, m?.peaks || null, color)
+      drawWave(canvas, m?.peaks || null, color, { cropStart: newStart, cropEnd: newEnd, dur })
       persist()
     }
     startSlider.addEventListener("input", () => applyCrop(Number(startSlider.value), Number(endSlider.value)))
@@ -605,37 +701,15 @@ function openMixEditor(node) {
     btnRow.appendChild(mkBtn("▶", {
       disabled: !hasFile || !m?.buffer,
       onClick: () => {
-        stopAllPreviews()
+        stopAll()
         const cs = src.crop_start_s || 0
         const ce = src.crop_end_s > 0 ? src.crop_end_s : (m?.duration || 0)
-        schedulePreview(m.buffer, cs, Math.max(0, ce - cs), 1, 0)
+        const durS = Math.max(0, ce - cs)
+        schedulePreview(m.buffer, cs, durS, 1, 0)
+        if (dur > 0) animatePlayhead(playheadEl, (elapsed) => ((cs + elapsed) / dur) * 100, durS, "%")
       },
     }))
-    btnRow.appendChild(mkBtn("Upload", {
-      onClick: () => {
-        const input = document.createElement("input")
-        input.type = "file"
-        input.accept = "audio/*,video/*"
-        input.addEventListener("change", async () => {
-          const file = input.files?.[0]
-          if (!file) return
-          try {
-            const filename = await uploadAudioFile(file)
-            src.filename = filename
-            if (!src.label) src.label = file.name.replace(/\.[^.]+$/, "")
-            src.crop_start_s = 0
-            src.crop_end_s = 0
-            delete meta[id]
-            persist()
-            renderSources()
-            ensureMeta(id, filename)
-          } catch (e) {
-            showError(`Upload failed: ${e.message || e}`)
-          }
-        })
-        input.click()
-      },
-    }))
+    btnRow.appendChild(mkBtn("Upload", { onClick: () => uploadForSource(id) }))
     btnRow.appendChild(mkBtn("Delete", { danger: true, onClick: () => deleteSource(id) }))
     el.appendChild(btnRow)
 
@@ -646,6 +720,7 @@ function openMixEditor(node) {
 
   function renderSources() {
     sourcesGrid.innerHTML = ""
+    sourcePlayheads.clear()
     for (const id of Object.keys(state.sources)) sourcesGrid.appendChild(buildSourceBox(id))
     if (Object.keys(state.sources).length < MAX_SOURCES) sourcesGrid.appendChild(buildAddTile())
   }
@@ -820,7 +895,7 @@ function openMixEditor(node) {
         position:absolute; top:2px; bottom:2px; left:${(blk.start_s || 0) * ppS}px; width:${cropDur * ppS}px;
         background:${color}; border-radius:3px; cursor:grab; overflow:hidden;
         border:2px solid ${selected ? "#fff" : "transparent"}; box-sizing:border-box;
-        font-size:10px; color:#111; padding:2px 4px; white-space:nowrap;
+        font-size:10px; color:#111; padding:2px 4px; white-space:normal; overflow-wrap:break-word; line-height:1.2;
       `
       blockEl.textContent = label
       blockEl.addEventListener("mousedown", (ev) => {
@@ -853,6 +928,13 @@ function openMixEditor(node) {
       rowEl.appendChild(blockEl)
     }
 
+    timelinePlayhead = document.createElement("div")
+    timelinePlayhead.style.cssText = `
+      position:absolute; top:0; bottom:0; width:2px; background:#3ecf3e; display:none;
+      pointer-events:none; box-shadow:0 0 4px #3ecf3e; z-index:6;
+    `
+    tracksEl.appendChild(timelinePlayhead)
+
     renderButtonRow()
   }
 
@@ -864,7 +946,7 @@ function openMixEditor(node) {
     buttonRow.innerHTML = ""
     buttonRow.appendChild(mkBtn("▶ Play Mix", {
       onClick: () => {
-        stopAllPreviews()
+        stopAll()
         const dur = currentDuration()
         for (const blk of state.blocks) {
           const src = state.sources[blk.source]
@@ -879,6 +961,7 @@ function openMixEditor(node) {
           if (playDur <= 0) continue
           schedulePreview(m.buffer, cropStart, playDur, (blk.gain ?? 1) * (state.overall_gain ?? 1), startAt)
         }
+        animatePlayhead(timelinePlayhead, (elapsed) => elapsed * pxPerSec(), dur, "px")
       },
     }))
     buttonRow.appendChild(mkBtn("Add", { onClick: openAddPopup }))
@@ -892,10 +975,13 @@ function openMixEditor(node) {
       buttonRow.appendChild(mkBtn("▶", {
         disabled: !m?.buffer,
         onClick: () => {
-          stopAllPreviews()
+          stopAll()
           const cs = src?.crop_start_s || 0
           const ce = src?.crop_end_s > 0 ? src.crop_end_s : (m?.duration || 0)
-          schedulePreview(m.buffer, cs, Math.max(0, ce - cs), (selBlock.gain ?? 1) * (state.overall_gain ?? 1), 0)
+          const durS = Math.max(0, ce - cs)
+          schedulePreview(m.buffer, cs, durS, (selBlock.gain ?? 1) * (state.overall_gain ?? 1), 0)
+          const ph = sourcePlayheads.get(selBlock.source)
+          if (ph && m?.duration > 0) animatePlayhead(ph, (elapsed) => ((cs + elapsed) / m.duration) * 100, durS, "%")
         },
       }))
 
