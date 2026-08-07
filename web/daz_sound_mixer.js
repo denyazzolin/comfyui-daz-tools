@@ -194,29 +194,6 @@ function schedulePreview(buffer, cropStart, cropDur, gain, when = 0) {
   _activeNodes.push(bufSrc)
 }
 
-function ensureCropHandleStyle() {
-  if (document.getElementById("daz-sound-mixer-crop-style")) return
-  const style = document.createElement("style")
-  style.id = "daz-sound-mixer-crop-style"
-  style.textContent = `
-    input.dsm-crop-handle {
-      position:absolute; top:0; left:0; width:100%; height:100%; margin:0; padding:0;
-      background:transparent; -webkit-appearance:none; appearance:none; pointer-events:none;
-    }
-    input.dsm-crop-handle::-webkit-slider-runnable-track { background:transparent; height:100%; }
-    input.dsm-crop-handle::-webkit-slider-thumb {
-      -webkit-appearance:none; pointer-events:auto; width:12px; height:100%; cursor:ew-resize;
-      background:linear-gradient(to right, transparent 0 40%, #fff 40% 60%, transparent 60% 100%);
-    }
-    input.dsm-crop-handle::-moz-range-track { background:transparent; height:100%; border:none; }
-    input.dsm-crop-handle::-moz-range-thumb {
-      pointer-events:auto; width:12px; height:100%; border:none; cursor:ew-resize;
-      background:linear-gradient(to right, transparent 0 40%, #fff 40% 60%, transparent 60% 100%);
-    }
-  `
-  document.head.appendChild(style)
-}
-
 function drawWave(canvas, peaks, color, opts = {}) {
   const { errored, cropStart = 0, cropEnd = 0, dur = 0 } = opts
   const ctx = canvas.getContext("2d")
@@ -332,7 +309,6 @@ function visibleRowCount(state) {
 // ---------------------------------------------------------------------------
 
 function openMixEditor(node) {
-  ensureCropHandleStyle()
   const state = readState(node)
   const meta = {} // sourceId -> {peaks, duration, buffer, error, _filename}
   let selectedBlockId = null
@@ -622,27 +598,31 @@ function openMixEditor(node) {
     if (hasFile) drawWave(canvas, m?.peaks || null, color, { errored: m?.error, cropStart, cropEnd, dur })
     else drawWave(canvas, new Float32Array(1), "#3a3a3a")
 
-    const startSlider = document.createElement("input")
-    startSlider.type = "range"
-    startSlider.className = "dsm-crop-handle"
-    startSlider.min = "0"; startSlider.max = String(Math.max(dur, CROP_STEP)); startSlider.step = String(CROP_STEP)
-    startSlider.value = String(cropStart)
-    startSlider.disabled = !hasFile || !m?.buffer
-
-    const endSlider = document.createElement("input")
-    endSlider.type = "range"
-    endSlider.className = "dsm-crop-handle"
-    endSlider.min = "0"; endSlider.max = String(Math.max(dur, CROP_STEP)); endSlider.step = String(CROP_STEP)
-    endSlider.value = String(cropEnd)
-    endSlider.disabled = !hasFile || !m?.buffer
-
-    waveWrap.appendChild(startSlider)
-    waveWrap.appendChild(endSlider)
+    // Custom-drawn crop handles instead of native <input type=range> thumbs:
+    // a native thumb's travel is inset by half its own width from the track
+    // edges, which never lines up with the plain linear time->pixel math the
+    // waveform/playhead use, so the handle visibly drifted from the true
+    // crop point. Positioning these ourselves keeps them pixel-exact and
+    // lets the line be as thin as we want.
+    function handleLine() {
+      const el = document.createElement("div")
+      el.style.cssText = `
+        position:absolute; top:0; bottom:0; width:1px; background:#fff;
+        pointer-events:none; box-shadow:0 0 2px rgba(0,0,0,0.9); z-index:3;
+      `
+      return el
+    }
+    const startHandleEl = handleLine()
+    const endHandleEl = handleLine()
+    startHandleEl.style.left = dur > 0 ? `${(cropStart / dur) * 100}%` : "0%"
+    endHandleEl.style.left = dur > 0 ? `${(cropEnd / dur) * 100}%` : "100%"
+    waveWrap.appendChild(startHandleEl)
+    waveWrap.appendChild(endHandleEl)
 
     const playheadEl = document.createElement("div")
     playheadEl.style.cssText = `
-      position:absolute; top:0; bottom:0; width:2px; background:#3ecf3e; display:none;
-      pointer-events:none; box-shadow:0 0 4px #3ecf3e; z-index:2;
+      position:absolute; top:0; bottom:0; width:1px; background:#3ecf3e; display:none;
+      pointer-events:none; box-shadow:0 0 2px #3ecf3e; z-index:5;
     `
     waveWrap.appendChild(playheadEl)
     sourcePlayheads.set(id, playheadEl)
@@ -671,28 +651,40 @@ function openMixEditor(node) {
       newEnd = Math.max(newStart, Math.min(newEnd, dur || newEnd))
       src.crop_start_s = newStart
       src.crop_end_s = newEnd
-      startSlider.value = String(newStart)
-      endSlider.value = String(newEnd)
+      startHandleEl.style.left = dur > 0 ? `${(newStart / dur) * 100}%` : "0%"
+      endHandleEl.style.left = dur > 0 ? `${(newEnd / dur) * 100}%` : "100%"
       startNum.value = newStart.toFixed(4)
       endNum.value = newEnd.toFixed(4)
       drawWave(canvas, m?.peaks || null, color, { cropStart: newStart, cropEnd: newEnd, dur })
       persist()
     }
-    startSlider.addEventListener("input", () => applyCrop(Number(startSlider.value), Number(endSlider.value)))
-    endSlider.addEventListener("input", () => applyCrop(Number(startSlider.value), Number(endSlider.value)))
     startNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
     endNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
 
-    // Clicking the waveform itself (not a handle) snaps the nearer crop
-    // boundary to the click position.
-    canvas.addEventListener("mousedown", (ev) => {
+    // A single mousedown on the waveform picks whichever crop boundary is
+    // nearer, snaps it to the click point, and keeps dragging it for the
+    // rest of this same mouse-down — no need to release and click again.
+    waveWrap.addEventListener("mousedown", (ev) => {
       if (!hasFile || !m?.buffer || !dur) return
-      const rect = canvas.getBoundingClientRect()
-      const t = Math.max(0, Math.min(dur, ((ev.clientX - rect.left) / rect.width) * dur))
-      const curStart = Number(startSlider.value)
-      const curEnd = Number(endSlider.value)
-      if (Math.abs(t - curStart) <= Math.abs(t - curEnd)) applyCrop(t, curEnd)
-      else applyCrop(curStart, t)
+      const rect = waveWrap.getBoundingClientRect()
+      const timeAt = (clientX) => Math.max(0, Math.min(dur, ((clientX - rect.left) / rect.width) * dur))
+      // crop_end_s === 0 means "uncropped, full duration" everywhere else in
+      // this file (and in sound_mixer.py) — resolve that before ever using
+      // it as an actual end value, or dragging start would collapse it to 0.
+      const effEnd = () => (src.crop_end_s > 0 ? src.crop_end_s : dur)
+      const t0 = timeAt(ev.clientX)
+      const draggingStart = Math.abs(t0 - src.crop_start_s) <= Math.abs(t0 - effEnd())
+      applyCrop(draggingStart ? t0 : src.crop_start_s, draggingStart ? effEnd() : t0)
+      function onMove(mv) {
+        const t = timeAt(mv.clientX)
+        applyCrop(draggingStart ? t : src.crop_start_s, draggingStart ? effEnd() : t)
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove)
+        document.removeEventListener("mouseup", onUp)
+      }
+      document.addEventListener("mousemove", onMove)
+      document.addEventListener("mouseup", onUp)
       ev.preventDefault()
     })
 
@@ -930,8 +922,8 @@ function openMixEditor(node) {
 
     timelinePlayhead = document.createElement("div")
     timelinePlayhead.style.cssText = `
-      position:absolute; top:0; bottom:0; width:2px; background:#3ecf3e; display:none;
-      pointer-events:none; box-shadow:0 0 4px #3ecf3e; z-index:6;
+      position:absolute; top:0; bottom:0; width:1px; background:#3ecf3e; display:none;
+      pointer-events:none; box-shadow:0 0 2px #3ecf3e; z-index:6;
     `
     tracksEl.appendChild(timelinePlayhead)
 
