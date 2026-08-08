@@ -371,6 +371,7 @@ function openMixEditor(node) {
     activeRafs = []
     clearTimeout(videoStopTimer)
     videoStopTimer = null
+    try { videoState?.stopLoopPlayback?.() } catch { /* nothing to stop */ }
     try { videoState?.videoEl?.pause() } catch { /* nothing to pause */ }
   }
 
@@ -786,6 +787,7 @@ function openMixEditor(node) {
     if (!videoPanel) return
     clearTimeout(videoStopTimer)
     videoStopTimer = null
+    try { videoState?.stopLoopPlayback?.() } catch { /* nothing to stop */ }
     try { videoState?.videoEl?.pause() } catch { /* nothing to pause */ }
     videoPanel.remove()
     videoPanel = null
@@ -996,6 +998,45 @@ function openMixEditor(node) {
     })
 
     setFromFrame(0)
+
+    // Click the video frame to loop-play from the slider's current position;
+    // click again to stop. Loops back to that starting frame (not to 0) each
+    // time it reaches the end, and honors the "Play Audio" checkbox live.
+    displayWrap.style.cursor = "pointer"
+    displayWrap.title = "Click to play/stop"
+    let loopPlaying = false
+    let loopStartFrame = 0
+    function onLoopTimeUpdate() {
+      const frameIdx = Math.min(videoState.frameCount - 1, Math.round(videoEl.currentTime * videoState.fps))
+      scrub.value = String(frameIdx)
+      updateReadout(frameIdx)
+    }
+    function onLoopEnded() {
+      videoEl.currentTime = frameTime(loopStartFrame)
+      videoEl.play().catch(() => { /* autoplay may be blocked */ })
+    }
+    function stopLoopPlayback() {
+      if (!loopPlaying) return
+      loopPlaying = false
+      videoEl.removeEventListener("timeupdate", onLoopTimeUpdate)
+      videoEl.removeEventListener("ended", onLoopEnded)
+      try { videoEl.pause() } catch { /* already stopped */ }
+    }
+    function startLoopPlayback() {
+      videoState.cancelPendingScrub?.()
+      loopStartFrame = Number(scrub.value)
+      videoEl.muted = !playAudioChk.checked
+      loopPlaying = true
+      videoEl.addEventListener("timeupdate", onLoopTimeUpdate)
+      videoEl.addEventListener("ended", onLoopEnded)
+      const p = videoEl.play()
+      if (p?.catch) p.catch(() => { loopPlaying = false })
+    }
+    displayWrap.addEventListener("click", () => {
+      if (loopPlaying) stopLoopPlayback()
+      else startLoopPlayback()
+    })
+    videoState.stopLoopPlayback = stopLoopPlayback
 
     const listTitle = document.createElement("div")
     listTitle.style.cssText = "display:flex; align-items:center; gap:6px; color:#aaa; margin-top:4px; white-space:nowrap;"
