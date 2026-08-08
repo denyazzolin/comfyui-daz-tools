@@ -498,7 +498,7 @@ function openMixEditor(node) {
   function buildAddTile() {
     const tile = document.createElement("div")
     tile.style.cssText = `
-      border:1px dashed #555; border-radius:5px; min-height:230px; padding:8px;
+      border:1px dashed #555; border-radius:5px; padding:8px;
       display:flex; flex-direction:column; gap:8px;
     `
     const plus = document.createElement("div")
@@ -714,8 +714,19 @@ function openMixEditor(node) {
   function renderSources() {
     sourcesGrid.innerHTML = ""
     sourcePlayheads.clear()
-    for (const id of Object.keys(state.sources)) sourcesGrid.appendChild(buildSourceBox(id))
-    if (Object.keys(state.sources).length < MAX_SOURCES) sourcesGrid.appendChild(buildAddTile())
+    const ids = Object.keys(state.sources)
+    for (const id of ids) sourcesGrid.appendChild(buildSourceBox(id))
+    if (ids.length < MAX_SOURCES) {
+      const tile = buildAddTile()
+      sourcesGrid.appendChild(tile)
+      // Source boxes all share the same structure, so any rendered one is a
+      // representative height to match — otherwise the add-tile's own
+      // (much shorter) content would size it differently from the rest.
+      if (ids.length > 0) {
+        const h = sourcesGrid.children[0].getBoundingClientRect().height
+        if (h > 0) tile.style.minHeight = `${h}px`
+      }
+    }
   }
 
   // -------------------------------------------------------------------
