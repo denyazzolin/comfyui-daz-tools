@@ -21,12 +21,12 @@ const PROMPT_TYPE_LABELS = { smart: 'Smart', beats: 'Beats', simple: 'Simple', t
 // Class filter display <-> stored class value
 const CLASS_FILTER_VALUES = [
   'All', 'Wan 2.2', 'LTX 2.3', 'Images',
-  'Krea2', 'Flux2 Klein 9B', 'Qwen Image', 'Chroma', 'Z-Image Turbo', 'FLux 2', 'Wan Image',
+  'Krea2', 'Flux2 Klein 9B', 'Qwen Image', 'Chroma', 'Z-Image Turbo', 'FLux 2', 'Wan Image', 'MiniMax H3',
 ]
 const CLASS_FILTER_TO_VALUE = {
   'All': '', 'Wan 2.2': 'Wan2.2', 'LTX 2.3': 'ltx2.3', 'Images': 'ImageInference',
   'Krea2': 'krea2', 'Flux2 Klein 9B': 'klein9b', 'Qwen Image': 'qwen', 'Chroma': 'chroma',
-  'Z-Image Turbo': 'zit', 'FLux 2': 'flux2', 'Wan Image': 'wan_img',
+  'Z-Image Turbo': 'zit', 'FLux 2': 'flux2', 'Wan Image': 'wan_img', 'MiniMax H3': 'm_h3',
 }
 
 // Same set as the Class filter, but "All" -> "<no class>" (stored as ''),
@@ -43,6 +43,7 @@ const CLASS_CREATE_OPTIONS = [
   { label: 'Z-Image Turbo',   value: 'zit' },
   { label: 'FLux 2',          value: 'flux2' },
   { label: 'Wan Image',       value: 'wan_img' },
+  { label: 'MiniMax H3',      value: 'm_h3' },
 ]
 
 function classValueToLabel(value) {
