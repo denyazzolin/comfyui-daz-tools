@@ -1,5 +1,6 @@
 from . import workflow_config_base  # registers shared /daz/workflow-config* routes
 from . import prompt_stack_base  # registers shared /daz/prompt-stack* routes
+from . import sound_mixer_base  # registers /daz/sound-mixer/video-info route
 from .check_null import CheckNullNode
 from .null_audio_checker import NullAudioChecker
 from .abs_int import AbsInt
@@ -10,6 +11,7 @@ from .workflow_config_ltx23 import WorkflowConfigLtx23
 from .workflow_config_image import WorkflowConfigImage
 from .prompt_stack_manager import PromptStackManager
 from .prompt_stack_splitter import PromptStackSplitter
+from .sound_mixer import SoundMixer
 
 NODE_CLASS_MAPPINGS = {
     "CheckNull": CheckNullNode,
@@ -22,6 +24,7 @@ NODE_CLASS_MAPPINGS = {
     "WorkflowConfigImage": WorkflowConfigImage,
     "PromptStackManager": PromptStackManager,
     "PromptStackSplitter": PromptStackSplitter,
+    "daz_sound_mixer": SoundMixer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -35,4 +38,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WorkflowConfigImage": "Workflow Config Image",
     "PromptStackManager": "Prompt Stack Manager",
     "PromptStackSplitter": "Prompt Stack Splitter",
+    "daz_sound_mixer": "Sound Mixer",
 }

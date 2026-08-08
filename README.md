@@ -263,6 +263,16 @@ The **prompt editor for stacks** is the same full-screen editor used by the Work
 
 ---
 
+### Sound Mixer (`audio`)
+
+Mixes multiple audio files into one `AUDIO` output. Click **Edit Mix** to open the mix editor.
+
+In general, the editor lets you: set the overall mix **duration**; add up to 16 **sources** (uploaded audio files), each with its own **trim** (start/end crop) and waveform; **place** a source on the timeline any number of times, freely repositioning each placement with a slider and adjusting its own **gain**; **play the mix** at any point while editing; and optionally **load a video**, scrub through its exact frames, and add sources at a time picked straight from the video — with the video and audio mix **playable together in real time**.
+
+![Sample Sound Mixer](content/sample_audio.png)
+
+---
+
 ### Check Null (`utils`)
 - **Input:** any value (optional)
 - **Output:** `is_null` (BOOLEAN) — `True` if the value is null, None, NaN, or empty string
