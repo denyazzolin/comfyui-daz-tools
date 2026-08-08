@@ -855,7 +855,8 @@ function openMixEditor(node) {
     videoPanel = document.createElement("div")
     videoPanel.style.cssText = `
       flex:0 0 ${VIDEO_PANEL_WIDTH}px; width:${VIDEO_PANEL_WIDTH}px; border-left:1px solid #3a3a3a;
-      display:flex; flex-direction:column; gap:8px; padding:10px 14px; overflow-y:auto;
+      display:flex; flex-direction:column; gap:8px; padding:10px 14px;
+      box-sizing:border-box; overflow-y:auto; overflow-x:hidden;
     `
 
     const topRow = document.createElement("div")
@@ -1000,7 +1001,7 @@ function openMixEditor(node) {
     videoPanel.appendChild(listTitle)
 
     const list = document.createElement("div")
-    list.style.cssText = "display:flex; flex-direction:column; gap:4px;"
+    list.style.cssText = "display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto; overflow-x:hidden; flex-shrink:0; padding-right:4px;"
     videoPanel.appendChild(list)
     videoState.listEl = list
     renderVideoSourceList()
