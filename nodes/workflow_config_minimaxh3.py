@@ -1,0 +1,345 @@
+import os
+import random
+
+import folder_paths
+from .workflow_config_base import (
+    load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
+    all_versions_for_class, parse_movie_file, load_unet_gguf,
+    _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
+    _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
+    _get_active_set,
+    _resolve_path, _load_file, _write_file,
+)
+from .audio_utils import decode_audio_file
+
+try:
+    import comfy.sd
+    import comfy.utils
+except Exception:
+    pass
+
+try:
+    from PIL import Image
+    import numpy as np
+    import torch
+except Exception:
+    pass
+
+_CLASS        = "m_h3"
+_NO_CONFIGS   = "(no configs)"
+_FILE_DEFAULT = "(default)"
+
+
+def _load_unet(name: str, gguf: bool = False):
+    if not name:
+        return None
+    if gguf:
+        return load_unet_gguf(name)
+    path = folder_paths.get_full_path("diffusion_models", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: diffusion model '{name}' not found")
+    return comfy.sd.load_diffusion_model(path)
+
+
+def _load_vae(name: str):
+    if not name:
+        return None
+    path = folder_paths.get_full_path("vae", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: VAE '{name}' not found")
+    sd, metadata = comfy.utils.load_torch_file(path, return_metadata=True)
+    return comfy.sd.VAE(sd=sd, metadata=metadata)
+
+
+def _load_audio_vae(name: str):
+    if not name:
+        return None
+    path = folder_paths.get_full_path("vae", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: audio VAE '{name}' not found")
+    sd, metadata = comfy.utils.load_torch_file(path, return_metadata=True)
+    return comfy.sd.VAE(sd=sd, metadata=metadata)
+
+
+def _load_clip(name: str):
+    if not name:
+        return None
+    path = folder_paths.get_full_path("text_encoders", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: text encoder '{name}' not found")
+    return comfy.sd.load_clip(
+        ckpt_paths=[path],
+        embedding_directory=folder_paths.get_folder_paths("embeddings"),
+        clip_type=comfy.sd.CLIPType.MINIMAX,
+    )
+
+
+def _load_image(path: str):
+    if not path:
+        return None
+    if os.path.isabs(path):
+        full = path
+    else:
+        full = os.path.join(folder_paths.get_input_directory(), path)
+    if not os.path.exists(full):
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: image not found at '{full}'")
+    img = Image.open(full).convert("RGB")
+    arr = np.array(img).astype(np.float32) / 255.0
+    return torch.from_numpy(arr)[None,]
+
+
+def _load_audio(path: str):
+    if not path:
+        return None
+    if os.path.isabs(path):
+        full = path
+    else:
+        full = os.path.join(folder_paths.get_input_directory(), path)
+    if not os.path.exists(full):
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: audio not found at '{full}'")
+    return decode_audio_file(full, "WorkflowConfigMiniMaxH3")
+
+
+def _load_lora(name: str):
+    if not name:
+        return None
+    path = folder_paths.get_full_path("loras", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: lora '{name}' not found")
+    return comfy.utils.load_torch_file(path, safe_load=True)
+
+
+def _process_lora(val):
+    if isinstance(val, dict):
+        if not val.get("enabled", True):
+            return None, 1.0
+        name     = val.get("name", "")
+        strength = float(val.get("strength", 1.0))
+    else:
+        name     = val or ""
+        strength = 1.0
+    return _load_lora(name), strength
+
+
+def _apply_loras(model, lora_pairs):
+    if model is None:
+        return None
+    result = model
+    for sd, strength in lora_pairs:
+        if sd is None:
+            continue
+        result, _ = comfy.sd.load_lora_for_models(result, None, sd, strength, strength)
+    return result
+
+
+class WorkflowConfigMiniMaxH3:
+    @classmethod
+    def INPUT_TYPES(cls):
+        files       = scan_config_files(_CLASS)
+        file_labels = [f"({os.path.splitext(f['file'])[0]}) {f['name']}" for f in files] if files else [_FILE_DEFAULT]
+        if files and _FILE_DEFAULT not in file_labels:
+            file_labels = file_labels + [_FILE_DEFAULT]
+
+        seen, all_labels = set(), []
+        for f in files:
+            for lbl in labels_for_class(_CLASS, file=f["file"]):
+                if lbl not in seen:
+                    seen.add(lbl); all_labels.append(lbl)
+        for lbl in labels_for_class(_CLASS, file=None):
+            if lbl not in seen:
+                seen.add(lbl); all_labels.append(lbl)
+
+        all_versions = all_versions_for_class(_CLASS)
+
+        return {
+            "required": {
+                "movie":  (file_labels,),
+                "scene":  (all_labels if all_labels else [_NO_CONFIGS],),
+                "take":   (all_versions,),
+            }
+        }
+
+    RETURN_TYPES = (
+        "MODEL",
+        "VAE", "VAE",
+        "CLIP",
+        "IMAGE",
+        "AUDIO",
+        "INT", "INT", "INT", "INT",
+        "STRING", "STRING", "STRING",
+        "BOOLEAN",
+        "FLOAT",
+        "INT",
+        "FLOAT",
+        "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
+        "STRING",
+        "MODEL",
+        "BOOLEAN",
+        "BOOLEAN", "BOOLEAN", "BOOLEAN",
+        "STRING", "STRING",
+        "LORA", "LORA",
+    )
+    RETURN_NAMES = (
+        "unet_only",
+        "video_vae", "audio_vae",
+        "clip",
+        "image",
+        "audio",
+        "width", "height", "steps", "seed",
+        "master_prmt", "pos_prompt", "neg_prompt",
+        "is_relay_prompt",
+        "cfg",
+        "total_frames",
+        "fps",
+        "distillation_lora", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
+        "filename",
+        "unet_stack",
+        "is_t2v",
+        "flag_1", "flag_2", "flag_3",
+        "custom_1", "custom_2",
+        "lora_7", "lora_8",
+    )
+    FUNCTION    = "load_config"
+    CATEGORY    = "utils"
+    OUTPUT_NODE = False
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, movie: str, scene: str, take: str):
+        if movie == _FILE_DEFAULT:
+            return True
+        files = scan_config_files(_CLASS)
+        valid = {f"({os.path.splitext(f['file'])[0]}) {f['name']}" for f in files} | {f['file'] for f in files}
+        if movie not in valid:
+            return f"Value not in list: movie: '{movie}' not in valid options"
+        return True
+
+    @classmethod
+    def IS_CHANGED(cls, movie: str, scene: str, take: str):
+        file = parse_movie_file(movie)
+        try:
+            path = _resolve_path(file)
+            configs, _, _ = _load_file(path)
+            name = next(
+                (n for n, e in configs.items()
+                 if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == scene),
+                None,
+            )
+            if name is not None:
+                active_set = _get_active_set(configs[name], take)
+                if _get_seed_randomize(active_set.get("seed", {})):
+                    return float("NaN")
+        except Exception:
+            pass
+        return scene
+
+    def load_config(self, movie: str, scene: str, take: str):
+        file = parse_movie_file(movie)
+        path = _resolve_path(file)
+        configs, meta_extra, effective = _load_file(path)
+        name = next(
+            (n for n, e in configs.items()
+             if e.get("class") == _CLASS and make_label(n, e.get("created_at", "")) == scene),
+            None,
+        )
+        if name is None:
+            raise ValueError(
+                f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: '{scene}' not found"
+            )
+        entry      = configs[name]
+        active_set = _get_active_set(entry, take)
+        loras      = _get_loras(active_set)
+
+        seed_obj = active_set.get("seed", {"value": 0})
+        seed_val = _get_int(seed_obj)
+        if _get_seed_randomize(seed_obj):
+            seed_val = random.randint(1, 2**31 - 1)
+            sets = entry.get("sets", [])
+            raw_take = str(take).split(" - ")[0].strip()
+            for i, s in enumerate(sets):
+                if str(s.get("version", "")) == raw_take:
+                    sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
+                    break
+            else:
+                if sets:
+                    sets[-1]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
+            try:
+                _write_file(path, configs, meta_extra, effective)
+            except Exception as e:
+                print(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: could not save random seed — {e}")
+
+        pos_prompt_val    = active_set.get("positive_prompt")
+        prompt_type       = pos_prompt_val.get("type", "smart") if isinstance(pos_prompt_val, dict) else "smart"
+        master_prompt_val = active_set.get("master_prompt")
+        master_text       = _get_text(master_prompt_val)
+        pos_text          = _get_text(pos_prompt_val)
+        is_relay          = prompt_type == "smart"
+        if is_relay:
+            pos_out = pos_text
+        elif prompt_type in ("beats", "timecode", "simple") and _get_master_position(master_prompt_val) == "after":
+            pos_out = "\n\n".join(p for p in (pos_text, master_text) if p)
+        else:
+            pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
+
+        unet_name = _get_name(active_set.get("unet_high"))
+        unet_gguf = _get_gguf(active_set.get("unet_high"))
+        vae_name  = _get_name(active_set.get("vae"))
+        avae_name = _get_name(active_set.get("audio_vae"))
+
+        try:
+            unet = _load_unet(unet_name, unet_gguf)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] MiniMax H3: transformer load failed ('{unet_name}'): {e}") from e
+        try:
+            video_vae = _load_vae(vae_name)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] MiniMax H3: video VAE load failed ('{vae_name}'): {e}") from e
+        try:
+            audio_vae = _load_audio_vae(avae_name)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] MiniMax H3: audio VAE load failed ('{avae_name}'): {e}") from e
+
+        lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
+        lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
+        lora_3_sd, lora_3_w = _process_lora(loras.get("lora_3", ""))
+        lora_4_sd, lora_4_w = _process_lora(loras.get("lora_4", ""))
+        lora_5_sd, lora_5_w = _process_lora(loras.get("lora_5", ""))
+        lora_6_sd, lora_6_w = _process_lora(loras.get("lora_6", ""))
+        lora_7_sd, lora_7_w = _process_lora(loras.get("lora_7", ""))
+        lora_8_sd, lora_8_w = _process_lora(loras.get("lora_8", ""))
+
+        lora_pairs = [
+            (lora_1_sd, lora_1_w), (lora_2_sd, lora_2_w),
+            (lora_3_sd, lora_3_w), (lora_4_sd, lora_4_w),
+            (lora_5_sd, lora_5_w), (lora_6_sd, lora_6_w),
+            (lora_7_sd, lora_7_w), (lora_8_sd, lora_8_w),
+        ]
+
+        return (
+            unet,
+            video_vae,
+            audio_vae,
+            _load_clip(_get_name(active_set.get("clip"))),
+            _load_image(_get_path(active_set.get("image_path"))),
+            _load_audio(_get_path(active_set.get("audio_path"))),
+            _get_int(active_set.get("width")),
+            _get_int(active_set.get("height")),
+            _get_int(active_set.get("steps")),
+            seed_val,
+            master_text,
+            pos_out,
+            _get_text(active_set.get("negative_prompt")),
+            is_relay,
+            _get_float(active_set.get("cfg_high")),
+            _get_int(active_set.get("total_frames")),
+            _get_float(active_set.get("fps")),
+            lora_1_sd, lora_2_sd, lora_3_sd, lora_4_sd, lora_5_sd, lora_6_sd,
+            _get_file(active_set.get("filename")),
+            _apply_loras(unet, lora_pairs),
+            active_set.get("type", "") == "T2V",
+            _get_flag_value(active_set.get("flags", {}).get("flag_1")),
+            _get_flag_value(active_set.get("flags", {}).get("flag_2")),
+            _get_flag_value(active_set.get("flags", {}).get("flag_3")),
+            _get_custom_value(active_set.get("custom", {}).get("param_1")),
+            _get_custom_value(active_set.get("custom", {}).get("param_2")),
+            lora_7_sd, lora_8_sd,
+        )

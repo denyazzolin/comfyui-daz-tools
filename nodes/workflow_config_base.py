@@ -778,6 +778,14 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "width", "height", "steps", "cfg_high",
         "flags", "custom",
     ],
+    "m_h3": [
+        "class", "version", "version_label", "name", "created_at", "updated_at",
+        "type", "note",
+        "master_prompt", "positive_prompt", "negative_prompt",
+        "unet_high", "vae", "audio_vae", "clip", "loras",
+        "width", "height", "steps", "cfg_high",
+        "flags", "custom",
+    ],
 }
 
 _PRESET_DEFAULT_FLAGS: dict = {

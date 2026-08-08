@@ -2506,8 +2506,8 @@ export function buildWorkflowConfigExtension(cfg) {
         return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
       }
 
-      const MGR_CLASS_DISPLAY_NAMES = { 'Wan2.2': 'WAN2.2', 'ltx2.3': 'LTX2.3', 'ImageInference': 'Image' }
-      const MGR_CLASS_ORDER = ['Wan2.2', 'ltx2.3', 'ImageInference']
+      const MGR_CLASS_DISPLAY_NAMES = { 'Wan2.2': 'WAN2.2', 'ltx2.3': 'LTX2.3', 'ImageInference': 'Image', 'm_h3': 'MiniMax H3' }
+      const MGR_CLASS_ORDER = ['Wan2.2', 'ltx2.3', 'ImageInference', 'm_h3']
 
       function mgrClassDisplayName(cls) {
         return MGR_CLASS_DISPLAY_NAMES[cls] || cls
