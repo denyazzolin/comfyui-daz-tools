@@ -322,6 +322,7 @@ function openMixEditor(node) {
   let activeRafs = []
   let videoPanel = null // DOM element for the movie side panel, when open
   let videoState = null // {filename, fps, duration, frameCount, addAtTime, videoEl, listEl}
+  let videoStopTimer = null // pauses the video at the mix duration when Play Mix is used
 
   const { box, close: closeOverlay } = overlayShell(EDITOR_BASE_WIDTH, () => {
     stopAll()
@@ -368,6 +369,9 @@ function openMixEditor(node) {
     stopAllPreviews()
     for (const cancel of activeRafs) cancel()
     activeRafs = []
+    clearTimeout(videoStopTimer)
+    videoStopTimer = null
+    try { videoState?.videoEl?.pause() } catch { /* nothing to pause */ }
   }
 
   // Header ---------------------------------------------------------------
@@ -388,6 +392,7 @@ function openMixEditor(node) {
       const info = await res.json()
       if (!res.ok || info.error) throw new Error(info.error || `probe failed (${res.status})`)
       openVideoPanel(filename, info)
+      maybeWarnDurationMismatch(info.duration)
     } catch (e) {
       showError(`Could not load movie: ${e.message || e}`)
     }
@@ -403,14 +408,15 @@ function openMixEditor(node) {
   durInput.min = "0"
   durInput.style.cssText = "width:80px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
   durInput.value = currentDuration()
-  durInput.addEventListener("change", () => {
+  function setDuration(v) {
     const w = durationWidget(node)
-    const v = Math.max(0, Number(durInput.value) || 0)
-    if (w) w.value = v
-    durInput.value = v
+    const val = Math.max(0, Number(v) || 0)
+    if (w) w.value = val
+    durInput.value = val
     node.setDirtyCanvas(true, true)
     renderTimeline()
-  })
+  }
+  durInput.addEventListener("change", () => setDuration(durInput.value))
   durLabel.appendChild(durInput)
   header.appendChild(durLabel)
   box.appendChild(header)
@@ -774,11 +780,32 @@ function openMixEditor(node) {
 
   function closeVideoPanel() {
     if (!videoPanel) return
+    clearTimeout(videoStopTimer)
+    videoStopTimer = null
     try { videoState?.videoEl?.pause() } catch { /* nothing to pause */ }
     videoPanel.remove()
     videoPanel = null
     videoState = null
     box.style.width = `${EDITOR_BASE_WIDTH}px`
+  }
+
+  function maybeWarnDurationMismatch(movieDuration) {
+    if (!(movieDuration > currentDuration())) return
+    const { box: pbox, close } = overlayShell(340, () => { closeActivePopup = null })
+    closeActivePopup = close
+    const title = document.createElement("div")
+    title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
+    title.textContent = "Movie longer than mix"
+    pbox.appendChild(title)
+    const body = document.createElement("div")
+    body.style.cssText = "padding:10px 14px;"
+    body.textContent = "The video is longer than the current mixed audio duration"
+    pbox.appendChild(body)
+    const foot = document.createElement("div")
+    foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
+    foot.appendChild(mkBtn("Ignore", { onClick: close }))
+    foot.appendChild(mkBtn("Match", { onClick: () => { setDuration(movieDuration); close() } }))
+    pbox.appendChild(foot)
   }
 
   function renderVideoSourceList() {
@@ -796,10 +823,18 @@ function openMixEditor(node) {
     for (const id of ids) {
       const src = state.sources[id]
       const b = mkBtn(src.label || src.filename, {
-        onClick: () => addBlock(id, videoState?.addAtTime || 0),
+        onClick: () => {
+          const at = videoState?.addAtTime || 0
+          if (at > currentDuration()) {
+            showError(`That time (${at.toFixed(3)}s) is past the mixed audio duration (${currentDuration().toFixed(3)}s).`)
+            return
+          }
+          addBlock(id, at)
+        },
       })
       b.style.textAlign = "left"
       b.style.width = "100%"
+      b.style.padding = "2px 10px"
       b.style.borderLeft = `4px solid ${colorFor(src)}`
       list.appendChild(b)
     }
@@ -823,16 +858,27 @@ function openMixEditor(node) {
       display:flex; flex-direction:column; gap:8px; padding:10px 14px; overflow-y:auto;
     `
 
+    const topRow = document.createElement("div")
+    topRow.style.cssText = "display:flex; align-items:center; gap:8px; min-width:0;"
     const nameEl = document.createElement("div")
-    nameEl.style.cssText = "font-weight:600; word-break:break-all;"
+    nameEl.style.cssText = "font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1;"
+    nameEl.title = filename
     nameEl.textContent = filename
-    videoPanel.appendChild(nameEl)
+    topRow.appendChild(nameEl)
+    const playAudioLbl = document.createElement("label")
+    playAudioLbl.style.cssText = "display:flex; align-items:center; gap:4px; color:#aaa; white-space:nowrap; flex-shrink:0;"
+    const playAudioChk = document.createElement("input")
+    playAudioChk.type = "checkbox"
+    playAudioLbl.appendChild(playAudioChk)
+    playAudioLbl.append("Play Audio")
+    topRow.appendChild(playAudioLbl)
+    videoPanel.appendChild(topRow)
 
-    // Favors a 16:9 slot regardless of the source video's own aspect ratio;
-    // object-fit:contain centers and letterboxes/pillarboxes non-16:9 frames.
+    // Favors a 9:16 slot regardless of the source video's own aspect ratio;
+    // object-fit:contain centers and letterboxes/pillarboxes non-9:16 frames.
     const displayWrap = document.createElement("div")
     displayWrap.style.cssText = `
-      width:100%; aspect-ratio:16/9; background:#000; flex-shrink:0;
+      width:100%; aspect-ratio:9/16; background:#000; flex-shrink:0;
       display:flex; align-items:center; justify-content:center;
       border:1px solid #3a3a3a; border-radius:4px; overflow:hidden;
     `
@@ -844,6 +890,9 @@ function openMixEditor(node) {
     displayWrap.appendChild(videoEl)
     videoPanel.appendChild(displayWrap)
     videoState.videoEl = videoEl
+    // Unmuted only while checked, so Play Mix's video.play() lets the OS mix
+    // the video's own soundtrack in alongside the constructed Web Audio mix.
+    playAudioChk.addEventListener("change", () => { videoEl.muted = !playAudioChk.checked })
 
     const scrub = document.createElement("input")
     scrub.type = "range"
@@ -868,15 +917,66 @@ function openMixEditor(node) {
     function frameTime(frameIdx) {
       return Math.min(videoState.duration, Math.max(0, frameIdx) / videoState.fps)
     }
-    function setFromFrame(frameIdx) {
+
+    // A seek decodes forward from the nearest keyframe to reach the exact
+    // frame, which isn't instant — dragging the scrubber fires many `input`
+    // events faster than the decoder can keep up, and assigning currentTime
+    // on every one of them queues up seeks that arrive stale, which reads as
+    // stutter. Only one seek is ever in flight; a seek requested while one is
+    // already pending just overwrites what to seek to next, so the video
+    // always ends up settled on the most recent frame the user asked for
+    // without decoding every frame in between.
+    let seekPending = false
+    let pendingFrame = null
+    let seekWatchdog = null
+    // Lets external code (Play Mix) drop a stale queued scrub target before
+    // repositioning the video itself, so a drag the user made just before
+    // hitting Play doesn't yank playback back to the scrubber position once
+    // that queued seek is finally serviced.
+    videoState.cancelPendingScrub = () => { pendingFrame = null }
+    function onSeekSettled() {
+      if (seekWatchdog) {
+        clearTimeout(seekWatchdog)
+        seekWatchdog = null
+      }
+      seekPending = false
+      if (pendingFrame !== null) {
+        const next = pendingFrame
+        pendingFrame = null
+        runSeek(next)
+      }
+    }
+    function runSeek(frameIdx) {
+      seekPending = true
+      videoEl.currentTime = frameTime(frameIdx)
+      // Some browsers don't fire `seeked` for a seek issued before metadata
+      // is loaded, or for a seek to the time the video is already sitting
+      // at (nothing to decode, so no event) — either would wedge
+      // seekPending permanently and freeze the scrubber. This bounds the
+      // wait so a stuck flag always self-clears.
+      seekWatchdog = setTimeout(onSeekSettled, 300)
+    }
+    videoEl.addEventListener("seeked", onSeekSettled)
+    function requestSeek(frameIdx) {
+      if (seekPending) pendingFrame = frameIdx
+      else runSeek(frameIdx)
+    }
+
+    // The numeric readout tracks the scrubber instantly regardless of how
+    // far behind the decoded frame is lagging.
+    function updateReadout(frameIdx) {
       const t = frameTime(frameIdx)
       videoState.addAtTime = t
       atInput.value = t.toFixed(4)
-      videoEl.currentTime = t
+      return t
+    }
+    function setFromFrame(frameIdx) {
+      updateReadout(frameIdx)
+      requestSeek(frameIdx)
     }
     // currentTime assignments before metadata loads are silently dropped by
     // some browsers, so re-apply the current frame once it's actually ready.
-    videoEl.addEventListener("loadedmetadata", () => { videoEl.currentTime = frameTime(Number(scrub.value)) }, { once: true })
+    videoEl.addEventListener("loadedmetadata", () => requestSeek(Number(scrub.value)), { once: true })
 
     scrub.addEventListener("input", () => setFromFrame(Number(scrub.value)))
 
@@ -1148,6 +1248,14 @@ function openMixEditor(node) {
           schedulePreview(m.buffer, cropStart, playDur, (blk.gain ?? 1) * (state.overall_gain ?? 1), startAt)
         }
         animatePlayhead(timelinePlayhead, (elapsed) => elapsed * pxPerSec(), dur, "px")
+        if (videoState?.videoEl) {
+          const v = videoState.videoEl
+          videoState.cancelPendingScrub?.()
+          v.currentTime = 0
+          const p = v.play()
+          if (p?.catch) p.catch(() => { /* autoplay may be blocked; audio still plays */ })
+          videoStopTimer = setTimeout(() => { try { v.pause() } catch { /* already stopped */ } }, dur * 1000)
+        }
       },
     }))
     buttonRow.appendChild(mkBtn("Add", { onClick: openAddPopup }))
