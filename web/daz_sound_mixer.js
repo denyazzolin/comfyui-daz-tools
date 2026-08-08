@@ -5,7 +5,7 @@ const CLASS = "daz_sound_mixer"
 const MAX_SOURCES = 16
 const GRID_COLS = 4
 const EDITOR_BASE_WIDTH = 1040
-const VIDEO_PANEL_WIDTH = 380
+const VIDEO_PANEL_WIDTH = 240
 const MIN_ROWS = 8
 const MAX_BLOCK_ROWS = 30
 const MAX_VISIBLE_ROWS = 31
@@ -399,6 +399,10 @@ function openMixEditor(node) {
   })
   header.appendChild(movieFileInput)
   header.appendChild(mkBtn("Upload a Movie", { onClick: () => movieFileInput.click() }))
+  // Hidden until a movie is loaded (shown/hidden in openVideoPanel/closeVideoPanel).
+  const discardMovieBtn = mkBtn("Discard Movie", { danger: true, onClick: () => closeVideoPanel() })
+  discardMovieBtn.style.display = "none"
+  header.appendChild(discardMovieBtn)
   const durLabel = document.createElement("label")
   durLabel.style.cssText = "display:flex; align-items:center; gap:6px; color:#aaa;"
   durLabel.append("Duration (s)")
@@ -786,6 +790,7 @@ function openMixEditor(node) {
     videoPanel.remove()
     videoPanel = null
     videoState = null
+    discardMovieBtn.style.display = "none"
     box.style.width = `${EDITOR_BASE_WIDTH}px`
   }
 
@@ -842,6 +847,7 @@ function openMixEditor(node) {
 
   function openVideoPanel(filename, info) {
     closeVideoPanel()
+    discardMovieBtn.style.display = ""
     videoState = {
       filename,
       fps: info.fps,
@@ -904,16 +910,12 @@ function openMixEditor(node) {
     scrub.style.cssText = "width:100%;"
     videoPanel.appendChild(scrub)
 
-    const atLbl = document.createElement("label")
-    atLbl.style.cssText = "display:flex; align-items:center; gap:6px; color:#aaa;"
-    atLbl.append("Add A Source At:")
+    // Appended later, merged into the same row as the source list's title.
     const atInput = document.createElement("input")
     atInput.type = "number"
     atInput.step = "0.0001"
     atInput.min = "0"
     atInput.style.cssText = "width:90px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
-    atLbl.appendChild(atInput)
-    videoPanel.appendChild(atLbl)
 
     function frameTime(frameIdx) {
       return Math.min(videoState.duration, Math.max(0, frameIdx) / videoState.fps)
@@ -996,8 +998,9 @@ function openMixEditor(node) {
     setFromFrame(0)
 
     const listTitle = document.createElement("div")
-    listTitle.style.cssText = "color:#aaa; margin-top:4px;"
-    listTitle.textContent = "Click a sound to add it at this time:"
+    listTitle.style.cssText = "display:flex; align-items:center; gap:6px; color:#aaa; margin-top:4px; flex-wrap:wrap;"
+    listTitle.append("Click a sound to add it at:")
+    listTitle.appendChild(atInput)
     videoPanel.appendChild(listTitle)
 
     const list = document.createElement("div")
@@ -1005,8 +1008,6 @@ function openMixEditor(node) {
     videoPanel.appendChild(list)
     videoState.listEl = list
     renderVideoSourceList()
-
-    videoPanel.appendChild(mkBtn("Discard Movie", { danger: true, onClick: closeVideoPanel }))
 
     bodyRow.appendChild(videoPanel)
     box.style.width = `${EDITOR_BASE_WIDTH + VIDEO_PANEL_WIDTH}px`
