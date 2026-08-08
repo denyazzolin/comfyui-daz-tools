@@ -4,6 +4,8 @@ const CLASS = "daz_sound_mixer"
 
 const MAX_SOURCES = 16
 const GRID_COLS = 4
+const EDITOR_BASE_WIDTH = 1040
+const VIDEO_PANEL_WIDTH = 380
 const MIN_ROWS = 8
 const MAX_BLOCK_ROWS = 30
 const MAX_VISIBLE_ROWS = 31
@@ -318,8 +320,10 @@ function openMixEditor(node) {
   const sourcePlayheads = new Map() // sourceId -> waveform playhead line element
   let timelinePlayhead = null
   let activeRafs = []
+  let videoPanel = null // DOM element for the movie side panel, when open
+  let videoState = null // {filename, fps, duration, frameCount, addAtTime, videoEl, listEl}
 
-  const { box, close: closeOverlay } = overlayShell(1040, () => {
+  const { box, close: closeOverlay } = overlayShell(EDITOR_BASE_WIDTH, () => {
     stopAll()
     clearTimeout(errorTimer)
     document.removeEventListener("keydown", onKeyDown)
@@ -370,6 +374,26 @@ function openMixEditor(node) {
   const header = document.createElement("div")
   header.style.cssText = "display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid #3a3a3a;"
   header.innerHTML = `<div style="font-weight:600; flex:1;">Sound Mixer</div>`
+  const movieFileInput = document.createElement("input")
+  movieFileInput.type = "file"
+  movieFileInput.accept = "video/*"
+  movieFileInput.style.display = "none"
+  movieFileInput.addEventListener("change", async () => {
+    const file = movieFileInput.files?.[0]
+    movieFileInput.value = ""
+    if (!file) return
+    try {
+      const filename = await uploadAudioFile(file)
+      const res = await fetch(`/daz/sound-mixer/video-info?filename=${encodeURIComponent(filename)}`)
+      const info = await res.json()
+      if (!res.ok || info.error) throw new Error(info.error || `probe failed (${res.status})`)
+      openVideoPanel(filename, info)
+    } catch (e) {
+      showError(`Could not load movie: ${e.message || e}`)
+    }
+  })
+  header.appendChild(movieFileInput)
+  header.appendChild(mkBtn("Upload a Movie", { onClick: () => movieFileInput.click() }))
   const durLabel = document.createElement("label")
   durLabel.style.cssText = "display:flex; align-items:center; gap:6px; color:#aaa;"
   durLabel.append("Duration (s)")
@@ -391,6 +415,17 @@ function openMixEditor(node) {
   header.appendChild(durLabel)
   box.appendChild(header)
 
+  // Body row — a main column (sources/timeline/buttons) plus an optional
+  // video panel appended to its right when a movie is loaded. Kept as a
+  // sibling row rather than nesting the video panel inside any one section,
+  // since the panel spans the full height of the editor per the wireframe.
+  const bodyRow = document.createElement("div")
+  bodyRow.style.cssText = "display:flex; flex:1; min-height:0; overflow:hidden;"
+  box.appendChild(bodyRow)
+  const mainCol = document.createElement("div")
+  mainCol.style.cssText = "display:flex; flex-direction:column; flex:1; min-width:0; min-height:0;"
+  bodyRow.appendChild(mainCol)
+
   // Sources grid -----------------------------------------------------------
   const sourcesWrap = document.createElement("div")
   sourcesWrap.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a;"
@@ -400,7 +435,7 @@ function openMixEditor(node) {
     max-height:460px; overflow-y:auto; padding-right:4px;
   `
   sourcesWrap.appendChild(sourcesGrid)
-  box.appendChild(sourcesWrap)
+  mainCol.appendChild(sourcesWrap)
 
   // Timeline -----------------------------------------------------------
   const timelineWrap = document.createElement("div")
@@ -411,16 +446,16 @@ function openMixEditor(node) {
   tracksEl.style.cssText = "position:relative; height:320px; overflow:hidden; border:1px solid #3a3a3a; border-radius:4px; background:#1c1c1c;"
   timelineWrap.appendChild(rulerEl)
   timelineWrap.appendChild(tracksEl)
-  box.appendChild(timelineWrap)
+  mainCol.appendChild(timelineWrap)
 
   const errorEl = document.createElement("div")
   errorEl.style.cssText = "display:none; padding:4px 14px; color:#ff8080; font-size:12px;"
-  box.appendChild(errorEl)
+  mainCol.appendChild(errorEl)
 
   // Bottom button bar -----------------------------------------------------
   const buttonRow = document.createElement("div")
   buttonRow.style.cssText = "display:flex; align-items:center; gap:6px; padding:10px 14px; border-top:1px solid #3a3a3a; flex-wrap:wrap;"
-  box.appendChild(buttonRow)
+  mainCol.appendChild(buttonRow)
 
   function sep() {
     const s = document.createElement("div")
@@ -727,6 +762,153 @@ function openMixEditor(node) {
         if (h > 0) tile.style.minHeight = `${h}px`
       }
     }
+    renderVideoSourceList()
+  }
+
+  // -------------------------------------------------------------------
+  // Movie panel — upload a video, scrub through its exact frames (per the
+  // file's real fps, probed server-side via PyAV since browsers don't
+  // reliably expose native container frame rate), and use the scrubbed
+  // time as the start_s for a newly-added source block.
+  // -------------------------------------------------------------------
+
+  function closeVideoPanel() {
+    if (!videoPanel) return
+    try { videoState?.videoEl?.pause() } catch { /* nothing to pause */ }
+    videoPanel.remove()
+    videoPanel = null
+    videoState = null
+    box.style.width = `${EDITOR_BASE_WIDTH}px`
+  }
+
+  function renderVideoSourceList() {
+    if (!videoState?.listEl) return
+    const list = videoState.listEl
+    list.innerHTML = ""
+    const ids = Object.keys(state.sources).filter((id) => state.sources[id].filename)
+    if (ids.length === 0) {
+      const empty = document.createElement("div")
+      empty.style.cssText = "color:#888;"
+      empty.textContent = "No sounds uploaded yet."
+      list.appendChild(empty)
+      return
+    }
+    for (const id of ids) {
+      const src = state.sources[id]
+      const b = mkBtn(src.label || src.filename, {
+        onClick: () => addBlock(id, videoState?.addAtTime || 0),
+      })
+      b.style.textAlign = "left"
+      b.style.width = "100%"
+      b.style.borderLeft = `4px solid ${colorFor(src)}`
+      list.appendChild(b)
+    }
+  }
+
+  function openVideoPanel(filename, info) {
+    closeVideoPanel()
+    videoState = {
+      filename,
+      fps: info.fps,
+      duration: info.duration,
+      frameCount: Math.max(1, info.frame_count | 0),
+      addAtTime: 0,
+      videoEl: null,
+      listEl: null,
+    }
+
+    videoPanel = document.createElement("div")
+    videoPanel.style.cssText = `
+      flex:0 0 ${VIDEO_PANEL_WIDTH}px; width:${VIDEO_PANEL_WIDTH}px; border-left:1px solid #3a3a3a;
+      display:flex; flex-direction:column; gap:8px; padding:10px 14px; overflow-y:auto;
+    `
+
+    const nameEl = document.createElement("div")
+    nameEl.style.cssText = "font-weight:600; word-break:break-all;"
+    nameEl.textContent = filename
+    videoPanel.appendChild(nameEl)
+
+    // Favors a 16:9 slot regardless of the source video's own aspect ratio;
+    // object-fit:contain centers and letterboxes/pillarboxes non-16:9 frames.
+    const displayWrap = document.createElement("div")
+    displayWrap.style.cssText = `
+      width:100%; aspect-ratio:16/9; background:#000; flex-shrink:0;
+      display:flex; align-items:center; justify-content:center;
+      border:1px solid #3a3a3a; border-radius:4px; overflow:hidden;
+    `
+    const videoEl = document.createElement("video")
+    videoEl.src = `/view?filename=${encodeURIComponent(filename)}&type=input`
+    videoEl.muted = true
+    videoEl.preload = "auto"
+    videoEl.style.cssText = "max-width:100%; max-height:100%; object-fit:contain;"
+    displayWrap.appendChild(videoEl)
+    videoPanel.appendChild(displayWrap)
+    videoState.videoEl = videoEl
+
+    const scrub = document.createElement("input")
+    scrub.type = "range"
+    scrub.min = "0"
+    scrub.max = String(Math.max(0, videoState.frameCount - 1))
+    scrub.step = "1"
+    scrub.value = "0"
+    scrub.style.cssText = "width:100%;"
+    videoPanel.appendChild(scrub)
+
+    const atLbl = document.createElement("label")
+    atLbl.style.cssText = "display:flex; align-items:center; gap:6px; color:#aaa;"
+    atLbl.append("Add A Source At:")
+    const atInput = document.createElement("input")
+    atInput.type = "number"
+    atInput.step = "0.0001"
+    atInput.min = "0"
+    atInput.style.cssText = "width:90px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
+    atLbl.appendChild(atInput)
+    videoPanel.appendChild(atLbl)
+
+    function frameTime(frameIdx) {
+      return Math.min(videoState.duration, Math.max(0, frameIdx) / videoState.fps)
+    }
+    function setFromFrame(frameIdx) {
+      const t = frameTime(frameIdx)
+      videoState.addAtTime = t
+      atInput.value = t.toFixed(4)
+      videoEl.currentTime = t
+    }
+    // currentTime assignments before metadata loads are silently dropped by
+    // some browsers, so re-apply the current frame once it's actually ready.
+    videoEl.addEventListener("loadedmetadata", () => { videoEl.currentTime = frameTime(Number(scrub.value)) }, { once: true })
+
+    scrub.addEventListener("input", () => setFromFrame(Number(scrub.value)))
+
+    atInput.addEventListener("change", () => {
+      let t = Number(atInput.value)
+      if (!Number.isFinite(t) || t < 0) t = 0
+      if (t > videoState.duration) {
+        showError(`Time exceeds movie duration (${videoState.duration.toFixed(3)}s).`)
+        t = videoState.duration
+      }
+      const frameIdx = Math.min(videoState.frameCount - 1, Math.max(0, Math.round(t * videoState.fps)))
+      scrub.value = String(frameIdx)
+      setFromFrame(frameIdx)
+    })
+
+    setFromFrame(0)
+
+    const listTitle = document.createElement("div")
+    listTitle.style.cssText = "color:#aaa; margin-top:4px;"
+    listTitle.textContent = "Click a sound to add it at this time:"
+    videoPanel.appendChild(listTitle)
+
+    const list = document.createElement("div")
+    list.style.cssText = "display:flex; flex-direction:column; gap:4px;"
+    videoPanel.appendChild(list)
+    videoState.listEl = list
+    renderVideoSourceList()
+
+    videoPanel.appendChild(mkBtn("Discard Movie", { danger: true, onClick: closeVideoPanel }))
+
+    bodyRow.appendChild(videoPanel)
+    box.style.width = `${EDITOR_BASE_WIDTH + VIDEO_PANEL_WIDTH}px`
   }
 
   // -------------------------------------------------------------------
@@ -739,13 +921,13 @@ function openMixEditor(node) {
     return availW / dur
   }
 
-  function addBlock(sourceId) {
+  function addBlock(sourceId, startS = 0) {
     const row = nextEmptyRow(state)
     if (row < 0) {
       showError("Timeline is full (30 max).")
       return false
     }
-    state.blocks.push({ id: newId("b"), source: sourceId, row, start_s: 0, gain: 1.0 })
+    state.blocks.push({ id: newId("b"), source: sourceId, row, start_s: Math.max(0, startS || 0), gain: 1.0 })
     selectedBlockId = state.blocks[state.blocks.length - 1].id
     persist()
     renderTimeline()

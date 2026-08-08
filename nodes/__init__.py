@@ -1,5 +1,6 @@
 from . import workflow_config_base  # registers shared /daz/workflow-config* routes
 from . import prompt_stack_base  # registers shared /daz/prompt-stack* routes
+from . import sound_mixer_base  # registers /daz/sound-mixer/video-info route
 from .check_null import CheckNullNode
 from .null_audio_checker import NullAudioChecker
 from .abs_int import AbsInt
