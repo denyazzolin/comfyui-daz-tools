@@ -5,7 +5,7 @@ const CLASS = "daz_sound_mixer"
 const MAX_SOURCES = 16
 const GRID_COLS = 4
 const EDITOR_BASE_WIDTH = 1040
-const VIDEO_PANEL_WIDTH = 240
+const VIDEO_PANEL_WIDTH = 288
 const MIN_ROWS = 8
 const MAX_BLOCK_ROWS = 30
 const MAX_VISIBLE_ROWS = 31
@@ -998,8 +998,8 @@ function openMixEditor(node) {
     setFromFrame(0)
 
     const listTitle = document.createElement("div")
-    listTitle.style.cssText = "display:flex; align-items:center; gap:6px; color:#aaa; margin-top:4px; flex-wrap:wrap;"
-    listTitle.append("Click a sound to add it at:")
+    listTitle.style.cssText = "display:flex; align-items:center; gap:6px; color:#aaa; margin-top:4px; white-space:nowrap;"
+    listTitle.append("Add a sound at:")
     listTitle.appendChild(atInput)
     videoPanel.appendChild(listTitle)
 
