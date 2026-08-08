@@ -999,20 +999,20 @@ function openMixEditor(node) {
 
     setFromFrame(0)
 
-    // Click the video frame to loop-play from the slider's current position;
-    // click again to stop. Loops back to that starting frame (not to 0) each
-    // time it reaches the end, and honors the "Play Audio" checkbox live.
+    // Click the video frame to loop-play, starting from the slider's current
+    // position for the first pass only; once it reaches the end it loops
+    // from the very beginning of the video (ignoring the slider) from then
+    // on. Click again to stop. Honors the "Play Audio" checkbox live.
     displayWrap.style.cursor = "pointer"
     displayWrap.title = "Click to play/stop"
     let loopPlaying = false
-    let loopStartFrame = 0
     function onLoopTimeUpdate() {
       const frameIdx = Math.min(videoState.frameCount - 1, Math.round(videoEl.currentTime * videoState.fps))
       scrub.value = String(frameIdx)
       updateReadout(frameIdx)
     }
     function onLoopEnded() {
-      videoEl.currentTime = frameTime(loopStartFrame)
+      videoEl.currentTime = 0
       videoEl.play().catch(() => { /* autoplay may be blocked */ })
     }
     function stopLoopPlayback() {
@@ -1024,7 +1024,6 @@ function openMixEditor(node) {
     }
     function startLoopPlayback() {
       videoState.cancelPendingScrub?.()
-      loopStartFrame = Number(scrub.value)
       videoEl.muted = !playAudioChk.checked
       loopPlaying = true
       videoEl.addEventListener("timeupdate", onLoopTimeUpdate)
