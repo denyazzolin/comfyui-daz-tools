@@ -348,6 +348,12 @@
     const resolvedDefaultMaster = resolveTypedDefault(defaultMasterPrompt, workflowType)
     const resolvedDefaultTrail  = resolveTypedDefault(defaultTrailPrompt, workflowType)
 
+    // No default defined for this class/type — disable the button rather than
+    // let it silently clear the field.
+    const masterDefaultDisabled = !resolvedDefaultMaster
+    const trailDefaultDisabled  = !resolvedDefaultTrail
+    const negDefaultDisabled    = !defaultNegativePrompt
+
     const fText     = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
     const fValue    = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
     const fPosition = v => (v && typeof v === 'object' && (v.position === 'before' || v.position === 'after'))
@@ -792,7 +798,7 @@
         <div style="display:flex;align-items:center;justify-content:${showMasterPosition ? 'space-between' : 'flex-end'};margin-top:3px">
           ${showMasterPosition ? mkCheckbox('pe-master-position', 'Append (master after positive)', masterPosition === 'after') : ''}
           <div style="display:flex;gap:6px">
-            ${mkBtn('pe-master-default','default','#555','#333','#999')}
+            ${mkBtn('pe-master-default','default','#555','#333','#999', masterDefaultDisabled)}
             ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
           </div>
         </div>
@@ -1075,7 +1081,7 @@
       trailSec.innerHTML = `
         <textarea id="pe-trail" style="${TA_STYLE};min-height:60px">${esc(trailText)}</textarea>
         <div style="display:flex;justify-content:space-between;margin-top:3px">
-          ${mkBtn('pe-trail-default','default','#555','#333','#999')}
+          ${mkBtn('pe-trail-default','default','#555','#333','#999', trailDefaultDisabled)}
           ${mkBtn('pe-trail-clear','clear','#555','#333','#999')}
         </div>
       `
@@ -1101,7 +1107,7 @@
       negSec.innerHTML = `
         <textarea id="pe-neg" style="${TA_STYLE};min-height:92px">${esc(negText)}</textarea>
         <div style="display:flex;justify-content:space-between;margin-top:3px">
-          ${mkBtn('pe-neg-default','default','#555','#333','#999')}
+          ${mkBtn('pe-neg-default','default','#555','#333','#999', negDefaultDisabled)}
           ${mkBtn('pe-neg-clear','clear','#555','#333','#999')}
         </div>
       `
