@@ -163,9 +163,10 @@ Each scene/take stores three prompt fields — **Master**, **Positive**, and **N
 | **Smart** | The positive prompt is split into pipe-separated segments, each covering a frame range (`text [start-end] \| text [start-end] \| …`). A downstream Prompt Relay node handles distribution across frames. Best used with CFG ≈ 1.0. |
 | **Beats** | Segments are aligned to time ranges in seconds (`[start-ends] text`, one per line). Frame counts are derived from FPS automatically. |
 | **Timecode** | Segments are aligned to absolute start times (`[MM:SS] text`, one per line). Each marker is the segment's start time; frame counts are derived from the gap to the next marker (or the end of the video) using FPS. |
+| **H3** | Segments are aligned to absolute start times in decimal seconds (`At X.Ys, text`, one per line; the first segment always starts at `At 0.0s,`). Each segment's text gets a trailing period if it doesn't already have one. Frame counts are derived the same way as Timecode. |
 | **Simple** | A single flat text string passed as-is. |
 
-For **Simple**, **Beats**, and **Timecode** types, the Master prompt is combined with the positive prompt before it reaches the sampler. An **Append** checkbox lets you switch the Master to go after the positive text instead of before (the default). For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
+For **Simple**, **Beats**, **Timecode**, and **H3** types, the Master prompt is combined with the positive prompt before it reaches the sampler. An **Append** checkbox lets you switch the Master to go after the positive text instead of before (the default). For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
 
 **Prompt Editor**
 
@@ -174,8 +175,8 @@ For **Simple**, **Beats**, and **Timecode** types, the Master prompt is combined
 Click **Prompt Editor** inside the edit panel to open a full-screen editor. It loads the current Master, Positive, Negative, total frames, and FPS values and lets you work with them visually.
 
 - **Frames / FPS** — changing Frames rescales all segment lengths proportionally; changing FPS updates the time labels on the ruler.
-- **Master** — free-form text area. For Beats, Timecode, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
-- **Prompt type** — switch between Smart, Beats, Timecode, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
+- **Master** — free-form text area. For Beats, Timecode, H3, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
+- **Prompt type** — switch between Smart, Beats, Timecode, H3, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
 - **Segment bar** — a horizontal bar showing each segment as a proportional colour-coded block. Click any block to select it; the active segment is highlighted in green.
 - **Frame ruler** — marks 0%, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels include both frame number and seconds (e.g. `40 (2.5s)`).
 - **Segment text** — edit the text for the selected segment.
@@ -234,7 +235,7 @@ Three buttons in the edit panel footer give access to the library:
 
 ### Prompt Stack Manager (`utils`) · Prompt Stack Splitter (`utils`)
 
-A **prompt stack** is a library that can hold an arbitrary collection of named **prompt sequences**. A sequence is up to 10 ordered slots, each slot a full prompt made of a **Master prompt**, a **Positive prompt** (typed as **Smart** (relay), **Beats**, **Timecode**, or **Simple** — see [Managing prompts](#managing-prompts) for what each type means), and a **Negative prompt**.
+A **prompt stack** is a library that can hold an arbitrary collection of named **prompt sequences**. A sequence is up to 10 ordered slots, each slot a full prompt made of a **Master prompt**, a **Positive prompt** (typed as **Smart** (relay), **Beats**, **Timecode**, **H3**, or **Simple** — see [Managing prompts](#managing-prompts) for what each type means), and a **Negative prompt**.
 
 This sequencing is particularly useful for video workflows made up of several sequential parts with their own prompts — e.g. WAN2.2 SVI 2.0 flows — where each part of the video needs its own prompt fed to a downstream sampler/relay in order.
 

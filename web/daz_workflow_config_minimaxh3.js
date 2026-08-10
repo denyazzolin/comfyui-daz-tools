@@ -77,7 +77,7 @@ function renderDetailHtml(data, h, extra = {}) {
     ${row('Master',      trunc(fText(data.master_prompt)))}
     ${row('Positive',    trunc(fText(data.positive_prompt)))}
     ${row('Negative',    trunc(fText(data.negative_prompt)))}
-    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode' })[fType(data.positive_prompt)] || 'Smart')}
+    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode', h3: 'H3' })[fType(data.positive_prompt)] || 'Smart')}
     ${rowDiv()}
     ${row('Filename',    fFile(data.filename))}
     <tr>

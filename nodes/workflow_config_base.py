@@ -284,7 +284,7 @@ def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
     is_relay          = prompt_type == "smart"
     if is_relay:
         pos_out = pos_text
-    elif prompt_type in ("beats", "timecode", "simple") and _get_master_position(master_prompt_val) == "after":
+    elif prompt_type in ("beats", "timecode", "simple", "h3") and _get_master_position(master_prompt_val) == "after":
         pos_out = "\n\n".join(p for p in (pos_text, master_text) if p)
     else:
         pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
@@ -358,7 +358,7 @@ def _get_seed_randomize(val) -> bool:
         return bool(val.get("randomize", False))
     return False
 
-_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3, "timecode": 4}
+_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3, "timecode": 4, "h3": 5}
 
 def _get_prompt_type_int(val, default: int = 1) -> int:
     t = val.get("type", "smart") if isinstance(val, dict) else "smart"

@@ -36,7 +36,7 @@ def _normalize_prompt(p) -> dict:
     pp = result.get("positive_prompt")
     pp = pp if isinstance(pp, dict) else {"text": str(pp or "")}
     ptype = pp.get("type")
-    if ptype not in ("smart", "beats", "simple", "timecode"):
+    if ptype not in ("smart", "beats", "simple", "timecode", "h3"):
         ptype = "smart"
     result["positive_prompt"] = {"text": str(pp.get("text") or ""), "type": ptype}
 

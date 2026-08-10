@@ -76,10 +76,10 @@
 
   // ── Segment parsing ───────────────────────────────────────────────────────
 
-  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple', 'timecode'])
+  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple', 'timecode', 'h3'])
 
   // Infer the serialised format of prompt text from its content.
-  // Returns 'beats', 'smart', 'timecode', or null (= cannot determine, use declared type).
+  // Returns 'beats', 'smart', 'timecode', 'h3', or null (= cannot determine, use declared type).
   function detectPromptFormat(text) {
     const lines = text.split('\n').filter(l => l.trim())
     // Beats: at least one line starts a segment with a numeric range [X-Y] or [Xs-Ys].
@@ -91,6 +91,10 @@
     // Timecode: at least one line starts a segment with a single [MM:SS] marker (no range)
     if (lines.length >= 2 && lines.some(l => /^\[(\d+):(\d+)\]/.test(l))) {
       return 'timecode'
+    }
+    // H3: at least one line starts a segment with an "At X.Ys," marker
+    if (lines.some(l => /^At\s+\d+(?:\.\d+)?s,/.test(l))) {
+      return 'h3'
     }
     // Smart: multiple pipe-separated parts where at least one ends with [X-Y]
     const parts = text.split(/\s*\|\s*/).filter(p => p.trim())
@@ -194,6 +198,40 @@
       return blocks.map((b, i) => ({ text: texts[i], frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }))
     }
 
+    if (parseType === 'h3') {
+      const lines = text.split('\n').filter(l => l.trim())
+      if (!lines.length) return [{ text: '', frames: totalFrames }]
+      // Same marker-to-marker grouping as timecode, keyed on a decimal-seconds "At X.Ys," start time.
+      const blocks = []
+      for (const line of lines) {
+        const m = line.match(/^At\s+(\d+(?:\.\d+)?)s,\s*([\s\S]*)$/)
+        if (m) {
+          blocks.push({ startSec: parseFloat(m[1]), lines: [m[2].trim()] })
+        } else if (blocks.length) {
+          blocks[blocks.length - 1].lines.push(line.trim())
+        } else {
+          blocks.push({ startSec: null, lines: [line.trim()] })
+        }
+      }
+      if (blocks.length > 1 && blocks[0].startSec === null) {
+        const pre = blocks.shift()
+        blocks[0].lines = [...pre.lines, ...blocks[0].lines]
+      }
+      const texts = blocks.map(b => b.lines.filter(Boolean).join('\n'))
+      if (fps > 0 && blocks.every(b => b.startSec !== null)) {
+        let used = 0
+        return blocks.map((b, i) => {
+          const isLast = i === blocks.length - 1
+          const frames = isLast
+            ? Math.max(1, totalFrames - used)
+            : Math.max(1, Math.round((blocks[i + 1].startSec - b.startSec) * fps))
+          used += frames
+          return { text: texts[i], frames }
+        })
+      }
+      return blocks.map((b, i) => ({ text: texts[i], frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }))
+    }
+
     // simple: one flat segment — no structural parsing
     return [{ text, frames: Math.max(1, totalFrames) }]
   }
@@ -247,6 +285,19 @@
         // the cost of possibly overshooting the video's true duration.
         const nextSec = fps > 0 ? halfDown(accFrames / fps) : accFrames
         prevSec       = Math.max(nextSec, prevSec + 1)
+        return line
+      }).join('\n')
+    }
+    if (type === 'h3') {
+      // Each segment marks its own start time in decimal seconds (tenths); the
+      // first segment always starts at 0.0s since it starts at frame 0.
+      let accFrames = 0
+      return segments.map(s => {
+        const startSec = fps > 0 ? accFrames / fps : accFrames
+        let t = s.text.trim()
+        if (!t.endsWith('.')) t += '.'
+        const line = `At ${startSec.toFixed(1)}s, ${t}`
+        accFrames += s.frames
         return line
       }).join('\n')
     }
@@ -717,6 +768,7 @@
         beats:    'Beats will coerce frame count into full seconds',
         simple:   'Simple prompt will remove all segments',
         timecode: 'Timecode marks each segment\'s start time as [MM:SS]',
+        h3:       'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in',
       }
       const promptHdr = el('div', 'display:flex;align-items:center;gap:10px;padding:6px 10px 4px')
       promptHdr.innerHTML = `
@@ -724,6 +776,7 @@
         ${mkRadio('pe-beats',    'pe-type', 'beats',    'Beats',    promptType === 'beats')}
         ${mkRadio('pe-simple',   'pe-type', 'simple',   'Simple',   promptType === 'simple')}
         ${mkRadio('pe-timecode', 'pe-type', 'timecode', 'Timecode', promptType === 'timecode')}
+        ${mkRadio('pe-h3',       'pe-type', 'h3',       'H3',       promptType === 'h3')}
         <span id="pe-type-hint" style="flex:1;text-align:center;font-size:10px;font-family:monospace;color:#c8922a">${esc(TYPE_HINTS[promptType] ?? '')}</span>
         ${sectionLabel('PROMPT')}
       `
@@ -754,6 +807,12 @@
               segments = segments.map(s => ({
                 ...s,
                 text: s.text.replace(/^\[\d+:\d+\]\s*/, '').trim(),
+              }))
+            }
+            if (oldType === 'h3' && promptType !== 'h3') {
+              segments = segments.map(s => ({
+                ...s,
+                text: s.text.replace(/^At\s+\d+(?:\.\d+)?s,\s*/, '').trim(),
               }))
             }
             if (promptType === 'simple') {

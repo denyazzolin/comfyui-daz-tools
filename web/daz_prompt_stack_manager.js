@@ -15,8 +15,8 @@ const NODE_H  = 520
 
 const EXTERNAL_PROMPT_LABEL = 'External Prompt'
 
-const VALID_PROMPT_TYPES = ['smart', 'beats', 'simple', 'timecode']
-const PROMPT_TYPE_LABELS = { smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode' }
+const VALID_PROMPT_TYPES = ['smart', 'beats', 'simple', 'timecode', 'h3']
+const PROMPT_TYPE_LABELS = { smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode', h3: 'H3' }
 
 // Class filter display <-> stored class value
 const CLASS_FILTER_VALUES = [
