@@ -279,6 +279,29 @@ function buildPayload(wrap) {
   }
 }
 
+// ── Master prompt defaults ────────────────────────────────────────────────────
+// Keyed by the node's Type selection (I2V/T2V/MULTI); 'default' covers T2V
+// and the no-type/empty case.
+
+const DEFAULT_MASTER_PROMPT = {
+  I2V: 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n' +
+    'integrated_multimodal_description: [Shot 1] Live-action, photorealistic, [ADD OVERAL QUALITY DETAILS], micro skin and fabric detail. ' +
+    'The [WOMAN/MAS/CHARACTER] shown in <Picture 1>, [ADD OUTFIT DETAILS IF NEEDED], [ADD ACTION ANCHORS IF NEEDED]. ' +
+    'The camera [ADD CAMERA MOVEMENT ANCHORS IF NEEDED].',
+
+  default: 'integrated_multimodal_description: [Shot 1] Live-action, photorealistic, [ADD OVERAL QUALITY DETAILS], micro skin and fabric detail. ' +
+    'The [WOMAN/MAS/CHARACTER] shown in <Picture 1>, [ADD OUTFIT DETAILS IF NEEDED], [ADD ACTION ANCHORS IF NEEDED]. ' +
+    'The camera [ADD CAMERA MOVEMENT ANCHORS IF NEEDED].',
+
+  MULTI: 'For the target video, at 0.00 seconds into the target video:\n' +
+    '<Picture 1> (from [Shot 1]) is [ROLE 1 — e.g. fully referenced for identity, face, and wardrobe].\n' +
+    '<Picture 2> (from [Shot 1]) is [ROLE 2 — e.g. referenced for location and environment only].\n' +
+    '<Picture N> (from [Shot 1]) is [ROLE N].\n\n' +
+    'integrated_multimodal_description: [Shot 1] Live-action, photorealistic, [ADD OVERAL QUALITY DETAILS], micro skin and fabric detail. ' +
+    'The [WOMAN/MAS/CHARACTER] shown in <Picture 1>, [ADD OUTFIT DETAILS IF NEEDED], [ADD ACTION ANCHORS IF NEEDED]. ' +
+    'The camera [ADD CAMERA MOVEMENT ANCHORS IF NEEDED]',
+}
+
 // ── Registration ──────────────────────────────────────────────────────────────
 
 app.registerExtension(buildWorkflowConfigExtension({
@@ -309,7 +332,9 @@ app.registerExtension(buildWorkflowConfigExtension({
   unetGgufFields: [
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],
-  defaultNegativePrompt: 'pc game, console game, video game, cartoon, childish, ugly, blurry, distorted face, extra limbs, mismatched audio',
+  defaultNegativePrompt: '',
+  defaultMasterPrompt:   DEFAULT_MASTER_PROMPT,
+  defaultTrailPrompt:    'overall_soundscape: [AMBIENCE, FOR THE FULL SHOTS]\n\nnon_diegetic_music: N/A [OR DESCRIBE THE MUSIC]',
 
   renderDetailHtml,
   updateOutputLabels,

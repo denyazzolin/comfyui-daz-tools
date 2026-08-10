@@ -1,8 +1,15 @@
 // Shared floating Prompt Editor panel for WorkflowConfig nodes.
-// Exposes window.DazPromptEditor.open({ detail, onSave })
+// Exposes window.DazPromptEditor.open({ detail, onSave, defaultNegativePrompt,
+//   defaultMasterPrompt, defaultTrailPrompt, workflowType, stackMode })
 // onSave receives: { master_prompt, positive_prompt, negative_prompt, trail_prompt, total_frames, fps }
 //   where positive_prompt is { text, type }, master_prompt is { text, position }
 //   and the rest are typed objects.
+// defaultMasterPrompt and defaultTrailPrompt each accept a plain string (same
+//   default regardless of workflow type), or a map keyed by workflowType
+//   ('I2V'/'T2V'/'MULTI', with 'default' as the T2V/empty-type fallback) for
+//   classes whose default text depends on type — see resolveTypedDefault().
+// workflowType is the invoking node's I2V/T2V/MULTI selection, or '' when the
+//   caller has no such concept (e.g. the Prompt Stack Manager).
 
 ;(function () {
   'use strict'
@@ -64,6 +71,16 @@
     const e = document.createElement(tag)
     if (css) e.style.cssText = css
     return e
+  }
+
+  // Resolves a defaultMasterPrompt/defaultTrailPrompt config value against the
+  // invoking node's workflow type. Each class's config module (e.g.
+  // daz_workflow_config_minimaxh3.js) opts into per-type defaults simply by
+  // passing an object here instead of a string — no changes needed in this
+  // shared editor to support a new class or a new type key.
+  function resolveTypedDefault(def, workflowType) {
+    if (def && typeof def === 'object') return def[workflowType] ?? def.default ?? ''
+    return def || ''
   }
 
   function greenDiv() {
@@ -324,8 +341,12 @@
 
   // ── Main open ─────────────────────────────────────────────────────────────
 
-  function open({ detail, onSave, defaultNegativePrompt = '', stackMode = null }) {
+  function open({ detail, onSave, defaultNegativePrompt = '', defaultMasterPrompt = '',
+                  defaultTrailPrompt = '', workflowType = '', stackMode = null }) {
     if (_overlay) _overlay.remove()
+
+    const resolvedDefaultMaster = resolveTypedDefault(defaultMasterPrompt, workflowType)
+    const resolvedDefaultTrail  = resolveTypedDefault(defaultTrailPrompt, workflowType)
 
     const fText     = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
     const fValue    = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
@@ -770,11 +791,18 @@
         <textarea id="pe-master" style="${TA_STYLE};min-height:159px">${esc(masterText)}</textarea>
         <div style="display:flex;align-items:center;justify-content:${showMasterPosition ? 'space-between' : 'flex-end'};margin-top:3px">
           ${showMasterPosition ? mkCheckbox('pe-master-position', 'Append (master after positive)', masterPosition === 'after') : ''}
-          ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
+          <div style="display:flex;gap:6px">
+            ${mkBtn('pe-master-default','default','#555','#333','#999')}
+            ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
+          </div>
         </div>
       `
       panel.appendChild(masterSec)
       masterSec.querySelector('#pe-master').addEventListener('input', e => { masterText = e.target.value })
+      masterSec.querySelector('#pe-master-default').addEventListener('click', () => {
+        masterText = resolvedDefaultMaster
+        masterSec.querySelector('#pe-master').value = resolvedDefaultMaster
+      })
       masterSec.querySelector('#pe-master-clear').addEventListener('click', () => {
         masterText = ''
         masterSec.querySelector('#pe-master').value = ''
@@ -1046,12 +1074,17 @@
       const trailSec = el('div', 'padding:0 10px 6px')
       trailSec.innerHTML = `
         <textarea id="pe-trail" style="${TA_STYLE};min-height:60px">${esc(trailText)}</textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:3px">
+        <div style="display:flex;justify-content:space-between;margin-top:3px">
+          ${mkBtn('pe-trail-default','default','#555','#333','#999')}
           ${mkBtn('pe-trail-clear','clear','#555','#333','#999')}
         </div>
       `
       panel.appendChild(trailSec)
       trailSec.querySelector('#pe-trail').addEventListener('input', e => { trailText = e.target.value })
+      trailSec.querySelector('#pe-trail-default').addEventListener('click', () => {
+        trailText = resolvedDefaultTrail
+        trailSec.querySelector('#pe-trail').value = resolvedDefaultTrail
+      })
       trailSec.querySelector('#pe-trail-clear').addEventListener('click', () => {
         trailText = ''
         trailSec.querySelector('#pe-trail').value = ''

@@ -175,14 +175,14 @@ For **Simple**, **Beats**, **Timecode**, and **H3** types, the Master prompt is 
 Click **Prompt Editor** inside the edit panel to open a full-screen editor. It loads the current Master, Positive, Negative, Qualifiers, total frames, and FPS values and lets you work with them visually.
 
 - **Frames / FPS** — changing Frames rescales all segment lengths proportionally; changing FPS updates the time labels on the ruler.
-- **Master** — free-form text area. For Beats, Timecode, H3, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
+- **Master** — free-form text area. A **Default** button (left of **Clear**) fills in a class-specific default template, when one is defined for the node's class — currently only MiniMax H3, whose default varies by I2V/T2V/MULTI workflow type. For Beats, Timecode, H3, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
 - **Prompt type** — switch between Smart, Beats, Timecode, H3, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
 - **Segment bar** — a horizontal bar showing each segment as a proportional colour-coded block. Click any block to select it; the active segment is highlighted in green.
 - **Frame ruler** — marks 0%, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels include both frame number and seconds (e.g. `40 (2.5s)`).
 - **Segment text** — edit the text for the selected segment.
 - **Segment controls** — set the exact frame count, clear the text, delete the segment, or equalize all segments evenly. **Insert** adds a new segment right before the selected one; **Add** appends one at the end. Both fill any remaining space first; once the timeline is full, they instead carve out a one-second segment (based on FPS) and proportionally rescale every other segment to preserve its relative timing (minimum 1 frame each).
-- **Qualifiers** — free-form text area for the trail prompt. When re-opening a saved prompt, text at the end of the last segment that matches the saved Qualifiers text (after a newline) is stripped back out so it isn't shown duplicated inside the segment.
-- **Negative** — free-form text area.
+- **Qualifiers** — free-form text area for the trail prompt, with its own **Default** button (same class-specific-template mechanism as Master) aligned to the left, like Negative's. When re-opening a saved prompt, text at the end of the last segment that matches the saved Qualifiers text (after a newline) is stripped back out so it isn't shown duplicated inside the segment.
+- **Negative** — free-form text area with a **Default** button that fills in a class-specific default negative prompt, when one is defined.
 - **Clear All** — resets Master, Positive, Negative, and Qualifiers to empty and collapses to a single segment.
 
 Clicking **OK** sends all values back to the edit panel. It does **not** save to disk — use **Save** or **+ Take** in the edit panel to persist.

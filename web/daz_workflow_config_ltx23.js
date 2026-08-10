@@ -335,6 +335,8 @@ app.registerExtension(buildWorkflowConfigExtension({
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],
   defaultNegativePrompt: 'pc game, console game, video game, cartoon, childish, ugly, blurry, distorted face, extra limbs, mismatched audio',
+  defaultMasterPrompt:   '',
+  defaultTrailPrompt:    '',
 
   renderDetailHtml,
   updateOutputLabels,

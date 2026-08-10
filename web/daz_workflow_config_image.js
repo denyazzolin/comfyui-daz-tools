@@ -273,6 +273,8 @@ app.registerExtension(buildWorkflowConfigExtension({
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],
   defaultNegativePrompt: '',
+  defaultMasterPrompt:   '',
+  defaultTrailPrompt:    '',
 
   hideType:      true,
   hideAudioPath: true,

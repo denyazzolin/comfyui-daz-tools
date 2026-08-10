@@ -1830,6 +1830,9 @@ export function buildWorkflowConfigExtension(cfg) {
         window.DazPromptEditor.open({
           detail: node[keys.detail] || {},
           defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
+          defaultMasterPrompt:   cfg.defaultMasterPrompt ?? '',
+          defaultTrailPrompt:    cfg.defaultTrailPrompt ?? '',
+          workflowType:          node[keys.detail]?.type || '',
           onSave: async (updates) => {
             const cw    = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
@@ -1873,6 +1876,9 @@ export function buildWorkflowConfigExtension(cfg) {
         const masterPos    = masterPosEl?.checked ? 'after' : 'before'
         window.DazPromptEditor.open({
           defaultNegativePrompt: cfg.defaultNegativePrompt ?? '',
+          defaultMasterPrompt:   cfg.defaultMasterPrompt ?? '',
+          defaultTrailPrompt:    cfg.defaultTrailPrompt ?? '',
+          workflowType:          wrap.querySelector('#daz-type')?.value || '',
           detail: {
             master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '', position: masterPos },
             positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },
