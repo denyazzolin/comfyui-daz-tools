@@ -884,6 +884,7 @@ app.registerExtension({
           ${row('Master',      trunc(p.master_prompt?.text || ''))}
           ${row('Positive',    trunc(p.positive_prompt?.text || ''))}
           ${row('Negative',    trunc(p.negative_prompt?.text || ''))}
+          ${row('Qualifiers',  trunc(p.trail_prompt?.text || ''))}
           ${row('Prompt Type', PROMPT_TYPE_LABELS[posType] || 'Smart')}
         </table>`
     }

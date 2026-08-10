@@ -272,10 +272,13 @@ def _get_master_position(val, default: str = "before") -> str:
     return default
 
 
-def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
+def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool, str]:
     """Combine a set/prompt's master_prompt + positive_prompt into the effective
-    positive text, per the smart/beats/timecode/simple relay rule shared by
-    every WorkflowConfig class. Returns (master_text, pos_out, neg_text, is_relay)."""
+    positive text, per the smart/beats/timecode/simple/h3 relay rule shared by
+    every WorkflowConfig class. trail_prompt (if any) is also merged onto the
+    end of pos_out (after a blank line) but is additionally returned on its
+    own, so callers like PromptStackSplitter can externalize it as a separate
+    output. Returns (master_text, pos_out, neg_text, is_relay, trail_text)."""
     pos_prompt_val    = entry.get("positive_prompt")
     prompt_type       = pos_prompt_val.get("type", "smart") if isinstance(pos_prompt_val, dict) else "smart"
     master_prompt_val = entry.get("master_prompt")
@@ -291,7 +294,7 @@ def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
     else:
         pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
     pos_out = "\n\n".join(p for p in (pos_out, trail_text) if p)
-    return master_text, pos_out, neg_text, is_relay
+    return master_text, pos_out, neg_text, is_relay, trail_text
 
 def _get_path(val, default: str = "") -> str:
     if isinstance(val, dict):
