@@ -750,19 +750,19 @@ def load_unet_gguf(name: str):
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
 
-PRESET_SCHEMA = 3
+PRESET_SCHEMA = 4
 _PRESET_SKIP_APPLY  = {"class", "name", "version", "version_label", "created_at", "updated_at"}
 _PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
 _PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
 _PRESET_FLOAT_FIELDS = {"cfg_high", "cfg_low", "fps", "shift_high", "shift_low"}
 
-_PRESET_TEXT_FIELDS = {"master_prompt", "negative_prompt"}
+_PRESET_TEXT_FIELDS = {"master_prompt", "negative_prompt", "trail_prompt"}
 
 _DEFAULT_PRESET_PROFILES: dict = {
     "Wan2.2": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "unet_high", "unet_low", "vae", "clip", "loras",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
@@ -771,7 +771,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
         "width", "height", "steps", "cfg_high",
         "flags", "custom",
@@ -779,7 +779,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
     "ImageInference": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "note",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "checkpoint", "unet_high", "vae", "clip", "clip_type",
         "width", "height", "steps", "cfg_high",
         "flags", "custom",
@@ -787,7 +787,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
     "m_h3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "unet_high", "vae", "audio_vae", "clip", "loras",
         "width", "height", "steps", "cfg_high",
         "flags", "custom",
@@ -855,7 +855,13 @@ def _load_preset_file(path: str) -> tuple[list, dict]:
 
 
 def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[list, dict]:
-    """Migrate a preset file's presets list and profiles dict forward. Additive only."""
+    """Migrate a preset file's presets list and profiles dict forward. Additive only.
+    v3 → v4 (trail_prompt field, and any missing class profile such as m_h3) is
+    handled by the always-on _backfill_preset_fields instead of here, since that
+    also covers files that already claim v4 but are missing the fields (hand-edited,
+    or created between schema bumps). Kept in the same shape as
+    prompt_stack_base._migrate so future version-specific migrations have a place
+    to land."""
     if from_version < 2:
         for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
             if "loras" not in default_profile:
@@ -885,13 +891,18 @@ def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[
 
 
 def _backfill_preset_fields(presets: list, profiles: dict) -> tuple[list, dict]:
-    """Ensure presets/profiles include fields added to the preset schema without a version
-    bump. Additive and idempotent — safe to run on every load regardless of file version."""
+    """Ensure presets/profiles include classes and fields added to the preset schema.
+    Additive and idempotent — safe to run on every load regardless of file version,
+    so it also repairs files that already claim the current version but are missing
+    fields (hand-edited, or created between schema bumps). Also backfills a whole
+    missing class profile (e.g. a class added after the preset file was first
+    created), not just missing fields on an existing profile."""
     for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
         profile = profiles.get(cls)
         if not isinstance(profile, list):
-            continue
-        for field in ("master_prompt", "positive_prompt", "negative_prompt"):
+            profile = list(default_profile)
+            profiles[cls] = profile
+        for field in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
             if field not in default_profile:
                 continue
             if field not in profile:

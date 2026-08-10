@@ -1299,10 +1299,12 @@ export function buildWorkflowConfigExtension(cfg) {
 
       function applyPresetToPanel(panel, preset, profile) {
         for (const field of profile) {
-          if (field === 'master_prompt' || field === 'negative_prompt') {
+          if (field === 'master_prompt' || field === 'negative_prompt' || field === 'trail_prompt') {
             if (!(field in preset)) continue
             const val = preset[field]
-            const el = panel.querySelector(field === 'master_prompt' ? '#daz-master-prompt' : '#daz-negative-prompt')
+            const sel = field === 'master_prompt' ? '#daz-master-prompt'
+                      : field === 'negative_prompt' ? '#daz-negative-prompt' : '#daz-trail-prompt'
+            const el = panel.querySelector(sel)
             if (el) el.value = String((val && typeof val === 'object') ? (val.text ?? '') : (val ?? ''))
             continue
           }
