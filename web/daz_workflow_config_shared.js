@@ -785,6 +785,7 @@ export function buildWorkflowConfigExtension(cfg) {
               posType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
             }</div>
             <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
+            <input type="hidden" id="daz-trail-prompt" value="${esc(fText(data.trail_prompt))}">
             <label style="${lbl}">Master</label>
             <textarea id="daz-master-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.master_prompt))}</textarea>
@@ -1841,6 +1842,7 @@ export function buildWorkflowConfigExtension(cfg) {
                   master_prompt:   updates.master_prompt,
                   positive_prompt: updates.positive_prompt,
                   negative_prompt: updates.negative_prompt,
+                  trail_prompt:    updates.trail_prompt,
                   total_frames:    updates.total_frames,
                   fps:             updates.fps,
                 }),
@@ -1873,6 +1875,7 @@ export function buildWorkflowConfigExtension(cfg) {
             master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '', position: masterPos },
             positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },
             negative_prompt: { text: wrap.querySelector('#daz-negative-prompt')?.value ?? '' },
+            trail_prompt:    { text: wrap.querySelector('#daz-trail-prompt')?.value ?? '' },
             total_frames:    { value: parseInt(wrap.querySelector('#daz-total-frames')?.value ?? '0', 10) },
             fps:             { value: parseFloat(wrap.querySelector('#daz-fps')?.value ?? '0') },
           },
@@ -1899,6 +1902,8 @@ export function buildWorkflowConfigExtension(cfg) {
               : newType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
             const negTA = wrap.querySelector('#daz-negative-prompt')
             if (negTA) negTA.value = updates.negative_prompt.text
+            const trailInput = wrap.querySelector('#daz-trail-prompt')
+            if (trailInput) trailInput.value = updates.trail_prompt.text
             const framesInput = wrap.querySelector('#daz-total-frames')
             if (framesInput) framesInput.value = updates.total_frames.value
             const fpsInput = wrap.querySelector('#daz-fps')

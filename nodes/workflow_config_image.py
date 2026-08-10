@@ -187,6 +187,7 @@ class WorkflowConfigImage:
             pos_out = "\n\n".join(p for p in (pos_text, master_text) if p)
         else:
             pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
+        pos_out = "\n\n".join(p for p in (pos_out, _get_text(active_set.get("trail_prompt"))) if p)
 
         ckpt_name = _get_name(active_set.get("checkpoint"))
         unet_name = _get_name(active_set.get("unet_high"))

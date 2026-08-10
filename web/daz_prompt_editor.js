@@ -1,6 +1,6 @@
 // Shared floating Prompt Editor panel for WorkflowConfig nodes.
 // Exposes window.DazPromptEditor.open({ detail, onSave })
-// onSave receives: { master_prompt, positive_prompt, negative_prompt, total_frames, fps }
+// onSave receives: { master_prompt, positive_prompt, negative_prompt, trail_prompt, total_frames, fps }
 //   where positive_prompt is { text, type }, master_prompt is { text, position }
 //   and the rest are typed objects.
 
@@ -305,6 +305,23 @@
     return segments.map(s => s.text).join('\n')
   }
 
+  // Strips a trailing "\n\n<trail>" (or any run of newlines) suffix from text
+  // when it exactly matches the saved trail prompt, so re-opening the editor
+  // doesn't show the qualifier duplicated inside the last segment.
+  function stripTrailFromText(text, trailText) {
+    const trail = (trailText || '').trim()
+    if (!trail) return text
+    const t = text.replace(/\s+$/, '')
+    if (t.endsWith(trail)) {
+      const before = t.slice(0, t.length - trail.length)
+      const m = before.match(/[\r\n]+$/)
+      if (m) {
+        return before.slice(0, before.length - m[0].length).replace(/\s+$/, '')
+      }
+    }
+    return text
+  }
+
   // ── Main open ─────────────────────────────────────────────────────────────
 
   function open({ detail, onSave, defaultNegativePrompt = '', stackMode = null }) {
@@ -325,6 +342,7 @@
         master_prompt:   { ...(p?.master_prompt   || {}) },
         positive_prompt: { ...(p?.positive_prompt || {}) },
         negative_prompt: { ...(p?.negative_prompt || {}) },
+        trail_prompt:    { ...(p?.trail_prompt    || {}) },
         ...(Number.isInteger(p?.index) ? { index: p.index } : {}),
       }
     }
@@ -349,17 +367,22 @@
       fps          = fValue(detail.fps)
     }
 
-    let masterText, masterPosition, negText, promptType, segments
+    let masterText, masterPosition, negText, trailText, promptType, segments
 
     function loadActivePromptFields() {
       const src = stackMode ? prompts[activeIdx] : detail
       masterText     = fText(src.master_prompt)
       masterPosition = fPosition(src.master_prompt)
       negText        = fText(src.negative_prompt)
+      trailText      = fText(src.trail_prompt)
       promptType     = (src.positive_prompt && typeof src.positive_prompt === 'object')
                           ? (src.positive_prompt.type || 'smart') : 'smart'
       if (!VALID_PROMPT_TYPES.has(promptType)) promptType = 'smart'
       segments       = parseSegments(fText(src.positive_prompt), promptType, totalFrames, fps)
+      if (segments.length) {
+        const last = segments[segments.length - 1]
+        last.text  = stripTrailFromText(last.text, trailText)
+      }
     }
     loadActivePromptFields()
     let selIdx = 0
@@ -394,6 +417,8 @@
       if (masterTA) masterText = masterTA.value
       const negTA    = panel.querySelector('#pe-neg')
       if (negTA)    negText    = negTA.value
+      const trailTA  = panel.querySelector('#pe-trail')
+      if (trailTA)  trailText  = trailTA.value
     }
 
     function equalize() {
@@ -568,6 +593,7 @@
         master_prompt:   { text: masterText, position: masterPosition },
         positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
         negative_prompt: { text: negText },
+        trail_prompt:    { text: trailText },
         ...(Number.isInteger(prev.index) ? { index: prev.index } : {}),
       }
     }
@@ -1012,6 +1038,27 @@
 
       panel.appendChild(greenDiv())
 
+      // ── Qualifiers ──────────────────────────────────────────────────────
+      const trailHdr = el('div', 'display:flex;justify-content:flex-end;padding:6px 10px 2px')
+      trailHdr.innerHTML = sectionLabel('QUALIFIERS')
+      panel.appendChild(trailHdr)
+
+      const trailSec = el('div', 'padding:0 10px 6px')
+      trailSec.innerHTML = `
+        <textarea id="pe-trail" style="${TA_STYLE};min-height:60px">${esc(trailText)}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:3px">
+          ${mkBtn('pe-trail-clear','clear','#555','#333','#999')}
+        </div>
+      `
+      panel.appendChild(trailSec)
+      trailSec.querySelector('#pe-trail').addEventListener('input', e => { trailText = e.target.value })
+      trailSec.querySelector('#pe-trail-clear').addEventListener('click', () => {
+        trailText = ''
+        trailSec.querySelector('#pe-trail').value = ''
+      })
+
+      panel.appendChild(greenDiv())
+
       // ── Negative ────────────────────────────────────────────────────────
       const negHdr = el('div', 'display:flex;justify-content:flex-end;padding:6px 10px 2px')
       negHdr.innerHTML = sectionLabel('NEGATIVE')
@@ -1051,6 +1098,7 @@
       footer.querySelector('#pe-clear-all').addEventListener('click', () => {
         masterText = ''
         negText    = ''
+        trailText  = ''
         segments   = [{ text: '', frames: totalFrames }]
         selIdx     = 0
         render()
@@ -1090,6 +1138,7 @@
           master_prompt:   { text: masterText, position: masterPosition },
           positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
           negative_prompt: { text: negText },
+          trail_prompt:    { text: trailText },
           total_frames:    { value: totalFrames },
           fps:             { value: fps },
         })

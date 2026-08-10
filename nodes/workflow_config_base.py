@@ -62,7 +62,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 8
+CURRENT_SCHEMA = 9
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -126,7 +126,8 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
         configs  = _migrate(configs, file_version)
         migrated = True
 
-    backfilled = _backfill_master_position(configs)
+    backfilled  = _backfill_master_position(configs)
+    backfilled |= _backfill_trail_prompt(configs)
 
     if migrated or backfilled:
         try:
@@ -281,6 +282,7 @@ def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
     master_text       = _get_text(master_prompt_val)
     pos_text          = _get_text(pos_prompt_val)
     neg_text          = _get_text(entry.get("negative_prompt"))
+    trail_text        = _get_text(entry.get("trail_prompt"))
     is_relay          = prompt_type == "smart"
     if is_relay:
         pos_out = pos_text
@@ -288,6 +290,7 @@ def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
         pos_out = "\n\n".join(p for p in (pos_text, master_text) if p)
     else:
         pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
+    pos_out = "\n\n".join(p for p in (pos_out, trail_text) if p)
     return master_text, pos_out, neg_text, is_relay
 
 def _get_path(val, default: str = "") -> str:
@@ -428,7 +431,7 @@ def _apply_set_fields(target: dict, data: dict) -> None:
         v = data["filename"]
         target["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
 
-    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+    for f in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
         if f in data:
             v = data[f]
             target[f] = v if isinstance(v, dict) else {"text": str(v or "")}
@@ -510,7 +513,7 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
     s["audio_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
     v = data.get("filename")
     s["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
-    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+    for f in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
         v = data.get(f)
         s[f] = v if isinstance(v, dict) else {"text": str(v or "")}
     for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
@@ -588,7 +591,7 @@ def _normalize_set(set_obj: dict) -> dict:
     if not isinstance(v, dict):
         result["filename"] = {"file": str(v or "")}
 
-    for f in ("master_prompt", "negative_prompt"):
+    for f in ("master_prompt", "negative_prompt", "trail_prompt"):
         v = result.get(f)
         if not isinstance(v, dict):
             result[f] = {"text": str(v or "")}
@@ -1082,6 +1085,19 @@ def _backfill_master_position(configs: dict) -> bool:
                     changed = True
             elif mp:
                 s["master_prompt"] = {"text": str(mp), "position": "before"}
+                changed = True
+    return changed
+
+
+def _backfill_trail_prompt(configs: dict) -> bool:
+    """Ensure every set has a trail_prompt field. Additive and idempotent —
+    safe to run on every load regardless of the file's schema version, mirroring
+    _backfill_master_position."""
+    changed = False
+    for entry in configs.values():
+        for s in entry.get("sets", []):
+            if not isinstance(s.get("trail_prompt"), dict):
+                s["trail_prompt"] = {"text": ""}
                 changed = True
     return changed
 

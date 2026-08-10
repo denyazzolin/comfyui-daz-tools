@@ -256,6 +256,7 @@ function buildPayload(wrap) {
       type: wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart',
     },
     negative_prompt: { text:  wrap.querySelector('#daz-negative-prompt')?.value  ?? '' },
+    trail_prompt:    { text:  wrap.querySelector('#daz-trail-prompt')?.value    ?? '' },
     filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '' },
     width:           { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
     height:          { value: parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10) },

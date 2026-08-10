@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 8,                   // internal schema version; do not change
+    "schema_version": 9,                   // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -43,6 +43,7 @@
         "master_prompt": { "text": "", "position": "before" },   // base prompt; combined with positive when type is not "smart"
         "positive_prompt": { "text": "A cinematic shot of ...", "type": "smart" }, // type "smart" forwards only this text to the relay node
         "negative_prompt": { "text": "" }, // negative prompt text
+        "trail_prompt":{ "text": "" },
         "loras": {
           "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1: filename, weight multiplier, active toggle
           "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2: 1 and 2 will be seen as high and low loras
@@ -103,6 +104,7 @@
         "master_prompt": { "text": "", "position": "before" },   // base prompt; combined with positive when type is not "smart"
         "positive_prompt": { "text": "A cinematic shot of ...", "type": "smart" }, // type "smart" forwards only this text to the relay node
         "negative_prompt": { "text": "" }, // negative prompt text
+        "trail_prompt":{ "text": "" },
         "loras": {
           "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1 (typically the distillation LoRA)
           "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
@@ -163,6 +165,7 @@
         "master_prompt": { "text": "", "position": "before" },   // base prompt; combined with positive when type is not "smart"
         "positive_prompt": { "text": "A photo of ...", "type": "smart" }, // type "smart" forwards only this text to the relay node
         "negative_prompt": { "text": "" }, // negative prompt text
+        "trail_prompt":{ "text": "" },        
         "loras": {
           "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // NOT USED by Image node
           "lora_2": { "name": "", "strength": 1.0, "enabled": true },

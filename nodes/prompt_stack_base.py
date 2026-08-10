@@ -12,7 +12,7 @@ from datetime import datetime
 from .workflow_config_base import _MGR_DIR, _META_KEY, make_label
 
 STACKS_FILE       = os.path.join(_MGR_DIR, "dx_prompt_stacks.json")
-PROMPT_STACK_SCHEMA = 2
+PROMPT_STACK_SCHEMA = 3
 MAX_PROMPTS       = 10
 EXTERNAL_PROMPT_LABEL = "External Prompt"
 
@@ -22,8 +22,8 @@ _warned_missing: set = set()
 # ── Prompt normalisation ────────────────────────────────────────────────────
 
 def _normalize_prompt(p) -> dict:
-    """Ensure a prompt dict has label/master_prompt/positive_prompt/negative_prompt
-    in typed-object form."""
+    """Ensure a prompt dict has label/master_prompt/positive_prompt/negative_prompt/
+    trail_prompt in typed-object form."""
     result = dict(p) if isinstance(p, dict) else {}
     result["label"] = str(result.get("label") or "")
 
@@ -43,6 +43,10 @@ def _normalize_prompt(p) -> dict:
     np_ = result.get("negative_prompt")
     np_ = np_ if isinstance(np_, dict) else {"text": str(np_ or "")}
     result["negative_prompt"] = {"text": str(np_.get("text") or "")}
+
+    tp = result.get("trail_prompt")
+    tp = tp if isinstance(tp, dict) else {"text": str(tp or "")}
+    result["trail_prompt"] = {"text": str(tp.get("text") or "")}
 
     # Numeric, per-sequence identity for a prompt slot — assigned by
     # _assign_prompt_indices, never picked here. Strip anything invalid so
@@ -178,11 +182,13 @@ def _write_file(path: str, stacks: dict, meta_extra: dict, effective_schema: int
 
 def _migrate(stacks: dict, from_version: int) -> dict:
     """Additive-only, version-gated schema migration. v1 → v2 (stack 'id' and
-    per-prompt 'index') is handled by the always-on _backfill_ids_and_indices
-    instead of here, since that also covers files that already claim v2 but
-    are missing the fields (hand-edited, or created between schema bumps).
-    Kept in the same shape as workflow_config_base._migrate so future
-    version-specific migrations have a place to land."""
+    per-prompt 'index') is handled by the always-on _backfill_ids_and_indices,
+    and v2 → v3 (per-prompt 'trail_prompt') is handled by the always-on
+    _normalize_prompt, instead of here, since those also cover files that
+    already claim the target version but are missing the fields (hand-edited,
+    or created between schema bumps). Kept in the same shape as
+    workflow_config_base._migrate so future version-specific migrations have
+    a place to land."""
     return stacks
 
 
