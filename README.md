@@ -156,7 +156,7 @@ Each take can have an optional short **label** shown in the dropdown (e.g. `2 - 
 
 #### Managing prompts
 
-Each scene/take stores three prompt fields — **Master**, **Positive**, and **Negative** — along with a **Prompt Type** that controls how the positive prompt is structured, plus an optional **Qualifiers** (trail) prompt, editable only from the Prompt Editor, that's appended to the end of the positive prompt after a blank line when the workflow runs.
+Each scene/take stores three prompt fields — **Master**, **Positive**, and **Negative** — along with a **Prompt Type** that controls how the positive prompt is structured, plus an optional **Qualifiers** (trail) prompt that's appended to the end of the positive prompt after a blank line when the workflow runs. Master and Qualifiers each have a **Default** button (fills in a class-specific default template, when one is defined for the node's class/type) next to their **Clear** button.
 
 | Type | How it works |
 |---|---|
@@ -193,7 +193,7 @@ Open the full-screen edit panel by clicking the node's **Edit Take** button (or 
 
 The panel has three columns:
 - **Left:** Name, Group, Type, Note, reference image and audio, dimensions, seed, CFG, frames, and FPS.
-- **Center:** Prompt Type selector, Master / Positive / Negative prompts, and the **Prompt Editor** button.
+- **Center:** Prompt Type selector, Master / Positive / Qualifiers / Negative prompts, and the **Prompt Editor** button.
 - **Right:** Model selectors, LoRA slots (name, strength, enabled toggle), filename, and flag labels.
 
 | Button | What it does |

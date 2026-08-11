@@ -208,6 +208,34 @@ export function buildWorkflowConfigExtension(cfg) {
         return (val && typeof val === 'object' && (val.position === 'before' || val.position === 'after'))
           ? val.position : 'before'
       }
+      // Resolves defaultMasterPrompt/defaultTrailPrompt against the current
+      // workflow type — same convention as resolveTypedDefault() in
+      // daz_prompt_editor.js: a plain string is used as-is, an object is keyed
+      // by workflowType ('I2V'/'T2V'/'MULTI') with 'default' as the fallback.
+      function resolveTypedDefault(def, workflowType) {
+        if (def && typeof def === 'object') return def[workflowType] ?? def.default ?? ''
+        return def || ''
+      }
+
+      // Master/Qualifiers/Negative defaults can vary by workflow type — keep
+      // their Default buttons' disabled state in sync with #daz-type. Shared
+      // (not nested in enterEditForm) so every path that can change #daz-type
+      // on an open panel — the Type dropdown itself, the Name-box clear
+      // button, and Apply Preset — can call it after mutating the value.
+      function updateDefaultButtonsState(panel) {
+        const workflowType = panel.querySelector('#daz-type')?.value || ''
+        const setBtn = (id, disabled) => {
+          const btn = panel.querySelector(id)
+          if (!btn) return
+          btn.disabled      = disabled
+          btn.style.opacity = disabled ? '0.4' : '1'
+          btn.style.cursor  = disabled ? 'default' : 'pointer'
+        }
+        setBtn('#daz-master-default',   !resolveTypedDefault(cfg.defaultMasterPrompt, workflowType))
+        setBtn('#daz-trail-default',    !resolveTypedDefault(cfg.defaultTrailPrompt,  workflowType))
+        setBtn('#daz-negative-default', !cfg.defaultNegativePrompt)
+      }
+
       function fRandomize(val)  { return (val && typeof val === 'object') ? (val.randomize === true)   : false    }
       function fFlagLabel(val, def = '') { return (val && typeof val === 'object') ? (val.label ?? def) : def     }
       function fFlagValue(val)           { return (val && typeof val === 'object') ? (val.value === true) : false }
@@ -646,6 +674,18 @@ export function buildWorkflowConfigExtension(cfg) {
         const curVer    = isNew ? '1' : (node._dazCurrentVersion || data.version || '1')
         const uid       = `${uidPrefix}${node.id || Math.random().toString(36).slice(2, 7)}`
 
+        // Initial Default-button disabled state, before the user can touch the
+        // Type dropdown — recomputed live by updateDefaultButtonsState() below.
+        const initialWorkflowType   = data.type || ''
+        const masterDefaultDisabled = !resolveTypedDefault(cfg.defaultMasterPrompt, initialWorkflowType)
+        const trailDefaultDisabled  = !resolveTypedDefault(cfg.defaultTrailPrompt,  initialWorkflowType)
+        const negDefaultDisabled    = !cfg.defaultNegativePrompt
+
+        function defaultBtnHtml(id, disabled) {
+          return `<button id="${id}"${disabled ? ' disabled' : ''}
+            style="${cb};opacity:${disabled ? 0.4 : 1};cursor:${disabled ? 'default' : 'pointer'}">default</button>`
+        }
+
         // DOM skeleton
         const overlay = document.createElement('div')
         overlay.style.cssText =
@@ -785,7 +825,6 @@ export function buildWorkflowConfigExtension(cfg) {
               posType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
             }</div>
             <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
-            <input type="hidden" id="daz-trail-prompt" value="${esc(fText(data.trail_prompt))}">
             <label style="${lbl}">Master</label>
             <textarea id="daz-master-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(fText(data.master_prompt))}</textarea>
@@ -797,7 +836,10 @@ export function buildWorkflowConfigExtension(cfg) {
                   style="cursor:pointer;accent-color:#54af7b;margin:0">
                 Append (master after positive)
               </label>
-              <button id="daz-master-clear" style="${cb}">clear</button>
+              <div style="display:flex;gap:6px">
+                ${defaultBtnHtml('daz-master-default', masterDefaultDisabled)}
+                <button id="daz-master-clear" style="${cb}">clear</button>
+              </div>
             </div>
             <label style="${lbl}">Positive</label>
             <textarea id="daz-positive-prompt"
@@ -805,11 +847,18 @@ export function buildWorkflowConfigExtension(cfg) {
             <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
               <button id="daz-positive-clear" style="${cb}">clear</button>
             </div>
+            <label style="${lbl}">Qualifiers</label>
+            <textarea id="daz-trail-prompt"
+              style="${tas};height:70px;margin-bottom:2px">${esc(fText(data.trail_prompt))}</textarea>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              ${defaultBtnHtml('daz-trail-default', trailDefaultDisabled)}
+              <button id="daz-trail-clear" style="${cb}">clear</button>
+            </div>
             <label style="${lbl}">Negative<span id="daz-neg-cfg-warn" style="color:#f88;font-size:10px;margin-left:6px"></span></label>
             <textarea id="daz-negative-prompt"
               style="${tas};height:100px;margin-bottom:2px">${esc(isNew ? (cfg.defaultNegativePrompt || '') : fText(data.negative_prompt))}</textarea>
             <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-              <button id="daz-negative-default" style="${cb}">default</button>
+              ${defaultBtnHtml('daz-negative-default', negDefaultDisabled)}
               <button id="daz-negative-clear" style="${cb}">clear</button>
             </div>
             <button id="daz-prompt-editor-btn"
@@ -1099,6 +1148,7 @@ export function buildWorkflowConfigExtension(cfg) {
           })
           const t = panel.querySelector('#daz-type'); if (t) t.value = ''
           const n = panel.querySelector('#daz-note'); if (n) n.value = ''
+          updateDefaultButtonsState(panel)
         })
         panel.querySelector('#daz-img-clear')?.addEventListener('click', () => {
           const sel = panel.querySelector('#daz-image-path')
@@ -1121,11 +1171,24 @@ export function buildWorkflowConfigExtension(cfg) {
           checkCfgWarn()
           const r = panel.querySelector('#daz-seed-randomize'); if (r) r.checked = false
         })
+        panel.querySelector('#daz-master-default')?.addEventListener('click', () => {
+          const ta = panel.querySelector('#daz-master-prompt')
+          const workflowType = panel.querySelector('#daz-type')?.value || ''
+          if (ta) ta.value = resolveTypedDefault(cfg.defaultMasterPrompt, workflowType)
+        })
         panel.querySelector('#daz-master-clear')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-master-prompt'); if (ta) ta.value = ''
         })
         panel.querySelector('#daz-positive-clear')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-positive-prompt'); if (ta) ta.value = ''
+        })
+        panel.querySelector('#daz-trail-default')?.addEventListener('click', () => {
+          const ta = panel.querySelector('#daz-trail-prompt')
+          const workflowType = panel.querySelector('#daz-type')?.value || ''
+          if (ta) ta.value = resolveTypedDefault(cfg.defaultTrailPrompt, workflowType)
+        })
+        panel.querySelector('#daz-trail-clear')?.addEventListener('click', () => {
+          const ta = panel.querySelector('#daz-trail-prompt'); if (ta) ta.value = ''
         })
         panel.querySelector('#daz-negative-default')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-negative-prompt'); if (ta) ta.value = cfg.defaultNegativePrompt ?? ''
@@ -1133,6 +1196,7 @@ export function buildWorkflowConfigExtension(cfg) {
         panel.querySelector('#daz-negative-clear')?.addEventListener('click', () => {
           const ta = panel.querySelector('#daz-negative-prompt'); if (ta) ta.value = ''
         })
+        panel.querySelector('#daz-type')?.addEventListener('change', () => updateDefaultButtonsState(panel))
         function syncGgufCheckbox(select, checkbox) {
           const sel = panel.querySelector(select)
           const chk = panel.querySelector(checkbox)
@@ -1514,6 +1578,7 @@ export function buildWorkflowConfigExtension(cfg) {
               const p = getSelected()
               if (!p) return
               applyPresetToPanel(panel, p, p._profile ?? [])
+              updateDefaultButtonsState(panel)
               node._dazEditPanelDirty = true
               mo.remove()
               if (!isNew) await saveConfig(node, panel, 'current', true, false, true)
@@ -2190,6 +2255,8 @@ export function buildWorkflowConfigExtension(cfg) {
             : posType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
           const negTA = wrap.querySelector('#daz-negative-prompt')
           if (negTA) negTA.value = fText(detail.negative_prompt)
+          const trailTA = wrap.querySelector('#daz-trail-prompt')
+          if (trailTA) trailTA.value = fText(detail.trail_prompt)
           const framesInput = wrap.querySelector('#daz-total-frames')
           if (framesInput) framesInput.value = fValue(detail.total_frames)
           const fpsInput = wrap.querySelector('#daz-fps')

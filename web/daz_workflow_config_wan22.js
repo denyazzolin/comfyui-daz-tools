@@ -326,7 +326,13 @@ app.registerExtension(buildWorkflowConfigExtension({
   ],
   defaultNegativePrompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走',
   defaultMasterPrompt:   '',
-  defaultTrailPrompt:    '',
+  defaultTrailPrompt:
+    '[QUALITY] ultra realistic, high detail, sharp focus, 8k resolution, shot on 50mm lens, cinematic composition, high dynamic range,\n' +
+    '[PEOPLE/OUTFIT] natural skin texture, visible skin pores, subsurface scattering on skin, realistic fabric texture, fabric physics, cloth wrinkles and folds responding to movement, micro-expressions,\n' +
+    '[PHYSICS] realistic physics, natural momentum, weight and inertia, accurate collision dynamics, natural deceleration, gravity-accurate motion,\n' +
+    '[WATER] realistic water simulation, natural water flow, dynamic ripples, light refraction through water, water droplets, splash dynamics, caustics, foam and spray detail,\n' +
+    '[DEBRIS] fine-grain concrete debris, realistic debris field, particle simulation, dust and debris dynamics, falling fragments, impact dust burst, granular debris,\n' +
+    '[CLOUDS/AIR]cascading, volumetric lighting, volumetric dust clouds, atmospheric haze, light shafts, god rays, mist and steam atmosphere, depth fog',
 
   renderDetailHtml,
   updateOutputLabels,
