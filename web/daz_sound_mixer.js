@@ -9,7 +9,12 @@ const VIDEO_PANEL_WIDTH = 288
 const MIN_ROWS = 8
 const MAX_BLOCK_ROWS = 30
 const MAX_VISIBLE_ROWS = 31
-const CROP_STEP = 0.0001 // tenths of a millisecond, in seconds
+const CROP_STEP = 0.001 // milliseconds, in seconds
+// Brightness factor the waveform is drawn at outside the crop. Fades ramp
+// between this and 1.0, so a fade region reads as a gradient from the same
+// half-intensity the trimmed-away part uses up to the source's full color.
+const DIM_FACTOR = 0.45
+const FADE_HANDLE_COLOR = "#2f6ad9"
 
 const COLORS = [
   "#e06c75", "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#d19a66", "#be5046",
@@ -21,11 +26,15 @@ function colorFor(source) {
   return COLORS[((i % COLORS.length) + COLORS.length) % COLORS.length]
 }
 
-function darken(hex, amount = 0.55) {
+function shade(hex, factor) {
   const n = parseInt(hex.slice(1), 16)
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
-  const f = (c) => Math.round(c * (1 - amount))
+  const f = (c) => Math.round(c * factor)
   return `rgb(${f(r)}, ${f(g)}, ${f(b)})`
+}
+
+function darken(hex, amount = 0.55) {
+  return shade(hex, 1 - amount)
 }
 
 // Seconds between labeled ruler ticks, picked so ticks stay >=40px apart
@@ -183,21 +192,34 @@ function stopAllPreviews() {
   }
   _activeNodes = []
 }
-function schedulePreview(buffer, cropStart, cropDur, gain, when = 0) {
+// `playDur` is how long the source actually sounds (Play Mix truncates it at
+// the mix duration); `envDur` is the untruncated crop length the fade-out is
+// anchored to, so a block running past the end of the mix gets its fade-out
+// cut off exactly like sound_mixer.py cuts it off, rather than pulled early.
+function schedulePreview(buffer, cropStart, playDur, gain, when = 0, opts = {}) {
+  const { fadeIn = 0, fadeOut = 0, envDur = playDur } = opts
   const ctx = audioContext()
-  if (!ctx || !buffer || cropDur <= 0) return
+  if (!ctx || !buffer || playDur <= 0) return
   if (ctx.state === "suspended") ctx.resume()
   const gainNode = ctx.createGain()
-  gainNode.gain.value = gain
+  const t0 = ctx.currentTime + when
+  const fi = Math.max(0, Math.min(fadeIn, envDur))
+  const fo = Math.max(0, Math.min(fadeOut, envDur - fi))
+  gainNode.gain.setValueAtTime(fi > 0 ? 0 : gain, t0)
+  if (fi > 0) gainNode.gain.linearRampToValueAtTime(gain, t0 + fi)
+  if (fo > 0) {
+    gainNode.gain.setValueAtTime(gain, t0 + envDur - fo)
+    gainNode.gain.linearRampToValueAtTime(0, t0 + envDur)
+  }
   const bufSrc = ctx.createBufferSource()
   bufSrc.buffer = buffer
   bufSrc.connect(gainNode).connect(ctx.destination)
-  bufSrc.start(ctx.currentTime + when, cropStart, cropDur)
+  bufSrc.start(t0, cropStart, playDur)
   _activeNodes.push(bufSrc)
 }
 
 function drawWave(canvas, peaks, color, opts = {}) {
-  const { errored, cropStart = 0, cropEnd = 0, dur = 0 } = opts
+  const { errored, cropStart = 0, cropEnd = 0, dur = 0, fadeIn = 0, fadeOut = 0 } = opts
   const ctx = canvas.getContext("2d")
   const w = canvas.width, h = canvas.height
   ctx.clearRect(0, 0, w, h)
@@ -209,14 +231,26 @@ function drawWave(canvas, peaks, color, opts = {}) {
   }
   const mid = h / 2
   const barW = w / peaks.length
-  const dimColor = darken(color)
-  const hasCrop = dur > 0 && (cropStart > 0 || cropEnd < dur)
+  const shaded = dur > 0 && (cropStart > 0 || cropEnd < dur || fadeIn > 0 || fadeOut > 0)
+  // Brightness of the bar at time `t`: DIM_FACTOR outside the crop, a linear
+  // ramp up/down across each fade region, full color everywhere else.
+  function factorAt(t) {
+    if (t < cropStart || t > cropEnd) return DIM_FACTOR
+    let f = 1
+    if (fadeIn > 0 && t < cropStart + fadeIn) {
+      f = Math.min(f, DIM_FACTOR + (1 - DIM_FACTOR) * ((t - cropStart) / fadeIn))
+    }
+    if (fadeOut > 0 && t > cropEnd - fadeOut) {
+      f = Math.min(f, DIM_FACTOR + (1 - DIM_FACTOR) * ((cropEnd - t) / fadeOut))
+    }
+    return f
+  }
   for (let i = 0; i < peaks.length; i++) {
     const bh = Math.max(1, peaks[i] * (h - 4))
     let fill = color
-    if (hasCrop) {
-      const t = ((i + 0.5) / peaks.length) * dur
-      if (t < cropStart || t > cropEnd) fill = dimColor
+    if (shaded) {
+      const f = factorAt(((i + 0.5) / peaks.length) * dur)
+      if (f < 1) fill = shade(color, f)
     }
     ctx.fillStyle = fill
     ctx.fillRect(i * barW, mid - bh / 2, Math.max(1, barW - 1), bh)
@@ -494,6 +528,11 @@ function openMixEditor(node) {
     state.sources[id] = {
       filename: "", label: "", colorIndex: nextColorIndex(state.sources),
       crop_start_s: 0, crop_end_s: 0,
+      fade_in_s: 0, fade_out_s: 0,
+      // Editor-only: whether this box's waveform sliders currently drive the
+      // fades instead of the crop. Persisted so it survives reopening; the
+      // Python side ignores it.
+      fade_mode: false,
     }
     return id
   }
@@ -520,6 +559,8 @@ function openMixEditor(node) {
         if (!src.label) src.label = file.name.replace(/\.[^.]+$/, "")
         src.crop_start_s = 0
         src.crop_end_s = 0
+        src.fade_in_s = 0
+        src.fade_out_s = 0
         delete meta[id]
         persist()
         renderSources()
@@ -638,11 +679,16 @@ function openMixEditor(node) {
 
     const m = meta[id]
     const dur = m?.duration || 0
-    const cropStart = src.crop_start_s || 0
-    const cropEnd = src.crop_end_s > 0 ? src.crop_end_s : dur
 
-    if (hasFile) drawWave(canvas, m?.peaks || null, color, { errored: m?.error, cropStart, cropEnd, dur })
-    else drawWave(canvas, new Float32Array(1), "#3a3a3a")
+    // Live readers — the crop/fade values are mutated in place by the drag
+    // handlers, so nothing may capture them in a local at build time.
+    // crop_end_s === 0 means "uncropped, full duration" everywhere in this
+    // file (and in sound_mixer.py), so it must be resolved before ever being
+    // used as an actual end value.
+    const cropStartNow = () => src.crop_start_s || 0
+    const cropEndNow = () => (src.crop_end_s > 0 ? src.crop_end_s : dur)
+    const fadeInNow = () => src.fade_in_s || 0
+    const fadeOutNow = () => src.fade_out_s || 0
 
     // Custom-drawn crop handles instead of native <input type=range> thumbs:
     // a native thumb's travel is inset by half its own width from the track
@@ -650,20 +696,27 @@ function openMixEditor(node) {
     // waveform/playhead use, so the handle visibly drifted from the true
     // crop point. Positioning these ourselves keeps them pixel-exact and
     // lets the line be as thin as we want.
-    function handleLine() {
+    function handleLine(background) {
       const el = document.createElement("div")
       el.style.cssText = `
-        position:absolute; top:0; bottom:0; width:1px; background:#fff;
+        position:absolute; top:0; bottom:0; width:1px; background:${background};
         pointer-events:none; box-shadow:0 0 2px rgba(0,0,0,0.9); z-index:3;
       `
       return el
     }
-    const startHandleEl = handleLine()
-    const endHandleEl = handleLine()
-    startHandleEl.style.left = dur > 0 ? `${(cropStart / dur) * 100}%` : "0%"
-    endHandleEl.style.left = dur > 0 ? `${(cropEnd / dur) * 100}%` : "100%"
+    const startHandleEl = handleLine("#fff")
+    const endHandleEl = handleLine("#fff")
+    // Fade handles sit at the inner end of each fade, i.e. offset from the
+    // crop edge they are anchored to — so they follow the white handles when
+    // the crop moves, in either mode.
+    const fadeInHandleEl = handleLine(FADE_HANDLE_COLOR)
+    const fadeOutHandleEl = handleLine(FADE_HANDLE_COLOR)
+    fadeInHandleEl.style.zIndex = "4"
+    fadeOutHandleEl.style.zIndex = "4"
     waveWrap.appendChild(startHandleEl)
     waveWrap.appendChild(endHandleEl)
+    waveWrap.appendChild(fadeInHandleEl)
+    waveWrap.appendChild(fadeOutHandleEl)
 
     const playheadEl = document.createElement("div")
     playheadEl.style.cssText = `
@@ -674,7 +727,9 @@ function openMixEditor(node) {
     sourcePlayheads.set(id, playheadEl)
 
     const startEndRow = document.createElement("div")
-    startEndRow.style.cssText = "display:flex; gap:6px; align-items:center; font-size:11px; color:#aaa;"
+    startEndRow.style.cssText = "display:flex; gap:4px; align-items:center; font-size:11px; color:#aaa; overflow:hidden;"
+    const startLabelEl = document.createElement("span")
+    const endLabelEl = document.createElement("span")
     const startNum = document.createElement("input")
     const endNum = document.createElement("input")
     for (const inp of [startNum, endNum]) {
@@ -682,49 +737,134 @@ function openMixEditor(node) {
       inp.step = String(CROP_STEP)
       inp.min = "0"
       inp.disabled = !hasFile
-      inp.style.cssText = "width:70px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
+      inp.style.cssText = "width:48px; flex:none; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 3px;"
     }
-    startNum.value = cropStart.toFixed(4)
-    endNum.value = cropEnd.toFixed(4)
-    startEndRow.append("Start:")
+    const fadeLbl = document.createElement("label")
+    fadeLbl.style.cssText = "display:flex; align-items:center; gap:3px; margin-left:auto; cursor:pointer; white-space:nowrap;"
+    const fadeChk = document.createElement("input")
+    fadeChk.type = "checkbox"
+    fadeChk.checked = !!src.fade_mode
+    fadeChk.disabled = !hasFile
+    fadeChk.style.cssText = "margin:0;"
+    fadeLbl.appendChild(fadeChk)
+    fadeLbl.append("Fade")
+    startEndRow.appendChild(startLabelEl)
     startEndRow.appendChild(startNum)
-    startEndRow.append("End:")
+    startEndRow.appendChild(endLabelEl)
     startEndRow.appendChild(endNum)
+    startEndRow.appendChild(fadeLbl)
     el.appendChild(startEndRow)
+
+    // Repaints everything derived from the crop/fade values: both handle
+    // pairs, the two number boxes (whose meaning depends on the mode), and
+    // the waveform's dim/gradient shading.
+    function refresh() {
+      const cs = cropStartNow(), ce = cropEndNow()
+      const fi = fadeInNow(), fo = fadeOutNow()
+      startHandleEl.style.left = dur > 0 ? `${(cs / dur) * 100}%` : "0%"
+      endHandleEl.style.left = dur > 0 ? `${(ce / dur) * 100}%` : "100%"
+      fadeInHandleEl.style.display = fi > 0 ? "block" : "none"
+      fadeOutHandleEl.style.display = fo > 0 ? "block" : "none"
+      if (dur > 0) {
+        fadeInHandleEl.style.left = `${((cs + fi) / dur) * 100}%`
+        fadeOutHandleEl.style.left = `${((ce - fo) / dur) * 100}%`
+      }
+      if (src.fade_mode) {
+        startLabelEl.textContent = "In:"
+        endLabelEl.textContent = "Out:"
+        startNum.value = fi.toFixed(3)
+        endNum.value = fo.toFixed(3)
+      } else {
+        startLabelEl.textContent = "Start:"
+        endLabelEl.textContent = "End:"
+        startNum.value = cs.toFixed(3)
+        endNum.value = ce.toFixed(3)
+      }
+      if (hasFile) {
+        drawWave(canvas, m?.peaks || null, color, {
+          errored: m?.error, cropStart: cs, cropEnd: ce, fadeIn: fi, fadeOut: fo, dur,
+        })
+      } else {
+        drawWave(canvas, new Float32Array(1), "#3a3a3a")
+      }
+    }
+
+    // Fades live inside the cropped span and never overlap each other, so a
+    // crop that shrinks past them has to pull them in with it.
+    function clampFadesToCrop() {
+      const span = Math.max(0, cropEndNow() - cropStartNow())
+      const fi = Math.max(0, Math.min(fadeInNow(), span))
+      src.fade_in_s = fi
+      src.fade_out_s = Math.max(0, Math.min(fadeOutNow(), span - fi))
+    }
 
     function applyCrop(newStart, newEnd) {
       newStart = Math.max(0, Math.min(newStart, newEnd))
       newEnd = Math.max(newStart, Math.min(newEnd, dur || newEnd))
       src.crop_start_s = newStart
       src.crop_end_s = newEnd
-      startHandleEl.style.left = dur > 0 ? `${(newStart / dur) * 100}%` : "0%"
-      endHandleEl.style.left = dur > 0 ? `${(newEnd / dur) * 100}%` : "100%"
-      startNum.value = newStart.toFixed(4)
-      endNum.value = newEnd.toFixed(4)
-      drawWave(canvas, m?.peaks || null, color, { cropStart: newStart, cropEnd: newEnd, dur })
+      clampFadesToCrop()
+      refresh()
       persist()
       renderTimeline()
     }
-    startNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
-    endNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
 
-    // A single mousedown on the waveform picks whichever crop boundary is
-    // nearer, snaps it to the click point, and keeps dragging it for the
-    // rest of this same mouse-down — no need to release and click again.
+    // `driving` says which of the two the user is actually moving, so the
+    // other one is what gives way when they would otherwise overlap.
+    function applyFade(newIn, newOut, driving) {
+      const span = Math.max(0, cropEndNow() - cropStartNow())
+      newIn = Math.max(0, Math.min(newIn, span))
+      newOut = Math.max(0, Math.min(newOut, span))
+      if (newIn + newOut > span) {
+        if (driving === "out") newIn = span - newOut
+        else newOut = span - newIn
+      }
+      src.fade_in_s = newIn
+      src.fade_out_s = newOut
+      refresh()
+      persist()
+    }
+
+    startNum.addEventListener("change", () => {
+      if (src.fade_mode) applyFade(Number(startNum.value) || 0, fadeOutNow(), "in")
+      else applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0)
+    })
+    endNum.addEventListener("change", () => {
+      if (src.fade_mode) applyFade(fadeInNow(), Number(endNum.value) || 0, "out")
+      else applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0)
+    })
+    fadeChk.addEventListener("change", () => {
+      src.fade_mode = fadeChk.checked
+      refresh()
+      persist()
+    })
+
+    // A single mousedown on the waveform picks whichever boundary is nearer,
+    // snaps it to the click point, and keeps dragging it for the rest of this
+    // same mouse-down — no need to release and click again. The Fade
+    // checkbox decides whether that boundary pair is the crop (white) or the
+    // fades (blue).
     waveWrap.addEventListener("mousedown", (ev) => {
       if (!hasFile || !m?.buffer || !dur) return
       const rect = waveWrap.getBoundingClientRect()
       const timeAt = (clientX) => Math.max(0, Math.min(dur, ((clientX - rect.left) / rect.width) * dur))
-      // crop_end_s === 0 means "uncropped, full duration" everywhere else in
-      // this file (and in sound_mixer.py) — resolve that before ever using
-      // it as an actual end value, or dragging start would collapse it to 0.
-      const effEnd = () => (src.crop_end_s > 0 ? src.crop_end_s : dur)
       const t0 = timeAt(ev.clientX)
-      const draggingStart = Math.abs(t0 - src.crop_start_s) <= Math.abs(t0 - effEnd())
-      applyCrop(draggingStart ? t0 : src.crop_start_s, draggingStart ? effEnd() : t0)
+      let setFromTime
+      if (src.fade_mode) {
+        const cs = cropStartNow(), ce = cropEndNow()
+        const draggingIn = Math.abs(t0 - (cs + fadeInNow())) <= Math.abs(t0 - (ce - fadeOutNow()))
+        setFromTime = (t) => (draggingIn
+          ? applyFade(t - cs, fadeOutNow(), "in")
+          : applyFade(fadeInNow(), ce - t, "out"))
+      } else {
+        const draggingStart = Math.abs(t0 - cropStartNow()) <= Math.abs(t0 - cropEndNow())
+        setFromTime = (t) => (draggingStart
+          ? applyCrop(t, cropEndNow())
+          : applyCrop(cropStartNow(), t))
+      }
+      setFromTime(t0)
       function onMove(mv) {
-        const t = timeAt(mv.clientX)
-        applyCrop(draggingStart ? t : src.crop_start_s, draggingStart ? effEnd() : t)
+        setFromTime(timeAt(mv.clientX))
       }
       function onUp() {
         document.removeEventListener("mousemove", onMove)
@@ -735,16 +875,17 @@ function openMixEditor(node) {
       ev.preventDefault()
     })
 
+    refresh()
+
     const btnRow = document.createElement("div")
     btnRow.style.cssText = "display:flex; gap:6px; margin-top:2px;"
     btnRow.appendChild(mkBtn("▶", {
       disabled: !hasFile || !m?.buffer,
       onClick: () => {
         stopAll()
-        const cs = src.crop_start_s || 0
-        const ce = src.crop_end_s > 0 ? src.crop_end_s : (m?.duration || 0)
-        const durS = Math.max(0, ce - cs)
-        schedulePreview(m.buffer, cs, durS, 1, 0)
+        const cs = cropStartNow()
+        const durS = Math.max(0, cropEndNow() - cs)
+        schedulePreview(m.buffer, cs, durS, 1, 0, { fadeIn: fadeInNow(), fadeOut: fadeOutNow() })
         if (dur > 0) animatePlayhead(playheadEl, (elapsed) => ((cs + elapsed) / dur) * 100, durS, "%")
       },
     }))
@@ -1287,7 +1428,9 @@ function openMixEditor(node) {
           if (cropDur <= 0 || startAt >= dur) continue
           const playDur = Math.min(cropDur, dur - startAt)
           if (playDur <= 0) continue
-          schedulePreview(m.buffer, cropStart, playDur, (blk.gain ?? 1) * (state.overall_gain ?? 1), startAt)
+          schedulePreview(m.buffer, cropStart, playDur, (blk.gain ?? 1) * (state.overall_gain ?? 1), startAt, {
+            fadeIn: src.fade_in_s || 0, fadeOut: src.fade_out_s || 0, envDur: cropDur,
+          })
         }
         animatePlayhead(timelinePlayhead, (elapsed) => elapsed * pxPerSec(), dur, "px")
         if (videoState?.videoEl) {
@@ -1315,7 +1458,9 @@ function openMixEditor(node) {
           const cs = src?.crop_start_s || 0
           const ce = src?.crop_end_s > 0 ? src.crop_end_s : (m?.duration || 0)
           const durS = Math.max(0, ce - cs)
-          schedulePreview(m.buffer, cs, durS, (selBlock.gain ?? 1) * (state.overall_gain ?? 1), 0)
+          schedulePreview(m.buffer, cs, durS, (selBlock.gain ?? 1) * (state.overall_gain ?? 1), 0, {
+            fadeIn: src?.fade_in_s || 0, fadeOut: src?.fade_out_s || 0,
+          })
           const ph = sourcePlayheads.get(selBlock.source)
           if (ph && m?.duration > 0) animatePlayhead(ph, (elapsed) => ((cs + elapsed) / m.duration) * 100, durS, "%")
         },
