@@ -21,7 +21,7 @@ You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ## Nodes
 
-### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`)
+### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`) · Workflow Config MiniMaxH3 (`utils`)
 
 These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically for you to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
 
@@ -71,7 +71,7 @@ Filters check across all takes of a scene, so a scene that has both an I2V and a
 
 #### What each node stores
 
-Both nodes share a common set of configurable fields:
+All four nodes share a common set of configurable fields:
 
 | Field | What it controls |
 |---|---|
@@ -130,9 +130,18 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 
 You can fill in either the checkpoint path or the standalone model paths — all outputs are available on the node regardless of which set is populated.
 
+**Workflow Config MiniMaxH3** targets the MiniMax H3 model. Unlike WAN2.2, it has a single UNet/CFG (no High/Low pass split) but keeps the video/audio dual-VAE split, reference image and audio inputs, and 8 LoRA slots.
+
+| Field | What it controls |
+|---|---|
+| **Unet** | Diffusion model (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
+| **Video VAE / Audio VAE** | Separate VAE models for video and audio |
+| **CLIP** | Text encoder (loaded with the MiniMax CLIP type) |
+| **CFG** | CFG scale |
+
 #### GGUF unet loading
 
-The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Diffuser** on Image) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
+The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Diffuser** on Image, **Unet** on MiniMaxH3) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
 
 Requires the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) custom node package. Without it installed, `.gguf` files won't be listed, and running a scene configured for GGUF raises a clear error instead of silently falling back.
 
@@ -250,6 +259,8 @@ Stacks are stored in a single file, `dx_prompt_stacks.json` inside `.dx_mgr/`, a
 #### Prompt Stack Manager panel
 
 The node has **Class** (filters the Prompt Stack dropdown), **Prompt Stack**, **Prompt Sequence**, and **Prompt** dropdowns, plus **FPS** and **Frame Count** fields (stored per-stack, changing them saves immediately). The panel also shows the stack's **ID** — a unique string (GUID) assigned automatically when the stack is created, stable across renames, reserved for future referral/integration use. **Prompt** lists every slot in the active sequence and defaults to **All**; picking a single slot narrows the read-only panel below to just that prompt (and drives the `selected_prompt` output) — Master, Positive, Negative, Qualifiers, and Prompt Type for each.
+
+Wiring an upstream STRING into the optional **external_prompt** input adds an **External Prompt** entry to the **Prompt** dropdown; selecting it makes `selected_prompt` carry the wired text as a Simple positive prompt instead of any stored slot, without saving anything to the stack file (`prompt_seq_1`…`prompt_seq_10` are unaffected). An optional **external_negative_prompt** input supplies that prompt's negative text — it's not required and defaults to empty if unwired. Selecting External Prompt with `external_prompt` disconnected or empty raises an error at runtime.
 
 Three buttons above the panel:
 
