@@ -15,6 +15,7 @@ const CROP_STEP = 0.001 // milliseconds, in seconds
 // half-intensity the trimmed-away part uses up to the source's full color.
 const DIM_FACTOR = 0.45
 const FADE_HANDLE_COLOR = "#2f6ad9"
+const FPS_CUSTOM_COLOR = "#e05a5a"
 // Geometric Shapes rather than the Media Controls block, whose glyphs some
 // platform fonts substitute with full-color emoji next to a plain "▶".
 const PLAY_GLYPH = "▶"
@@ -295,6 +296,12 @@ function drawWave(canvas, peaks, color, opts = {}) {
 function mixStateWidget(node) {
   return node.widgets?.find((w) => w.name === "mix_state")
 }
+// A file's own rate is often fractional (29.97); a custom rate is always an
+// integer, so this really just trims the original's trailing zeros.
+function fmtFps(v) {
+  return String(Number(Number(v).toFixed(3)))
+}
+
 function durationWidget(node) {
   return node.widgets?.find((w) => w.name === "duration")
 }
@@ -307,15 +314,22 @@ function readState(node) {
     const blocks = normalizeBlocks(Array.isArray(parsed?.blocks) ? parsed.blocks : [])
     let overall_gain = Number(parsed?.overall_gain)
     if (!Number.isFinite(overall_gain)) overall_gain = 1.0
-    // Only the filename is kept: the movie is a reference-timing aid, not
-    // part of the mix, and its fps/duration are re-probed on reopen so a
-    // replaced file on disk can't leave stale frame math behind. This object
-    // is rebuilt from scratch on every read, so a field missing here is
-    // dropped from the widget on the next write — add, don't assume.
+    // Only the filename and any fps override are kept: the movie is a
+    // reference-timing aid, not part of the mix, and its real fps/duration
+    // are re-probed on reopen so a replaced file on disk can't leave stale
+    // frame math behind. This object is rebuilt from scratch on every read,
+    // so a field missing here is dropped from the widget on the next write —
+    // add, don't assume.
     const movie_filename = typeof parsed?.movie_filename === "string" ? parsed.movie_filename : ""
-    return { sources, blocks, overall_gain, movie_filename }
+    // 0 means "play at the file's own rate". Anything else is the integer
+    // rate the user says the movie runs at, which rescales playback and the
+    // frame -> timeline-seconds math without touching the file itself. Kept
+    // with the workflow because block placements were made against it.
+    let movie_fps = Number(parsed?.movie_fps)
+    if (!Number.isFinite(movie_fps) || movie_fps <= 0) movie_fps = 0
+    return { sources, blocks, overall_gain, movie_filename, movie_fps }
   } catch {
-    return { sources: {}, blocks: [], overall_gain: 1.0, movie_filename: "" }
+    return { sources: {}, blocks: [], overall_gain: 1.0, movie_filename: "", movie_fps: 0 }
   }
 }
 
@@ -404,6 +418,11 @@ function openMixEditor(node) {
   const { box, close: closeOverlay } = overlayShell(EDITOR_BASE_WIDTH, () => {
     editorClosed = true
     stopAll()
+    // A popup normally can't outlive the editor — its backdrop covers every
+    // way of closing one — but committing the fps box by clicking Ok opens a
+    // prompt out of that very click, and it would be left behind writing to
+    // a node whose editor is gone.
+    closeActivePopup?.()
     clearTimeout(errorTimer)
     document.removeEventListener("keydown", onKeyDown)
   }, { closeOnBackdropClick: false })
@@ -519,6 +538,7 @@ function openMixEditor(node) {
       const filename = await uploadAudioFile(file)
       const info = await probeMovie(filename)
       state.movie_filename = filename
+      state.movie_fps = 0 // a new movie always starts at its own rate
       persist()
       openVideoPanel(filename, info)
       maybeWarnDurationMismatch(info.duration)
@@ -535,6 +555,7 @@ function openMixEditor(node) {
     danger: true,
     onClick: () => {
       state.movie_filename = ""
+      state.movie_fps = 0
       persist()
       closeVideoPanel()
     },
@@ -546,9 +567,10 @@ function openMixEditor(node) {
   durLabel.append("Duration (s)")
   const durInput = document.createElement("input")
   durInput.type = "number"
+  durInput.className = "daz-sm-num"
   durInput.step = "0.001"
   durInput.min = "0"
-  durInput.style.cssText = "width:80px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
+  durInput.style.cssText = "width:56px; box-sizing:border-box; font-size:12px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
   durInput.value = currentDuration()
   function setDuration(v) {
     const w = durationWidget(node)
@@ -561,6 +583,63 @@ function openMixEditor(node) {
   durInput.addEventListener("change", () => setDuration(durInput.value))
   durLabel.appendChild(durInput)
   header.appendChild(durLabel)
+
+  // Overrides the rate the movie is treated as running at. Only meaningful
+  // with a movie loaded, so it appears and disappears with the panel; the
+  // value itself lives in videoState, which openVideoPanel rebuilds from
+  // scratch — that is what makes discarding or re-uploading reset it.
+  const fpsLabel = document.createElement("label")
+  fpsLabel.style.cssText = "display:none; align-items:center; gap:6px; color:#aaa;"
+  fpsLabel.append("FPS")
+  const fpsInput = document.createElement("input")
+  fpsInput.type = "number"
+  fpsInput.className = "daz-sm-num"
+  fpsInput.step = "1"
+  fpsInput.min = "1"
+  fpsInput.title = "Play the movie as if it ran at this frame rate. Esc restores the file's own rate."
+  fpsInput.style.cssText = "width:46px; box-sizing:border-box; font-size:12px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
+  fpsLabel.appendChild(fpsInput)
+  header.appendChild(fpsLabel)
+
+  // Red is the entire hint that the movie is no longer running at its own
+  // rate, so it has to be re-derived from the values rather than latched by
+  // whichever handler last touched the box.
+  let lastSyncedFps = ""
+  function syncFpsInput() {
+    if (!videoState) return
+    lastSyncedFps = fmtFps(videoState.timelineFps)
+    fpsInput.value = lastSyncedFps
+    fpsInput.style.color = videoState.timelineFps === videoState.sourceFps ? "#ddd" : FPS_CUSTOM_COLOR
+  }
+  // Committed on Enter or blur rather than on `change`. With the spin buttons
+  // hidden the arrow keys still adjust a number input, and browsers fire
+  // `change` on every tick — holding one down would stop playback, rescale
+  // the whole timeline and raise a duration prompt once per step. This way
+  // the number can be dialled in freely and nothing moves until it's meant to.
+  function commitFps() {
+    // Leaving the box untouched must never count as a change. A custom rate
+    // is an integer but a file's own rate usually isn't (29.97, 23.976), so
+    // committing the text the box already held would round it to 30 or 24 —
+    // a rate the user never typed, rescaling the timeline on a stray click.
+    if (fpsInput.value === lastSyncedFps) return
+    videoState?.setTimelineFps?.(Number(fpsInput.value))
+  }
+  fpsInput.addEventListener("blur", commitFps)
+  fpsInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault()
+      commitFps()
+      return
+    }
+    if (ev.key !== "Escape") return
+    // The editor's own Escape handler already ignores events from inputs, so
+    // this can't close the editor today — stopped anyway so that guard and
+    // this reset stay independent.
+    ev.stopPropagation()
+    ev.preventDefault()
+    videoState?.setTimelineFps?.(0) // 0 = back to the file's own rate
+  })
+
   box.appendChild(header)
 
   // Body row — a main column (sources/timeline/buttons) plus an optional
@@ -1059,20 +1138,32 @@ function openMixEditor(node) {
     videoPanel = null
     videoState = null
     discardMovieBtn.style.display = "none"
+    fpsLabel.style.display = "none"
     box.style.width = `${EDITOR_BASE_WIDTH}px`
   }
 
+  // Asked whenever the two lengths disagree in either direction: a mix that
+  // stops before the movie ends and one that runs on past it are equally
+  // worth offering to fix. The tolerance keeps float noise in the probe — or
+  // a frame count that doesn't divide evenly — from prompting about a
+  // difference nobody can hear.
   function maybeWarnDurationMismatch(movieDuration) {
-    if (!(movieDuration > currentDuration())) return
+    const mixDuration = currentDuration()
+    if (Math.abs(movieDuration - mixDuration) <= 0.001) return
+    const longer = movieDuration > mixDuration
+    // An fps box can be retyped faster than a popup gets dismissed; never
+    // leave the earlier one orphaned behind the new one.
+    closeActivePopup?.()
     const { box: pbox, close } = overlayShell(340, () => { closeActivePopup = null })
     closeActivePopup = close
     const title = document.createElement("div")
     title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
-    title.textContent = "Movie longer than mix"
+    title.textContent = longer ? "Movie longer than mix" : "Movie shorter than mix"
     pbox.appendChild(title)
     const body = document.createElement("div")
     body.style.cssText = "padding:10px 14px;"
-    body.textContent = "The video is longer than the current mixed audio duration"
+    body.textContent = `The video is ${longer ? "longer" : "shorter"} than the current mixed audio `
+      + `duration (${movieDuration.toFixed(3)}s vs ${mixDuration.toFixed(3)}s)`
     pbox.appendChild(body)
     const foot = document.createElement("div")
     foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
@@ -1113,13 +1204,20 @@ function openMixEditor(node) {
     }
   }
 
-  function openVideoPanel(filename, info) {
+  function openVideoPanel(filename, info, customFps = 0) {
     closeVideoPanel()
     discardMovieBtn.style.display = ""
+    fpsLabel.style.display = "flex"
     videoState = {
       filename,
-      fps: info.fps,
-      duration: info.duration,
+      // Two rates, deliberately kept apart. sourceFps is the file's real
+      // rate and governs everything touching videoEl — the file's own
+      // timestamps don't move just because the user renamed its rate.
+      // timelineFps is the rate the user says it runs at, and governs the
+      // frame <-> mix-timeline-seconds mapping. Equal until an override.
+      sourceFps: info.fps,
+      timelineFps: customFps > 0 ? Math.max(1, Math.round(customFps)) : info.fps,
+      duration: info.duration, // source-domain seconds
       frameCount: Math.max(1, info.frame_count | 0),
       addAtTime: 0,
       videoEl: null,
@@ -1185,8 +1283,58 @@ function openMixEditor(node) {
     atInput.min = "0"
     atInput.style.cssText = "width:90px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
 
-    function frameTime(frameIdx) {
-      return Math.min(videoState.duration, Math.max(0, frameIdx) / videoState.fps)
+    // Where a frame actually sits inside the file. Always the file's own
+    // rate — an FPS override doesn't move the file's timestamps, so seeking
+    // by anything else would land on the wrong frame.
+    function sourceTime(frameIdx) {
+      return Math.min(videoState.duration, Math.max(0, frameIdx) / videoState.sourceFps)
+    }
+    // Where that same frame lands on the mix timeline, which is the whole
+    // point of an override: at 30 fps frame 60 is 2 s in, at 24 fps it's 2.5.
+    function timelineTime(frameIdx) {
+      return Math.max(0, frameIdx) / videoState.timelineFps
+    }
+    function timelineDuration() {
+      return videoState.frameCount / videoState.timelineFps
+    }
+
+    // Reinterpreting the same frames at another rate is exactly a uniform
+    // time scale, which is all <video> can do — no frames are added or
+    // dropped, they're just held for a different span. Browsers accept
+    // roughly 0.0625x-16x, so every realistic conversion is well inside.
+    // The rate the override asks for, and the rate the browser will actually
+    // honour. They only differ at extremes, where the movie silently drifts
+    // from the mix — hence the warning, kept separate below.
+    function wantedRate() {
+      const want = videoState.timelineFps / videoState.sourceFps
+      return Number.isFinite(want) && want > 0 ? want : 1
+    }
+    function usableRate() {
+      return Math.min(16, Math.max(0.0625, wantedRate()))
+    }
+    function applyPlayRate() {
+      const rate = usableRate()
+      try {
+        // Loading media resets playbackRate to defaultPlaybackRate, and this
+        // runs while the element is still loading — set both so the rate
+        // survives that rather than snapping back to 1x.
+        videoEl.defaultPlaybackRate = rate
+        videoEl.playbackRate = rate
+      } catch { /* not supported by this UA; it plays at 1x */ }
+    }
+    videoState.applyPlayRate = applyPlayRate
+
+    // Deliberately not part of applyPlayRate, which also runs on every play
+    // click: the warning belongs to the moment a rate is chosen, not to each
+    // replay of one already chosen.
+    function warnIfRateUnreachable() {
+      const want = wantedRate()
+      const rate = usableRate()
+      if (Math.abs(rate - want) <= 1e-6) return
+      showError(
+        `${fmtFps(videoState.timelineFps)} fps needs ${want.toFixed(3)}x playback, ` +
+        `past what browsers allow — the movie will run at ${rate.toFixed(3)}x and drift from the mix.`
+      )
     }
 
     // A seek decodes forward from the nearest keyframe to reach the exact
@@ -1219,7 +1367,7 @@ function openMixEditor(node) {
     }
     function runSeek(frameIdx) {
       seekPending = true
-      videoEl.currentTime = frameTime(frameIdx)
+      videoEl.currentTime = sourceTime(frameIdx)
       // Some browsers don't fire `seeked` for a seek issued before metadata
       // is loaded, or for a seek to the time the video is already sitting
       // at (nothing to decode, so no event) — either would wedge
@@ -1236,7 +1384,8 @@ function openMixEditor(node) {
     // The numeric readout tracks the scrubber instantly regardless of how
     // far behind the decoded frame is lagging.
     function updateReadout(frameIdx) {
-      const t = frameTime(frameIdx)
+      // Timeline domain: this feeds "Add a sound at", which is a mix time.
+      const t = timelineTime(frameIdx)
       videoState.addAtTime = t
       atInput.value = t.toFixed(4)
       return t
@@ -1254,15 +1403,54 @@ function openMixEditor(node) {
     atInput.addEventListener("change", () => {
       let t = Number(atInput.value)
       if (!Number.isFinite(t) || t < 0) t = 0
-      if (t > videoState.duration) {
-        showError(`Time exceeds movie duration (${videoState.duration.toFixed(3)}s).`)
-        t = videoState.duration
+      // Compared against the movie's length *at the current rate*, not the
+      // file's own length, since that is the number the box shows.
+      const maxT = timelineDuration()
+      if (t > maxT) {
+        showError(`Time exceeds movie duration (${maxT.toFixed(3)}s).`)
+        t = maxT
       }
-      const frameIdx = Math.min(videoState.frameCount - 1, Math.max(0, Math.round(t * videoState.fps)))
+      const frameIdx = Math.min(videoState.frameCount - 1, Math.max(0, Math.round(t * videoState.timelineFps)))
       scrub.value = String(frameIdx)
       setFromFrame(frameIdx)
     })
 
+    // Anything <= 0 (Esc) means "back to the file's own rate". The rate is
+    // always an integer otherwise; only the file's original may be
+    // fractional, and that one is never typed, only restored.
+    videoState.setTimelineFps = (fps) => {
+      const prev = videoState.timelineFps
+      const next = fps > 0 && Number.isFinite(fps)
+        ? Math.max(1, Math.round(fps))
+        : videoState.sourceFps
+      videoState.timelineFps = next
+      syncFpsInput()
+      // Retyping the rate it already has (or anything that rounds to it) is
+      // not a change — stop before rescaling by 1 and re-asking about a
+      // duration that hasn't moved. The box is re-synced first so a typed
+      // "30.4" still snaps to the canonical text.
+      if (next === prev) return
+
+      // Anything sounding right now was scheduled against the old rate and
+      // the old block positions, both of which are about to move under it.
+      stopAll()
+      state.movie_fps = next === videoState.sourceFps ? 0 : next
+      rescaleBlocks(prev / next)
+      persist()
+      applyPlayRate()
+      warnIfRateUnreachable()
+      // The scrubber is still on the same frame, but the timeline second
+      // that frame corresponds to just changed.
+      updateReadout(Number(scrub.value))
+      renderTimeline()
+      // The movie is now a different number of seconds long — offer to match,
+      // the same way uploading one does.
+      maybeWarnDurationMismatch(timelineDuration())
+    }
+
+    syncFpsInput()
+    applyPlayRate()
+    warnIfRateUnreachable() // a restored override can be out of range too
     setFromFrame(0)
 
     // Click the video frame to loop-play, starting from the slider's current
@@ -1273,7 +1461,8 @@ function openMixEditor(node) {
     displayWrap.title = "Click to play/stop"
     let loopPlaying = false
     function onLoopTimeUpdate() {
-      const frameIdx = Math.min(videoState.frameCount - 1, Math.round(videoEl.currentTime * videoState.fps))
+      // currentTime is a source-domain time whatever the playback rate is.
+      const frameIdx = Math.min(videoState.frameCount - 1, Math.round(videoEl.currentTime * videoState.sourceFps))
       scrub.value = String(frameIdx)
       updateReadout(frameIdx)
     }
@@ -1291,6 +1480,7 @@ function openMixEditor(node) {
     function startLoopPlayback() {
       videoState.cancelPendingScrub?.()
       videoEl.muted = !playAudioChk.checked
+      applyPlayRate()
       loopPlaying = true
       videoEl.addEventListener("timeupdate", onLoopTimeUpdate)
       videoEl.addEventListener("ended", onLoopEnded)
@@ -1340,6 +1530,21 @@ function openMixEditor(node) {
     persist()
     renderTimeline()
     return true
+  }
+
+  // Blocks are placed against what is happening on screen, so they are really
+  // pinned to video frames rather than to seconds. Re-rating the movie doesn't
+  // move a block off its frame — it moves the second that frame happens at, so
+  // a sound on frame 32 of a 32 fps movie sits at 1s and lands at 2s once the
+  // movie is called 16 fps.
+  //
+  // Deliberately not clamped to the mix duration: an unclamped multiply is
+  // exactly invertible, so Esc (or typing the old rate back) returns every
+  // block to where it was. Clamping would collapse anything past the end onto
+  // it, and no later fps change could undo that.
+  function rescaleBlocks(factor) {
+    if (!(factor > 0) || Math.abs(factor - 1) < 1e-9) return
+    for (const blk of state.blocks) blk.start_s = Math.max(0, (blk.start_s || 0) * factor)
   }
 
   function cloneSelected() {
@@ -1567,6 +1772,10 @@ function openMixEditor(node) {
           const v = videoState.videoEl
           videoState.cancelPendingScrub?.()
           v.currentTime = 0
+          // An FPS override makes the movie cover its frames faster or
+          // slower; the stop timer below is wall-clock, so it still lands on
+          // the mix duration either way.
+          videoState.applyPlayRate?.()
           const p = v.play()
           if (p?.catch) p.catch(() => { /* autoplay may be blocked; audio still plays */ })
           videoStopTimer = setTimeout(() => { try { v.pause() } catch { /* already stopped */ } }, dur * 1000)
@@ -1705,7 +1914,9 @@ function openMixEditor(node) {
       // detached tree, downloading the whole movie with nothing left to
       // pause it — closeVideoPanel and stopAll have already run.
       if (editorClosed) return
-      openVideoPanel(filename, info)
+      // The blocks on the timeline were placed against the overridden rate,
+      // so it comes back with the movie.
+      openVideoPanel(filename, info, state.movie_fps)
     } catch (e) {
       // Nothing to tell the user once the editor is gone; leave the filename
       // in place so the next open re-probes and reports the failure properly.
@@ -1714,6 +1925,7 @@ function openMixEditor(node) {
       // from under a saved workflow, so a failure here just forgets it
       // rather than leaving a movie that can never load.
       state.movie_filename = ""
+      state.movie_fps = 0
       persist()
       showError(`Could not reload movie '${filename}': ${e.message || e}`)
     }
