@@ -15,6 +15,10 @@ const CROP_STEP = 0.001 // milliseconds, in seconds
 // half-intensity the trimmed-away part uses up to the source's full color.
 const DIM_FACTOR = 0.45
 const FADE_HANDLE_COLOR = "#2f6ad9"
+// Geometric Shapes rather than the Media Controls block, whose glyphs some
+// platform fonts substitute with full-color emoji next to a plain "▶".
+const PLAY_GLYPH = "▶"
+const STOP_GLYPH = "■"
 
 const COLORS = [
   "#e06c75", "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#d19a66", "#be5046",
@@ -84,6 +88,24 @@ function mkBtn(label, opts = {}) {
 
 function newId(prefix) {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
+}
+
+// The only rule in this file that can't be expressed as an inline style:
+// spin buttons are reachable solely through pseudo-elements. Chrome reveals
+// them on hover and lays them over the field's own text, which in a box only
+// wide enough for "x.yyy" clipped the last digit. Injected once, on first
+// use, since this module has no other stylesheet.
+let _numStyleInjected = false
+function ensureNumberInputStyles() {
+  if (_numStyleInjected) return
+  _numStyleInjected = true
+  const style = document.createElement("style")
+  style.textContent = `
+    .daz-sm-num::-webkit-outer-spin-button,
+    .daz-sm-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .daz-sm-num { -moz-appearance: textfield; appearance: textfield; }
+  `
+  document.head.appendChild(style)
 }
 
 function overlayShell(width, onClose, opts = {}) {
@@ -185,6 +207,15 @@ async function uploadAudioFile(file) {
   return data.subfolder ? `${data.subfolder}/${data.name}` : data.name
 }
 
+// fps/duration/frame count come from the server (PyAV), since browsers don't
+// reliably expose a container's real frame rate.
+async function probeMovie(filename) {
+  const res = await fetch(`/daz/sound-mixer/video-info?filename=${encodeURIComponent(filename)}`)
+  const info = await res.json()
+  if (!res.ok || info.error) throw new Error(info.error || `probe failed (${res.status})`)
+  return info
+}
+
 let _activeNodes = []
 function stopAllPreviews() {
   for (const n of _activeNodes) {
@@ -276,9 +307,15 @@ function readState(node) {
     const blocks = normalizeBlocks(Array.isArray(parsed?.blocks) ? parsed.blocks : [])
     let overall_gain = Number(parsed?.overall_gain)
     if (!Number.isFinite(overall_gain)) overall_gain = 1.0
-    return { sources, blocks, overall_gain }
+    // Only the filename is kept: the movie is a reference-timing aid, not
+    // part of the mix, and its fps/duration are re-probed on reopen so a
+    // replaced file on disk can't leave stale frame math behind. This object
+    // is rebuilt from scratch on every read, so a field missing here is
+    // dropped from the widget on the next write — add, don't assume.
+    const movie_filename = typeof parsed?.movie_filename === "string" ? parsed.movie_filename : ""
+    return { sources, blocks, overall_gain, movie_filename }
   } catch {
-    return { sources: {}, blocks: [], overall_gain: 1.0 }
+    return { sources: {}, blocks: [], overall_gain: 1.0, movie_filename: "" }
   }
 }
 
@@ -357,8 +394,15 @@ function openMixEditor(node) {
   let videoPanel = null // DOM element for the movie side panel, when open
   let videoState = null // {filename, fps, duration, frameCount, addAtTime, videoEl, listEl}
   let videoStopTimer = null // pauses the video at the mix duration when Play Mix is used
+  const playButtons = new Map() // play-button id -> live button element
+  let playingId = null // id of the button whose playback is currently sounding
+  let playbackEndTimer = null
+  let editorClosed = false // guards work that resumes after an await (see restoreMovie)
+
+  ensureNumberInputStyles()
 
   const { box, close: closeOverlay } = overlayShell(EDITOR_BASE_WIDTH, () => {
+    editorClosed = true
     stopAll()
     clearTimeout(errorTimer)
     document.removeEventListener("keydown", onKeyDown)
@@ -399,10 +443,60 @@ function openMixEditor(node) {
     activeRafs.push(() => { cancelAnimationFrame(raf); el.style.display = "none" })
   }
 
+  // Every play button doubles as a stop button, and only one preview ever
+  // sounds at a time (each play path calls stopAll first), so a single
+  // `playingId` is enough to say which button should be showing its stop
+  // label. The label is re-derived from it whenever a button is built, so a
+  // rebuild mid-playback (selecting a block, a source finishing decoding)
+  // can't strand a stale glyph on the new button.
+  function registerPlayButton(id, btn, playLabel, stopLabel) {
+    btn.dataset.playLabel = playLabel
+    btn.dataset.stopLabel = stopLabel
+    playButtons.set(id, btn)
+    btn.textContent = playingId === id ? stopLabel : playLabel
+    return btn
+  }
+
+  function syncPlayButtons() {
+    for (const [id, btn] of playButtons) {
+      // Selecting block after block registers one entry each, and the rows are
+      // rebuilt rather than reused — drop the buttons those rebuilds detached.
+      // Safe to test here: this only ever runs from a play/stop action, never
+      // mid-render, so a live button is always in the document by now.
+      if (!btn.isConnected) {
+        playButtons.delete(id)
+        continue
+      }
+      btn.textContent = playingId === id ? btn.dataset.stopLabel : btn.dataset.playLabel
+    }
+  }
+
+  // Web Audio fires nothing when a scheduled source simply runs out, so the
+  // button is flipped back on a timer matched to the length the playback was
+  // scheduled for. The small margin keeps the glyph from snapping back a
+  // frame early on the last of the audio.
+  function beginPlayback(id, durationS) {
+    clearTimeout(playbackEndTimer)
+    playbackEndTimer = null
+    playingId = id
+    if (durationS > 0 && Number.isFinite(durationS)) {
+      playbackEndTimer = setTimeout(() => {
+        playbackEndTimer = null
+        playingId = null
+        syncPlayButtons()
+      }, durationS * 1000 + 60)
+    }
+    syncPlayButtons()
+  }
+
   function stopAll() {
     stopAllPreviews()
     for (const cancel of activeRafs) cancel()
     activeRafs = []
+    clearTimeout(playbackEndTimer)
+    playbackEndTimer = null
+    playingId = null
+    syncPlayButtons()
     clearTimeout(videoStopTimer)
     videoStopTimer = null
     try { videoState?.stopLoopPlayback?.() } catch { /* nothing to stop */ }
@@ -423,9 +517,9 @@ function openMixEditor(node) {
     if (!file) return
     try {
       const filename = await uploadAudioFile(file)
-      const res = await fetch(`/daz/sound-mixer/video-info?filename=${encodeURIComponent(filename)}`)
-      const info = await res.json()
-      if (!res.ok || info.error) throw new Error(info.error || `probe failed (${res.status})`)
+      const info = await probeMovie(filename)
+      state.movie_filename = filename
+      persist()
       openVideoPanel(filename, info)
       maybeWarnDurationMismatch(info.duration)
     } catch (e) {
@@ -434,8 +528,17 @@ function openMixEditor(node) {
   })
   header.appendChild(movieFileInput)
   header.appendChild(mkBtn("Upload a Movie", { onClick: () => movieFileInput.click() }))
-  // Hidden until a movie is loaded (shown/hidden in openVideoPanel/closeVideoPanel).
-  const discardMovieBtn = mkBtn("Discard Movie", { danger: true, onClick: () => closeVideoPanel() })
+  // Discarding is the only way to forget the movie — closeVideoPanel alone
+  // just tears down the DOM (openVideoPanel calls it to replace one movie
+  // with another), so clearing the persisted filename belongs here.
+  const discardMovieBtn = mkBtn("Discard Movie", {
+    danger: true,
+    onClick: () => {
+      state.movie_filename = ""
+      persist()
+      closeVideoPanel()
+    },
+  })
   discardMovieBtn.style.display = "none"
   header.appendChild(discardMovieBtn)
   const durLabel = document.createElement("label")
@@ -573,6 +676,9 @@ function openMixEditor(node) {
   }
 
   function deleteSource(id) {
+    // Its play button is about to disappear, so anything it started would
+    // otherwise keep sounding with no way to stop it.
+    if (playingId === `src:${id}`) stopAll()
     delete state.sources[id]
     delete meta[id]
     state.blocks = state.blocks.filter((b) => b.source !== id)
@@ -741,11 +847,14 @@ function openMixEditor(node) {
       inp.step = String(CROP_STEP)
       inp.min = "0"
       inp.disabled = !hasFile
+      inp.className = "daz-sm-num" // suppresses the spin buttons; see ensureNumberInputStyles
       // border-box so the declared width is the whole footprint — with the
       // Fade checkbox now sharing this row, content-box padding/border would
       // silently add 16px and push "Fade" out of the tile once the editor is
-      // narrowed by max-width:95vw.
-      inp.style.cssText = "width:52px; flex:none; box-sizing:border-box; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 3px;"
+      // narrowed by max-width:95vw. font-size is set explicitly rather than
+      // left at the browser's ~13px input default, which is what made an
+      // x.yyy value overrun the field.
+      inp.style.cssText = "width:52px; flex:none; box-sizing:border-box; font-size:11px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 3px;"
     }
     const fadeLbl = document.createElement("label")
     fadeLbl.style.cssText = "display:flex; align-items:center; gap:3px; margin-left:auto; cursor:pointer; white-space:nowrap;"
@@ -890,16 +999,21 @@ function openMixEditor(node) {
 
     const btnRow = document.createElement("div")
     btnRow.style.cssText = "display:flex; gap:6px; margin-top:2px;"
-    btnRow.appendChild(mkBtn("▶", {
+    const playBtnId = `src:${id}`
+    const playBtn = mkBtn("", {
       disabled: !hasFile || !m?.buffer,
       onClick: () => {
+        if (playingId === playBtnId) { stopAll(); return }
         stopAll()
         const cs = cropStartNow()
         const durS = Math.max(0, cropEndNow() - cs)
+        if (durS <= 0) return
         schedulePreview(m.buffer, cs, durS, 1, 0, { fadeIn: fadeInNow(), fadeOut: fadeOutNow() })
         if (dur > 0) animatePlayhead(playheadEl, (elapsed) => ((cs + elapsed) / dur) * 100, durS, "%")
+        beginPlayback(playBtnId, durS)
       },
-    }))
+    })
+    btnRow.appendChild(registerPlayButton(playBtnId, playBtn, PLAY_GLYPH, STOP_GLYPH))
     btnRow.appendChild(mkBtn("Upload", { onClick: () => uploadForSource(id) }))
     btnRow.appendChild(mkBtn("Delete", { danger: true, onClick: () => deleteSource(id) }))
     el.appendChild(btnRow)
@@ -1244,6 +1358,9 @@ function openMixEditor(node) {
   }
 
   function deleteBlock(id) {
+    // Same reason as deleteSource: the stop button for this block is about to
+    // be rebuilt away, and anything it started would keep sounding unstoppably.
+    if (playingId === `block:${id}`) stopAll()
     state.blocks = state.blocks.filter((b) => b.id !== id)
     if (selectedBlockId === id) selectedBlockId = null
     persist()
@@ -1251,6 +1368,7 @@ function openMixEditor(node) {
   }
 
   function deleteAllBlocks() {
+    if (playingId?.startsWith("block:")) stopAll()
     state.blocks = []
     selectedBlockId = null
     persist()
@@ -1424,8 +1542,9 @@ function openMixEditor(node) {
 
   function renderButtonRow() {
     buttonRow.innerHTML = ""
-    buttonRow.appendChild(mkBtn("▶ Play Mix", {
+    const mixBtn = mkBtn("", {
       onClick: () => {
+        if (playingId === "mix") { stopAll(); return }
         stopAll()
         const dur = currentDuration()
         for (const blk of state.blocks) {
@@ -1452,8 +1571,10 @@ function openMixEditor(node) {
           if (p?.catch) p.catch(() => { /* autoplay may be blocked; audio still plays */ })
           videoStopTimer = setTimeout(() => { try { v.pause() } catch { /* already stopped */ } }, dur * 1000)
         }
+        beginPlayback("mix", dur)
       },
-    }))
+    })
+    buttonRow.appendChild(registerPlayButton("mix", mixBtn, `${PLAY_GLYPH} Play Mix`, `${STOP_GLYPH} Stop Mix`))
     buttonRow.appendChild(mkBtn("Add", { onClick: openAddPopup }))
     buttonRow.appendChild(mkBtn("Add All", { onClick: addAllSources }))
     buttonRow.appendChild(sep())
@@ -1462,20 +1583,28 @@ function openMixEditor(node) {
     if (selBlock) {
       const src = state.sources[selBlock.source]
       const m = meta[selBlock.source]
-      buttonRow.appendChild(mkBtn("▶", {
+      // Keyed by block id, not a bare "block": selecting a different block
+      // while one is playing rebuilds this row, and a shared key would show
+      // the new block's button as already-playing.
+      const blockBtnId = `block:${selBlock.id}`
+      const blockBtn = mkBtn("", {
         disabled: !m?.buffer,
         onClick: () => {
+          if (playingId === blockBtnId) { stopAll(); return }
           stopAll()
           const cs = src?.crop_start_s || 0
           const ce = src?.crop_end_s > 0 ? src.crop_end_s : (m?.duration || 0)
           const durS = Math.max(0, ce - cs)
+          if (durS <= 0) return
           schedulePreview(m.buffer, cs, durS, (selBlock.gain ?? 1) * (state.overall_gain ?? 1), 0, {
             fadeIn: src?.fade_in_s || 0, fadeOut: src?.fade_out_s || 0,
           })
           const ph = sourcePlayheads.get(selBlock.source)
           if (ph && m?.duration > 0) animatePlayhead(ph, (elapsed) => ((cs + elapsed) / m.duration) * 100, durS, "%")
+          beginPlayback(blockBtnId, durS)
         },
-      }))
+      })
+      buttonRow.appendChild(registerPlayButton(blockBtnId, blockBtn, PLAY_GLYPH, STOP_GLYPH))
 
       const startLbl = document.createElement("label")
       startLbl.style.cssText = "display:flex; align-items:center; gap:4px; color:#aaa;"
@@ -1563,9 +1692,37 @@ function openMixEditor(node) {
   }
   document.addEventListener("keydown", onKeyDown)
 
+  // Reopening the editor rebuilds the movie panel from the remembered
+  // filename. Deliberately no duration-mismatch prompt here — that belongs
+  // to the moment a movie is chosen, not to every reopen.
+  async function restoreMovie() {
+    const filename = state.movie_filename
+    if (!filename) return
+    try {
+      const info = await probeMovie(filename)
+      // The editor can be dismissed while the probe is still in flight.
+      // Building the panel now would attach a preload="auto" <video> to a
+      // detached tree, downloading the whole movie with nothing left to
+      // pause it — closeVideoPanel and stopAll have already run.
+      if (editorClosed) return
+      openVideoPanel(filename, info)
+    } catch (e) {
+      // Nothing to tell the user once the editor is gone; leave the filename
+      // in place so the next open re-probes and reports the failure properly.
+      if (editorClosed) return
+      // The upload lives in ComfyUI's input directory and can be cleared out
+      // from under a saved workflow, so a failure here just forgets it
+      // rather than leaving a movie that can never load.
+      state.movie_filename = ""
+      persist()
+      showError(`Could not reload movie '${filename}': ${e.message || e}`)
+    }
+  }
+
   persist() // write back any row de-duplication normalizeBlocks() applied on load
   renderSources()
   renderTimeline()
+  restoreMovie()
 }
 
 // ---------------------------------------------------------------------------

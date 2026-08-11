@@ -14,7 +14,8 @@ placement (linear) gain and mixes them down into a single AUDIO output.
       "blocks": [
         {"id": str, "source": "<source_id>", "row": int, "start_s": float, "gain": 1.0},
         ...
-      ]
+      ],
+      "movie_filename": str  # editor-only reference video, ignored here
     }
 
 Every filename was uploaded straight into ComfyUI's input directory by the
