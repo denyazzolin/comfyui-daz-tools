@@ -280,7 +280,9 @@ The **prompt editor for stacks** is the same full-screen editor used by the Work
 
 Mixes multiple audio files into one `AUDIO` output. Click **Edit Mix** to open the mix editor.
 
-In general, the editor lets you: set the overall mix **duration**; add up to 16 **sources** (uploaded audio files), each with its own **trim** (start/end crop) and waveform; **place** a source on the timeline any number of times, freely repositioning each placement with a slider and adjusting its own **gain**; **play the mix** at any point while editing; and optionally **load a video**, scrub through its exact frames, and add sources at a time picked straight from the video — with the video and audio mix **playable together in real time**.
+In general, the editor lets you: set the overall mix **duration**; add up to 16 **sources** (uploaded audio files), each with its own **trim** (start/end crop) and **fade in/out**, both dragged as sliders over the waveform — a **Fade** checkbox switches which pair the sliders set; **place** a source on the timeline any number of times, freely repositioning each placement with a slider and adjusting its own **gain**; **play** the whole mix, a single source, or one placement at any point while editing, stopping it again with the same button; and optionally **load a video**, scrub through its exact frames, and add sources at a time picked straight from the video — with the video and audio mix **playable together in real time**.
+
+The video is remembered with the workflow, so it's still loaded next time you open the editor. An **FPS** box beside Duration re-rates it: the movie plays back as if it ran at that frame rate, and every placement moves with the frame it was set against — a sound on frame 32 of a 32 fps movie sits at 1s and moves to 2s once the movie is called 16 fps. The value shows red while it differs from the file's own rate, and **Esc** in the box restores it. Whenever the movie's length and the mix duration disagree, the editor offers to match them.
 
 ![Sample Sound Mixer](content/sample_audio.png)
 
