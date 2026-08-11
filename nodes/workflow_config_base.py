@@ -62,7 +62,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 8
+CURRENT_SCHEMA = 9
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -126,7 +126,8 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
         configs  = _migrate(configs, file_version)
         migrated = True
 
-    backfilled = _backfill_master_position(configs)
+    backfilled  = _backfill_master_position(configs)
+    backfilled |= _backfill_trail_prompt(configs)
 
     if migrated or backfilled:
         try:
@@ -271,24 +272,29 @@ def _get_master_position(val, default: str = "before") -> str:
     return default
 
 
-def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool]:
+def resolve_prompt_output(entry: dict) -> tuple[str, str, str, bool, str]:
     """Combine a set/prompt's master_prompt + positive_prompt into the effective
-    positive text, per the smart/beats/timecode/simple relay rule shared by
-    every WorkflowConfig class. Returns (master_text, pos_out, neg_text, is_relay)."""
+    positive text, per the smart/beats/timecode/simple/h3 relay rule shared by
+    every WorkflowConfig class. trail_prompt (if any) is also merged onto the
+    end of pos_out (after a blank line) but is additionally returned on its
+    own, so callers like PromptStackSplitter can externalize it as a separate
+    output. Returns (master_text, pos_out, neg_text, is_relay, trail_text)."""
     pos_prompt_val    = entry.get("positive_prompt")
     prompt_type       = pos_prompt_val.get("type", "smart") if isinstance(pos_prompt_val, dict) else "smart"
     master_prompt_val = entry.get("master_prompt")
     master_text       = _get_text(master_prompt_val)
     pos_text          = _get_text(pos_prompt_val)
     neg_text          = _get_text(entry.get("negative_prompt"))
+    trail_text        = _get_text(entry.get("trail_prompt"))
     is_relay          = prompt_type == "smart"
     if is_relay:
         pos_out = pos_text
-    elif prompt_type in ("beats", "timecode", "simple") and _get_master_position(master_prompt_val) == "after":
+    elif prompt_type in ("beats", "timecode", "simple", "h3") and _get_master_position(master_prompt_val) == "after":
         pos_out = "\n\n".join(p for p in (pos_text, master_text) if p)
     else:
         pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
-    return master_text, pos_out, neg_text, is_relay
+    pos_out = "\n\n".join(p for p in (pos_out, trail_text) if p)
+    return master_text, pos_out, neg_text, is_relay, trail_text
 
 def _get_path(val, default: str = "") -> str:
     if isinstance(val, dict):
@@ -358,7 +364,7 @@ def _get_seed_randomize(val) -> bool:
         return bool(val.get("randomize", False))
     return False
 
-_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3, "timecode": 4}
+_PROMPT_TYPE_TO_INT = {"smart": 1, "beats": 2, "simple": 3, "timecode": 4, "h3": 5}
 
 def _get_prompt_type_int(val, default: int = 1) -> int:
     t = val.get("type", "smart") if isinstance(val, dict) else "smart"
@@ -428,7 +434,7 @@ def _apply_set_fields(target: dict, data: dict) -> None:
         v = data["filename"]
         target["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
 
-    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+    for f in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
         if f in data:
             v = data[f]
             target[f] = v if isinstance(v, dict) else {"text": str(v or "")}
@@ -510,7 +516,7 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
     s["audio_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
     v = data.get("filename")
     s["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
-    for f in ("master_prompt", "positive_prompt", "negative_prompt"):
+    for f in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
         v = data.get(f)
         s[f] = v if isinstance(v, dict) else {"text": str(v or "")}
     for f in ("width", "height", "steps", "split_step", "seed", "total_frames"):
@@ -588,7 +594,7 @@ def _normalize_set(set_obj: dict) -> dict:
     if not isinstance(v, dict):
         result["filename"] = {"file": str(v or "")}
 
-    for f in ("master_prompt", "negative_prompt"):
+    for f in ("master_prompt", "negative_prompt", "trail_prompt"):
         v = result.get(f)
         if not isinstance(v, dict):
             result[f] = {"text": str(v or "")}
@@ -744,19 +750,19 @@ def load_unet_gguf(name: str):
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
 
-PRESET_SCHEMA = 3
+PRESET_SCHEMA = 4
 _PRESET_SKIP_APPLY  = {"class", "name", "version", "version_label", "created_at", "updated_at"}
 _PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
 _PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
 _PRESET_FLOAT_FIELDS = {"cfg_high", "cfg_low", "fps", "shift_high", "shift_low"}
 
-_PRESET_TEXT_FIELDS = {"master_prompt", "negative_prompt"}
+_PRESET_TEXT_FIELDS = {"master_prompt", "negative_prompt", "trail_prompt"}
 
 _DEFAULT_PRESET_PROFILES: dict = {
     "Wan2.2": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "unet_high", "unet_low", "vae", "clip", "loras",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
@@ -765,7 +771,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
         "width", "height", "steps", "cfg_high",
         "flags", "custom",
@@ -773,8 +779,16 @@ _DEFAULT_PRESET_PROFILES: dict = {
     "ImageInference": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "note",
-        "master_prompt", "positive_prompt", "negative_prompt",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "checkpoint", "unet_high", "vae", "clip", "clip_type",
+        "width", "height", "steps", "cfg_high",
+        "flags", "custom",
+    ],
+    "m_h3": [
+        "class", "version", "version_label", "name", "created_at", "updated_at",
+        "type", "note",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
+        "unet_high", "vae", "audio_vae", "clip", "loras",
         "width", "height", "steps", "cfg_high",
         "flags", "custom",
     ],
@@ -841,7 +855,13 @@ def _load_preset_file(path: str) -> tuple[list, dict]:
 
 
 def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[list, dict]:
-    """Migrate a preset file's presets list and profiles dict forward. Additive only."""
+    """Migrate a preset file's presets list and profiles dict forward. Additive only.
+    v3 → v4 (trail_prompt field, and any missing class profile such as m_h3) is
+    handled by the always-on _backfill_preset_fields instead of here, since that
+    also covers files that already claim v4 but are missing the fields (hand-edited,
+    or created between schema bumps). Kept in the same shape as
+    prompt_stack_base._migrate so future version-specific migrations have a place
+    to land."""
     if from_version < 2:
         for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
             if "loras" not in default_profile:
@@ -871,13 +891,18 @@ def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[
 
 
 def _backfill_preset_fields(presets: list, profiles: dict) -> tuple[list, dict]:
-    """Ensure presets/profiles include fields added to the preset schema without a version
-    bump. Additive and idempotent — safe to run on every load regardless of file version."""
+    """Ensure presets/profiles include classes and fields added to the preset schema.
+    Additive and idempotent — safe to run on every load regardless of file version,
+    so it also repairs files that already claim the current version but are missing
+    fields (hand-edited, or created between schema bumps). Also backfills a whole
+    missing class profile (e.g. a class added after the preset file was first
+    created), not just missing fields on an existing profile."""
     for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
         profile = profiles.get(cls)
         if not isinstance(profile, list):
-            continue
-        for field in ("master_prompt", "positive_prompt", "negative_prompt"):
+            profile = list(default_profile)
+            profiles[cls] = profile
+        for field in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
             if field not in default_profile:
                 continue
             if field not in profile:
@@ -1074,6 +1099,19 @@ def _backfill_master_position(configs: dict) -> bool:
                     changed = True
             elif mp:
                 s["master_prompt"] = {"text": str(mp), "position": "before"}
+                changed = True
+    return changed
+
+
+def _backfill_trail_prompt(configs: dict) -> bool:
+    """Ensure every set has a trail_prompt field. Additive and idempotent —
+    safe to run on every load regardless of the file's schema version, mirroring
+    _backfill_master_position."""
+    changed = False
+    for entry in configs.values():
+        for s in entry.get("sets", []):
+            if not isinstance(s.get("trail_prompt"), dict):
+                s["trail_prompt"] = {"text": ""}
                 changed = True
     return changed
 

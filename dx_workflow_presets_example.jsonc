@@ -1,6 +1,6 @@
 {
     "_meta": {
-        "preset_schema_version": 3, // internal schema version; do not change
+        "preset_schema_version": 4, // internal schema version; do not change
         "name": "General Presets", // display name for this preset file
         "version": "1.0", // file format version string
         "created_at": "2026-06-02T00:00:00", // file creation timestamp (ISO 8601)
@@ -18,6 +18,7 @@
                 "master_prompt",
                 "positive_prompt",
                 "negative_prompt",
+                "trail_prompt",
                 "unet_high",
                 "unet_low",
                 "vae",
@@ -46,6 +47,7 @@
                 "master_prompt",
                 "positive_prompt",
                 "negative_prompt",
+                "trail_prompt",
                 "checkpoint",
                 "unet_high",
                 "vae",
@@ -71,11 +73,37 @@
                 "master_prompt",
                 "positive_prompt",
                 "negative_prompt",
+                "trail_prompt",
                 "checkpoint",
                 "unet_high",
                 "vae",
                 "clip",
                 "clip_type",
+                "width",
+                "height",
+                "steps",
+                "cfg_high",
+                "flags",
+                "custom"
+            ],
+            "m_h3": [
+                "class",
+                "version",
+                "version_label",
+                "name",
+                "created_at",
+                "updated_at",
+                "type",
+                "note",
+                "master_prompt",
+                "positive_prompt",
+                "negative_prompt",
+                "trail_prompt",
+                "unet_high",
+                "vae",
+                "audio_vae",
+                "clip",
+                "loras",
                 "width",
                 "height",
                 "steps",
@@ -105,6 +133,9 @@
             "negative_prompt": {
                 "text": ""
             }, // negative conditioning text
+            "trail_prompt": {
+                "text": ""
+            }, // qualifiers text appended to the end of the positive prompt after a blank line
             "unet_high": {
                 "name": "wan2.2_14B_vace_highpass.safetensors",
                 "gguf": false
@@ -182,6 +213,9 @@
             "negative_prompt": {
                 "text": ""
             }, // negative conditioning text
+            "trail_prompt": {
+                "text": ""
+            }, // qualifiers text appended to the end of the positive prompt after a blank line
             "checkpoint": {
                 "name": "ltx_video_0.9.7_distilled_fp8.safetensors"
             }, // primary checkpoint (loads model + clip + vae together)
@@ -251,6 +285,9 @@
             "negative_prompt": {
                 "text": ""
             }, // negative conditioning text
+            "trail_prompt": {
+                "text": ""
+            }, // qualifiers text appended to the end of the positive prompt after a blank line
             "checkpoint": {
                 "name": "flux1-dev.safetensors"
             }, // primary checkpoint (loads model + clip + vae together)
@@ -277,6 +314,73 @@
             "cfg_high": {
                 "value": 3.5
             }, // guidance scale (labeled "CFG" in the UI)
+            "flags": {
+                "flag_1": { "label": "flag 1", "value": false },
+                "flag_2": { "label": "flag 2", "value": false },
+                "flag_3": { "label": "flag 3", "value": false }
+            }, // all 3 flags are saved/applied as a whole, including their labels
+            "custom": {
+                "param_1": { "label": "param 1", "value": "" },
+                "param_2": { "label": "param 2", "value": "" }
+            } // both custom params are saved/applied as a whole, including their labels
+        },
+        {
+            "class": "m_h3",
+            "version": "1",
+            "version_label": "",
+            "name": "My First Preset",
+            "created_at": "2026-06-02T00:00:00",
+            "updated_at": "2026-06-02T00:00:00",
+            "type": "T2V",
+            "note": "This is a sample preset for MiniMax H3",
+            "master_prompt": {
+                "text": ""
+            }, // base text combined with the positive prompt; empty is saved/applied as-is
+            "positive_prompt": {
+                "text": "",
+                "type": "smart"
+            }, // conditioning text; "type" selects smart/beats/simple/timecode/h3 prompt mode
+            "negative_prompt": {
+                "text": ""
+            }, // negative conditioning text
+            "trail_prompt": {
+                "text": ""
+            }, // qualifiers text appended to the end of the positive prompt after a blank line
+            "unet_high": {
+                "name": "",
+                "gguf": false
+            }, // standalone transformer model; "gguf" selects the GGUF unet loader
+            "vae": {
+                "name": ""
+            }, // video VAE model filename
+            "audio_vae": {
+                "name": ""
+            }, // audio VAE model filename
+            "clip": {
+                "name": ""
+            }, // text encoder filename (MiniMax CLIP type)
+            "loras": {
+                "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1 (typically the distillation LoRA)
+                "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
+                "lora_3": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 3
+                "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
+                "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5
+                "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
+                "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
+                "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
+            }, // all 8 lora slots are saved/applied as a whole, including empty ones
+            "width": {
+                "value": 1280
+            }, // output width in pixels
+            "height": {
+                "value": 720
+            }, // output height in pixels
+            "steps": {
+                "value": 30
+            }, // number of denoising steps
+            "cfg_high": {
+                "value": 6.0
+            }, // guidance scale
             "flags": {
                 "flag_1": { "label": "flag 1", "value": false },
                 "flag_2": { "label": "flag 2", "value": false },

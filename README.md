@@ -21,7 +21,7 @@ You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ## Nodes
 
-### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`)
+### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`) · Workflow Config MiniMaxH3 (`utils`)
 
 These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically for you to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
 
@@ -71,7 +71,7 @@ Filters check across all takes of a scene, so a scene that has both an I2V and a
 
 #### What each node stores
 
-Both nodes share a common set of configurable fields:
+All four nodes share a common set of configurable fields:
 
 | Field | What it controls |
 |---|---|
@@ -130,9 +130,18 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 
 You can fill in either the checkpoint path or the standalone model paths — all outputs are available on the node regardless of which set is populated.
 
+**Workflow Config MiniMaxH3** targets the MiniMax H3 model. Unlike WAN2.2, it has a single UNet/CFG (no High/Low pass split) but keeps the video/audio dual-VAE split, reference image and audio inputs, and 8 LoRA slots.
+
+| Field | What it controls |
+|---|---|
+| **Unet** | Diffusion model (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
+| **Video VAE / Audio VAE** | Separate VAE models for video and audio |
+| **CLIP** | Text encoder (loaded with the MiniMax CLIP type) |
+| **CFG** | CFG scale |
+
 #### GGUF unet loading
 
-The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Diffuser** on Image) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
+The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Diffuser** on Image, **Unet** on MiniMaxH3) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
 
 Requires the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) custom node package. Without it installed, `.gguf` files won't be listed, and running a scene configured for GGUF raises a clear error instead of silently falling back.
 
@@ -156,32 +165,34 @@ Each take can have an optional short **label** shown in the dropdown (e.g. `2 - 
 
 #### Managing prompts
 
-Each scene/take stores three prompt fields — **Master**, **Positive**, and **Negative** — along with a **Prompt Type** that controls how the positive prompt is structured.
+Each scene/take stores three prompt fields — **Master**, **Positive**, and **Negative** — along with a **Prompt Type** that controls how the positive prompt is structured, plus an optional **Qualifiers** (trail) prompt that's appended to the end of the positive prompt after a blank line when the workflow runs. Master and Qualifiers each have a **Default** button (fills in a class-specific default template, when one is defined for the node's class/type) next to their **Clear** button.
 
 | Type | How it works |
 |---|---|
 | **Smart** | The positive prompt is split into pipe-separated segments, each covering a frame range (`text [start-end] \| text [start-end] \| …`). A downstream Prompt Relay node handles distribution across frames. Best used with CFG ≈ 1.0. |
 | **Beats** | Segments are aligned to time ranges in seconds (`[start-ends] text`, one per line). Frame counts are derived from FPS automatically. |
 | **Timecode** | Segments are aligned to absolute start times (`[MM:SS] text`, one per line). Each marker is the segment's start time; frame counts are derived from the gap to the next marker (or the end of the video) using FPS. |
+| **H3** | Segments are aligned to absolute start times in decimal seconds (`At X.Ys, text`, one per line; the first segment always starts at `At 0.0s,`). Each segment's text gets a trailing period if it doesn't already have one. Frame counts are derived the same way as Timecode. |
 | **Simple** | A single flat text string passed as-is. |
 
-For **Simple**, **Beats**, and **Timecode** types, the Master prompt is combined with the positive prompt before it reaches the sampler. An **Append** checkbox lets you switch the Master to go after the positive text instead of before (the default). For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
+For **Simple**, **Beats**, **Timecode**, and **H3** types, the Master prompt is combined with the positive prompt before it reaches the sampler. An **Append** checkbox lets you switch the Master to go after the positive text instead of before (the default). For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
 
 **Prompt Editor**
 
 ![Prompt editor](content/prompt_editor_v1.png)
 
-Click **Prompt Editor** inside the edit panel to open a full-screen editor. It loads the current Master, Positive, Negative, total frames, and FPS values and lets you work with them visually.
+Click **Prompt Editor** inside the edit panel to open a full-screen editor. It loads the current Master, Positive, Negative, Qualifiers, total frames, and FPS values and lets you work with them visually.
 
 - **Frames / FPS** — changing Frames rescales all segment lengths proportionally; changing FPS updates the time labels on the ruler.
-- **Master** — free-form text area. For Beats, Timecode, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
-- **Prompt type** — switch between Smart, Beats, Timecode, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
+- **Master** — free-form text area. A **Default** button (left of **Clear**) fills in a class-specific default template, when one is defined for the node's class — currently only MiniMax H3, whose default varies by I2V/T2V/MULTI workflow type. For Beats, Timecode, H3, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
+- **Prompt type** — switch between Smart, Beats, Timecode, H3, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
 - **Segment bar** — a horizontal bar showing each segment as a proportional colour-coded block. Click any block to select it; the active segment is highlighted in green.
 - **Frame ruler** — marks 0%, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels include both frame number and seconds (e.g. `40 (2.5s)`).
 - **Segment text** — edit the text for the selected segment.
 - **Segment controls** — set the exact frame count, clear the text, delete the segment, or equalize all segments evenly. **Insert** adds a new segment right before the selected one; **Add** appends one at the end. Both fill any remaining space first; once the timeline is full, they instead carve out a one-second segment (based on FPS) and proportionally rescale every other segment to preserve its relative timing (minimum 1 frame each).
-- **Negative** — free-form text area.
-- **Clear All** — resets Master, Positive, and Negative to empty and collapses to a single segment.
+- **Qualifiers** — free-form text area for the trail prompt, with its own **Default** button (same class-specific-template mechanism as Master) aligned to the left, like Negative's. When re-opening a saved prompt, text at the end of the last segment that matches the saved Qualifiers text (after a newline) is stripped back out so it isn't shown duplicated inside the segment.
+- **Negative** — free-form text area with a **Default** button that fills in a class-specific default negative prompt, when one is defined.
+- **Clear All** — resets Master, Positive, Negative, and Qualifiers to empty and collapses to a single segment.
 
 Clicking **OK** sends all values back to the edit panel. It does **not** save to disk — use **Save** or **+ Take** in the edit panel to persist.
 
@@ -191,7 +202,7 @@ Open the full-screen edit panel by clicking the node's **Edit Take** button (or 
 
 The panel has three columns:
 - **Left:** Name, Group, Type, Note, reference image and audio, dimensions, seed, CFG, frames, and FPS.
-- **Center:** Prompt Type selector, Master / Positive / Negative prompts, and the **Prompt Editor** button.
+- **Center:** Prompt Type selector, Master / Positive / Qualifiers / Negative prompts, and the **Prompt Editor** button.
 - **Right:** Model selectors, LoRA slots (name, strength, enabled toggle), filename, and flag labels.
 
 | Button | What it does |
@@ -215,9 +226,9 @@ When no presets exist yet, the node shows an empty state with a centred **Create
 
 The preset library is a shared collection of model-and-parameter templates (`dx_workflow_presets.json` inside `.dx_mgr/`). Presets are not tied to any single workflow — they capture a node's key settings (models, dimensions, CFG, type, etc.) and can be applied to any config of the same class. This makes spinning up a new scene significantly faster: instead of filling in every field from scratch, you pick a preset and the edit panel is pre-filled in one click.
 
-For WAN2.2 and LTX2.3, presets also carry the full LoRA setup — all 8 slots, including empty/disabled ones. Applying a preset overwrites all of the current config's LoRA slots, so the pre-filled panel always reflects exactly the preset's LoRA setup rather than a merge with whatever was there before.
+For WAN2.2, LTX2.3, and MiniMax H3, presets also carry the full LoRA setup — all 8 slots, including empty/disabled ones. Applying a preset overwrites all of the current config's LoRA slots, so the pre-filled panel always reflects exactly the preset's LoRA setup rather than a merge with whatever was there before.
 
-Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes.
+Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes. Presets carry the Qualifiers (trail) prompt alongside Master/Positive/Negative for every node class.
 
 Three buttons in the edit panel footer give access to the library:
 
@@ -234,20 +245,22 @@ Three buttons in the edit panel footer give access to the library:
 
 ### Prompt Stack Manager (`utils`) · Prompt Stack Splitter (`utils`)
 
-A **prompt stack** is a library that can hold an arbitrary collection of named **prompt sequences**. A sequence is up to 10 ordered slots, each slot a full prompt made of a **Master prompt**, a **Positive prompt** (typed as **Smart** (relay), **Beats**, **Timecode**, or **Simple** — see [Managing prompts](#managing-prompts) for what each type means), and a **Negative prompt**.
+A **prompt stack** is a library that can hold an arbitrary collection of named **prompt sequences**. A sequence is up to 10 ordered slots, each slot a full prompt made of a **Master prompt**, a **Positive prompt** (typed as **Smart** (relay), **Beats**, **Timecode**, **H3**, or **Simple** — see [Managing prompts](#managing-prompts) for what each type means), a **Negative prompt**, and an optional **Qualifiers** (trail) prompt appended to the end of the positive prompt after a blank line.
 
 This sequencing is particularly useful for video workflows made up of several sequential parts with their own prompts — e.g. WAN2.2 SVI 2.0 flows — where each part of the video needs its own prompt fed to a downstream sampler/relay in order.
 
 ![Sample nodes](content/PromptStack.png)
 
 - **Prompt Stack Manager** stores and edits named prompt stacks, each holding one or more sequences (versions of the stack). It outputs each slot's prompt as a single bundled `DX_PROMPT_SET` value on `prompt_seq_1`…`prompt_seq_10`; slots beyond the sequence's prompt count output nothing (`None`). A first output, `selected_prompt`, carries whichever prompt is picked by the **Prompt** dropdown (or the sequence's first prompt when it's set to **All**) — handy for wiring a single slot without picking through `prompt_seq_1`…`prompt_seq_10`.
-- **Prompt Stack Splitter** takes one `DX_PROMPT_SET` input and unpacks it into `master_prmt`, `pos_prompt`, `neg_prompt`, and `is_relay_prompt` (STRING/STRING/STRING/BOOLEAN), using the same master+positive combination rule as the WorkflowConfig nodes' prompt handling. Feed it `None` (an unused slot) and it outputs `("", "", "", False)`.
+- **Prompt Stack Splitter** takes one `DX_PROMPT_SET` input and unpacks it into `master_prmt`, `pos_prompt`, `neg_prompt`, `is_relay_prompt`, and `trail_prmt` (STRING/STRING/STRING/BOOLEAN/STRING), using the same master+positive combination rule as the WorkflowConfig nodes' prompt handling. `pos_prompt` already has the Qualifiers (trail) prompt merged onto its end; `trail_prmt` externalizes that same text on its own for wiring separately. Feed it `None` (an unused slot) and it outputs `("", "", "", False, "")`.
 
 Stacks are stored in a single file, `dx_prompt_stacks.json` inside `.dx_mgr/`, alongside the movie files. Unlike WorkflowConfig, there's no per-class node or movie-file switching — one node handles every class, and a stack's **Class** (`Wan 2.2`, `LTX 2.3`, `Images`, `Krea2`, `Flux2 Klein 9B`, `Qwen Image`, `Chroma`, `Z-Image Turbo`, `FLux 2`, `Wan Image`, `MiniMax H3`, or none) is just an informational tag you can filter by.
 
 #### Prompt Stack Manager panel
 
-The node has **Class** (filters the Prompt Stack dropdown), **Prompt Stack**, **Prompt Sequence**, and **Prompt** dropdowns, plus **FPS** and **Frame Count** fields (stored per-stack, changing them saves immediately). The panel also shows the stack's **ID** — a unique string (GUID) assigned automatically when the stack is created, stable across renames, reserved for future referral/integration use. **Prompt** lists every slot in the active sequence and defaults to **All**; picking a single slot narrows the read-only panel below to just that prompt (and drives the `selected_prompt` output) — Master, Positive, Negative, and Prompt Type for each.
+The node has **Class** (filters the Prompt Stack dropdown), **Prompt Stack**, **Prompt Sequence**, and **Prompt** dropdowns, plus **FPS** and **Frame Count** fields (stored per-stack, changing them saves immediately). The panel also shows the stack's **ID** — a unique string (GUID) assigned automatically when the stack is created, stable across renames, reserved for future referral/integration use. **Prompt** lists every slot in the active sequence and defaults to **All**; picking a single slot narrows the read-only panel below to just that prompt (and drives the `selected_prompt` output) — Master, Positive, Negative, Qualifiers, and Prompt Type for each.
+
+Wiring an upstream STRING into the optional **external_prompt** input adds an **External Prompt** entry to the **Prompt** dropdown; selecting it makes `selected_prompt` carry the wired text as a Simple positive prompt instead of any stored slot, without saving anything to the stack file (`prompt_seq_1`…`prompt_seq_10` are unaffected). An optional **external_negative_prompt** input supplies that prompt's negative text — it's not required and defaults to empty if unwired. Selecting External Prompt with `external_prompt` disconnected or empty raises an error at runtime.
 
 Three buttons above the panel:
 

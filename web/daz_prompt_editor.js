@@ -1,8 +1,15 @@
 // Shared floating Prompt Editor panel for WorkflowConfig nodes.
-// Exposes window.DazPromptEditor.open({ detail, onSave })
-// onSave receives: { master_prompt, positive_prompt, negative_prompt, total_frames, fps }
+// Exposes window.DazPromptEditor.open({ detail, onSave, defaultNegativePrompt,
+//   defaultMasterPrompt, defaultTrailPrompt, workflowType, stackMode })
+// onSave receives: { master_prompt, positive_prompt, negative_prompt, trail_prompt, total_frames, fps }
 //   where positive_prompt is { text, type }, master_prompt is { text, position }
 //   and the rest are typed objects.
+// defaultMasterPrompt and defaultTrailPrompt each accept a plain string (same
+//   default regardless of workflow type), or a map keyed by workflowType
+//   ('I2V'/'T2V'/'MULTI', with 'default' as the T2V/empty-type fallback) for
+//   classes whose default text depends on type — see resolveTypedDefault().
+// workflowType is the invoking node's I2V/T2V/MULTI selection, or '' when the
+//   caller has no such concept (e.g. the Prompt Stack Manager).
 
 ;(function () {
   'use strict'
@@ -66,6 +73,16 @@
     return e
   }
 
+  // Resolves a defaultMasterPrompt/defaultTrailPrompt config value against the
+  // invoking node's workflow type. Each class's config module (e.g.
+  // daz_workflow_config_minimaxh3.js) opts into per-type defaults simply by
+  // passing an object here instead of a string — no changes needed in this
+  // shared editor to support a new class or a new type key.
+  function resolveTypedDefault(def, workflowType) {
+    if (def && typeof def === 'object') return def[workflowType] ?? def.default ?? ''
+    return def || ''
+  }
+
   function greenDiv() {
     return el('div', 'border-top:1px solid #54af7b;margin:0 10px')
   }
@@ -76,10 +93,10 @@
 
   // ── Segment parsing ───────────────────────────────────────────────────────
 
-  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple', 'timecode'])
+  const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple', 'timecode', 'h3'])
 
   // Infer the serialised format of prompt text from its content.
-  // Returns 'beats', 'smart', 'timecode', or null (= cannot determine, use declared type).
+  // Returns 'beats', 'smart', 'timecode', 'h3', or null (= cannot determine, use declared type).
   function detectPromptFormat(text) {
     const lines = text.split('\n').filter(l => l.trim())
     // Beats: at least one line starts a segment with a numeric range [X-Y] or [Xs-Ys].
@@ -91,6 +108,10 @@
     // Timecode: at least one line starts a segment with a single [MM:SS] marker (no range)
     if (lines.length >= 2 && lines.some(l => /^\[(\d+):(\d+)\]/.test(l))) {
       return 'timecode'
+    }
+    // H3: at least one line starts a segment with an "At X.Ys," marker
+    if (lines.some(l => /^At\s+\d+(?:\.\d+)?s,/.test(l))) {
+      return 'h3'
     }
     // Smart: multiple pipe-separated parts where at least one ends with [X-Y]
     const parts = text.split(/\s*\|\s*/).filter(p => p.trim())
@@ -194,6 +215,40 @@
       return blocks.map((b, i) => ({ text: texts[i], frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }))
     }
 
+    if (parseType === 'h3') {
+      const lines = text.split('\n').filter(l => l.trim())
+      if (!lines.length) return [{ text: '', frames: totalFrames }]
+      // Same marker-to-marker grouping as timecode, keyed on a decimal-seconds "At X.Ys," start time.
+      const blocks = []
+      for (const line of lines) {
+        const m = line.match(/^At\s+(\d+(?:\.\d+)?)s,\s*([\s\S]*)$/)
+        if (m) {
+          blocks.push({ startSec: parseFloat(m[1]), lines: [m[2].trim()] })
+        } else if (blocks.length) {
+          blocks[blocks.length - 1].lines.push(line.trim())
+        } else {
+          blocks.push({ startSec: null, lines: [line.trim()] })
+        }
+      }
+      if (blocks.length > 1 && blocks[0].startSec === null) {
+        const pre = blocks.shift()
+        blocks[0].lines = [...pre.lines, ...blocks[0].lines]
+      }
+      const texts = blocks.map(b => b.lines.filter(Boolean).join('\n'))
+      if (fps > 0 && blocks.every(b => b.startSec !== null)) {
+        let used = 0
+        return blocks.map((b, i) => {
+          const isLast = i === blocks.length - 1
+          const frames = isLast
+            ? Math.max(1, totalFrames - used)
+            : Math.max(1, Math.round((blocks[i + 1].startSec - b.startSec) * fps))
+          used += frames
+          return { text: texts[i], frames }
+        })
+      }
+      return blocks.map((b, i) => ({ text: texts[i], frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }))
+    }
+
     // simple: one flat segment — no structural parsing
     return [{ text, frames: Math.max(1, totalFrames) }]
   }
@@ -250,14 +305,54 @@
         return line
       }).join('\n')
     }
+    if (type === 'h3') {
+      // Each segment marks its own start time in decimal seconds (tenths); the
+      // first segment always starts at 0.0s since it starts at frame 0.
+      let accFrames = 0
+      return segments.map(s => {
+        const startSec = fps > 0 ? accFrames / fps : accFrames
+        let t = s.text.trim()
+        if (!t.endsWith('.')) t += '.'
+        const line = `At ${startSec.toFixed(1)}s, ${t}`
+        accFrames += s.frames
+        return line
+      }).join('\n')
+    }
     // simple
     return segments.map(s => s.text).join('\n')
   }
 
+  // Strips a trailing "\n\n<trail>" (or any run of newlines) suffix from text
+  // when it exactly matches the saved trail prompt, so re-opening the editor
+  // doesn't show the qualifier duplicated inside the last segment.
+  function stripTrailFromText(text, trailText) {
+    const trail = (trailText || '').trim()
+    if (!trail) return text
+    const t = text.replace(/\s+$/, '')
+    if (t.endsWith(trail)) {
+      const before = t.slice(0, t.length - trail.length)
+      const m = before.match(/[\r\n]+$/)
+      if (m) {
+        return before.slice(0, before.length - m[0].length).replace(/\s+$/, '')
+      }
+    }
+    return text
+  }
+
   // ── Main open ─────────────────────────────────────────────────────────────
 
-  function open({ detail, onSave, defaultNegativePrompt = '', stackMode = null }) {
+  function open({ detail, onSave, defaultNegativePrompt = '', defaultMasterPrompt = '',
+                  defaultTrailPrompt = '', workflowType = '', stackMode = null }) {
     if (_overlay) _overlay.remove()
+
+    const resolvedDefaultMaster = resolveTypedDefault(defaultMasterPrompt, workflowType)
+    const resolvedDefaultTrail  = resolveTypedDefault(defaultTrailPrompt, workflowType)
+
+    // No default defined for this class/type — disable the button rather than
+    // let it silently clear the field.
+    const masterDefaultDisabled = !resolvedDefaultMaster
+    const trailDefaultDisabled  = !resolvedDefaultTrail
+    const negDefaultDisabled    = !defaultNegativePrompt
 
     const fText     = v => (v && typeof v === 'object') ? (v.text  ?? '') : (v ?? '')
     const fValue    = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
@@ -274,6 +369,7 @@
         master_prompt:   { ...(p?.master_prompt   || {}) },
         positive_prompt: { ...(p?.positive_prompt || {}) },
         negative_prompt: { ...(p?.negative_prompt || {}) },
+        trail_prompt:    { ...(p?.trail_prompt    || {}) },
         ...(Number.isInteger(p?.index) ? { index: p.index } : {}),
       }
     }
@@ -298,17 +394,22 @@
       fps          = fValue(detail.fps)
     }
 
-    let masterText, masterPosition, negText, promptType, segments
+    let masterText, masterPosition, negText, trailText, promptType, segments
 
     function loadActivePromptFields() {
       const src = stackMode ? prompts[activeIdx] : detail
       masterText     = fText(src.master_prompt)
       masterPosition = fPosition(src.master_prompt)
       negText        = fText(src.negative_prompt)
+      trailText      = fText(src.trail_prompt)
       promptType     = (src.positive_prompt && typeof src.positive_prompt === 'object')
                           ? (src.positive_prompt.type || 'smart') : 'smart'
       if (!VALID_PROMPT_TYPES.has(promptType)) promptType = 'smart'
       segments       = parseSegments(fText(src.positive_prompt), promptType, totalFrames, fps)
+      if (segments.length) {
+        const last = segments[segments.length - 1]
+        last.text  = stripTrailFromText(last.text, trailText)
+      }
     }
     loadActivePromptFields()
     let selIdx = 0
@@ -343,6 +444,8 @@
       if (masterTA) masterText = masterTA.value
       const negTA    = panel.querySelector('#pe-neg')
       if (negTA)    negText    = negTA.value
+      const trailTA  = panel.querySelector('#pe-trail')
+      if (trailTA)  trailText  = trailTA.value
     }
 
     function equalize() {
@@ -517,6 +620,7 @@
         master_prompt:   { text: masterText, position: masterPosition },
         positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
         negative_prompt: { text: negText },
+        trail_prompt:    { text: trailText },
         ...(Number.isInteger(prev.index) ? { index: prev.index } : {}),
       }
     }
@@ -693,11 +797,18 @@
         <textarea id="pe-master" style="${TA_STYLE};min-height:159px">${esc(masterText)}</textarea>
         <div style="display:flex;align-items:center;justify-content:${showMasterPosition ? 'space-between' : 'flex-end'};margin-top:3px">
           ${showMasterPosition ? mkCheckbox('pe-master-position', 'Append (master after positive)', masterPosition === 'after') : ''}
-          ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
+          <div style="display:flex;gap:6px">
+            ${mkBtn('pe-master-default','default','#555','#333','#999', masterDefaultDisabled)}
+            ${mkBtn('pe-master-clear','clear','#555','#333','#999')}
+          </div>
         </div>
       `
       panel.appendChild(masterSec)
       masterSec.querySelector('#pe-master').addEventListener('input', e => { masterText = e.target.value })
+      masterSec.querySelector('#pe-master-default').addEventListener('click', () => {
+        masterText = resolvedDefaultMaster
+        masterSec.querySelector('#pe-master').value = resolvedDefaultMaster
+      })
       masterSec.querySelector('#pe-master-clear').addEventListener('click', () => {
         masterText = ''
         masterSec.querySelector('#pe-master').value = ''
@@ -717,6 +828,7 @@
         beats:    'Beats will coerce frame count into full seconds',
         simple:   'Simple prompt will remove all segments',
         timecode: 'Timecode marks each segment\'s start time as [MM:SS]',
+        h3:       'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in',
       }
       const promptHdr = el('div', 'display:flex;align-items:center;gap:10px;padding:6px 10px 4px')
       promptHdr.innerHTML = `
@@ -724,6 +836,7 @@
         ${mkRadio('pe-beats',    'pe-type', 'beats',    'Beats',    promptType === 'beats')}
         ${mkRadio('pe-simple',   'pe-type', 'simple',   'Simple',   promptType === 'simple')}
         ${mkRadio('pe-timecode', 'pe-type', 'timecode', 'Timecode', promptType === 'timecode')}
+        ${mkRadio('pe-h3',       'pe-type', 'h3',       'H3',       promptType === 'h3')}
         <span id="pe-type-hint" style="flex:1;text-align:center;font-size:10px;font-family:monospace;color:#c8922a">${esc(TYPE_HINTS[promptType] ?? '')}</span>
         ${sectionLabel('PROMPT')}
       `
@@ -754,6 +867,12 @@
               segments = segments.map(s => ({
                 ...s,
                 text: s.text.replace(/^\[\d+:\d+\]\s*/, '').trim(),
+              }))
+            }
+            if (oldType === 'h3' && promptType !== 'h3') {
+              segments = segments.map(s => ({
+                ...s,
+                text: s.text.replace(/^At\s+\d+(?:\.\d+)?s,\s*/, '').trim(),
               }))
             }
             if (promptType === 'simple') {
@@ -953,6 +1072,32 @@
 
       panel.appendChild(greenDiv())
 
+      // ── Qualifiers ──────────────────────────────────────────────────────
+      const trailHdr = el('div', 'display:flex;justify-content:flex-end;padding:6px 10px 2px')
+      trailHdr.innerHTML = sectionLabel('QUALIFIERS')
+      panel.appendChild(trailHdr)
+
+      const trailSec = el('div', 'padding:0 10px 6px')
+      trailSec.innerHTML = `
+        <textarea id="pe-trail" style="${TA_STYLE};min-height:60px">${esc(trailText)}</textarea>
+        <div style="display:flex;justify-content:space-between;margin-top:3px">
+          ${mkBtn('pe-trail-default','default','#555','#333','#999', trailDefaultDisabled)}
+          ${mkBtn('pe-trail-clear','clear','#555','#333','#999')}
+        </div>
+      `
+      panel.appendChild(trailSec)
+      trailSec.querySelector('#pe-trail').addEventListener('input', e => { trailText = e.target.value })
+      trailSec.querySelector('#pe-trail-default').addEventListener('click', () => {
+        trailText = resolvedDefaultTrail
+        trailSec.querySelector('#pe-trail').value = resolvedDefaultTrail
+      })
+      trailSec.querySelector('#pe-trail-clear').addEventListener('click', () => {
+        trailText = ''
+        trailSec.querySelector('#pe-trail').value = ''
+      })
+
+      panel.appendChild(greenDiv())
+
       // ── Negative ────────────────────────────────────────────────────────
       const negHdr = el('div', 'display:flex;justify-content:flex-end;padding:6px 10px 2px')
       negHdr.innerHTML = sectionLabel('NEGATIVE')
@@ -962,7 +1107,7 @@
       negSec.innerHTML = `
         <textarea id="pe-neg" style="${TA_STYLE};min-height:92px">${esc(negText)}</textarea>
         <div style="display:flex;justify-content:space-between;margin-top:3px">
-          ${mkBtn('pe-neg-default','default','#555','#333','#999')}
+          ${mkBtn('pe-neg-default','default','#555','#333','#999', negDefaultDisabled)}
           ${mkBtn('pe-neg-clear','clear','#555','#333','#999')}
         </div>
       `
@@ -992,6 +1137,7 @@
       footer.querySelector('#pe-clear-all').addEventListener('click', () => {
         masterText = ''
         negText    = ''
+        trailText  = ''
         segments   = [{ text: '', frames: totalFrames }]
         selIdx     = 0
         render()
@@ -1031,6 +1177,7 @@
           master_prompt:   { text: masterText, position: masterPosition },
           positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
           negative_prompt: { text: negText },
+          trail_prompt:    { text: trailText },
           total_frames:    { value: totalFrames },
           fps:             { value: fps },
         })

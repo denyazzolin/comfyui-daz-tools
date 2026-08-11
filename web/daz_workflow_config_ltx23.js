@@ -85,7 +85,7 @@ function renderDetailHtml(data, h, extra = {}) {
     ${row('Master',      trunc(fText(data.master_prompt)))}
     ${row('Positive',    trunc(fText(data.positive_prompt)))}
     ${row('Negative',    trunc(fText(data.negative_prompt)))}
-    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode' })[fType(data.positive_prompt)] || 'Smart')}
+    ${row('Prompt Type', ({ smart: 'Smart', beats: 'Beats', simple: 'Simple', timecode: 'Timecode', h3: 'H3' })[fType(data.positive_prompt)] || 'Smart')}
     ${rowDiv()}
     ${row('Filename',    fFile(data.filename))}
     <tr>
@@ -281,6 +281,7 @@ function buildPayload(wrap) {
       type: wrap.querySelector('#daz-positive-prompt-type')?.value || 'smart',
     },
     negative_prompt: { text:  wrap.querySelector('#daz-negative-prompt')?.value  ?? '' },
+    trail_prompt:    { text:  wrap.querySelector('#daz-trail-prompt')?.value    ?? '' },
     filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '' },
     width:           { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
     height:          { value: parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10) },
@@ -334,6 +335,8 @@ app.registerExtension(buildWorkflowConfigExtension({
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],
   defaultNegativePrompt: 'pc game, console game, video game, cartoon, childish, ugly, blurry, distorted face, extra limbs, mismatched audio',
+  defaultMasterPrompt:   '',
+  defaultTrailPrompt:    '',
 
   renderDetailHtml,
   updateOutputLabels,

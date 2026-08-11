@@ -3,7 +3,7 @@ import random
 
 import folder_paths
 from .workflow_config_base import (
-    load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
+    load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
     all_versions_for_class, parse_movie_file, load_unet_gguf,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
@@ -25,7 +25,7 @@ try:
 except Exception:
     pass
 
-_CLASS        = "ltx2.3"
+_CLASS        = "m_h3"
 _NO_CONFIGS   = "(no configs)"
 _FILE_DEFAULT = "(default)"
 
@@ -37,7 +37,7 @@ def _load_unet(name: str, gguf: bool = False):
         return load_unet_gguf(name)
     path = folder_paths.get_full_path("diffusion_models", name)
     if not path:
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: diffusion model '{name}' not found")
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: diffusion model '{name}' not found")
     return comfy.sd.load_diffusion_model(path)
 
 
@@ -46,7 +46,7 @@ def _load_vae(name: str):
         return None
     path = folder_paths.get_full_path("vae", name)
     if not path:
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: VAE '{name}' not found")
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: VAE '{name}' not found")
     sd, metadata = comfy.utils.load_torch_file(path, return_metadata=True)
     return comfy.sd.VAE(sd=sd, metadata=metadata)
 
@@ -56,25 +56,21 @@ def _load_audio_vae(name: str):
         return None
     path = folder_paths.get_full_path("vae", name)
     if not path:
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: audio VAE '{name}' not found")
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: audio VAE '{name}' not found")
     sd, metadata = comfy.utils.load_torch_file(path, return_metadata=True)
     return comfy.sd.VAE(sd=sd, metadata=metadata)
 
 
-def _load_dual_clip(name1: str, name2: str):
-    paths = []
-    for name in (name1, name2):
-        if name:
-            path = folder_paths.get_full_path("text_encoders", name)
-            if not path:
-                raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: text encoder '{name}' not found")
-            paths.append(path)
-    if not paths:
+def _load_clip(name: str):
+    if not name:
         return None
+    path = folder_paths.get_full_path("text_encoders", name)
+    if not path:
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: text encoder '{name}' not found")
     return comfy.sd.load_clip(
-        ckpt_paths=paths,
+        ckpt_paths=[path],
         embedding_directory=folder_paths.get_folder_paths("embeddings"),
-        clip_type=comfy.sd.CLIPType.LTXV,
+        clip_type=comfy.sd.CLIPType.MINIMAX,
     )
 
 
@@ -86,7 +82,7 @@ def _load_image(path: str):
     else:
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: image not found at '{full}'")
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: image not found at '{full}'")
     img = Image.open(full).convert("RGB")
     arr = np.array(img).astype(np.float32) / 255.0
     return torch.from_numpy(arr)[None,]
@@ -100,8 +96,8 @@ def _load_audio(path: str):
     else:
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: audio not found at '{full}'")
-    return decode_audio_file(full, "WorkflowConfigLtx23")
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: audio not found at '{full}'")
+    return decode_audio_file(full, "WorkflowConfigMiniMaxH3")
 
 
 def _load_lora(name: str):
@@ -109,7 +105,7 @@ def _load_lora(name: str):
         return None
     path = folder_paths.get_full_path("loras", name)
     if not path:
-        raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: lora '{name}' not found")
+        raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: lora '{name}' not found")
     return comfy.utils.load_torch_file(path, safe_load=True)
 
 
@@ -136,7 +132,7 @@ def _apply_loras(model, lora_pairs):
     return result
 
 
-class WorkflowConfigLtx23:
+class WorkflowConfigMiniMaxH3:
     @classmethod
     def INPUT_TYPES(cls):
         files       = scan_config_files(_CLASS)
@@ -164,7 +160,6 @@ class WorkflowConfigLtx23:
         }
 
     RETURN_TYPES = (
-        "MODEL", "VAE", "CLIP",
         "MODEL",
         "VAE", "VAE",
         "CLIP",
@@ -178,17 +173,16 @@ class WorkflowConfigLtx23:
         "FLOAT",
         "LORA", "LORA", "LORA", "LORA", "LORA", "LORA",
         "STRING",
-        "MODEL", "MODEL",
+        "MODEL",
         "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
         "STRING", "STRING",
         "LORA", "LORA",
     )
     RETURN_NAMES = (
-        "checkpoint_model", "checkpoint_vae", "checkpoint_clip",
-        "transformer_only",
+        "unet_only",
         "video_vae", "audio_vae",
-        "dual_clip",
+        "clip",
         "image",
         "audio",
         "width", "height", "steps", "seed",
@@ -199,7 +193,7 @@ class WorkflowConfigLtx23:
         "fps",
         "distillation_lora", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6",
         "filename",
-        "transformer_stack", "checkpoint_stack",
+        "unet_stack",
         "is_t2v",
         "flag_1", "flag_2", "flag_3",
         "custom_1", "custom_2",
@@ -249,7 +243,7 @@ class WorkflowConfigLtx23:
         )
         if name is None:
             raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigLtx23: '{scene}' not found"
+                f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: '{scene}' not found"
             )
         entry      = configs[name]
         active_set = _get_active_set(entry, take)
@@ -271,7 +265,7 @@ class WorkflowConfigLtx23:
             try:
                 _write_file(path, configs, meta_extra, effective)
             except Exception as e:
-                print(f"[DAZ TOOLS] WorkflowConfigLtx23: could not save random seed — {e}")
+                print(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: could not save random seed — {e}")
 
         pos_prompt_val    = active_set.get("positive_prompt")
         prompt_type       = pos_prompt_val.get("type", "smart") if isinstance(pos_prompt_val, dict) else "smart"
@@ -287,28 +281,23 @@ class WorkflowConfigLtx23:
             pos_out = "\n\n".join(p for p in (master_text, pos_text) if p)
         pos_out = "\n\n".join(p for p in (pos_out, _get_text(active_set.get("trail_prompt"))) if p)
 
-        ckpt_name = _get_name(active_set.get("checkpoint"))
         unet_name = _get_name(active_set.get("unet_high"))
         unet_gguf = _get_gguf(active_set.get("unet_high"))
         vae_name  = _get_name(active_set.get("vae"))
         avae_name = _get_name(active_set.get("audio_vae"))
 
         try:
-            ckpt_model, ckpt_clip, ckpt_vae = load_checkpoint(ckpt_name)
-        except Exception as e:
-            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: checkpoint load failed ('{ckpt_name}'): {e}") from e
-        try:
             unet = _load_unet(unet_name, unet_gguf)
         except Exception as e:
-            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: transformer load failed ('{unet_name}'): {e}") from e
+            raise RuntimeError(f"[DAZ TOOLS] MiniMax H3: transformer load failed ('{unet_name}'): {e}") from e
         try:
             video_vae = _load_vae(vae_name)
         except Exception as e:
-            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: video VAE load failed ('{vae_name}'): {e}") from e
+            raise RuntimeError(f"[DAZ TOOLS] MiniMax H3: video VAE load failed ('{vae_name}'): {e}") from e
         try:
             audio_vae = _load_audio_vae(avae_name)
         except Exception as e:
-            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: audio VAE load failed ('{avae_name}'): {e}") from e
+            raise RuntimeError(f"[DAZ TOOLS] MiniMax H3: audio VAE load failed ('{avae_name}'): {e}") from e
 
         lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
         lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
@@ -327,13 +316,10 @@ class WorkflowConfigLtx23:
         ]
 
         return (
-            ckpt_model,
-            ckpt_vae,
-            ckpt_clip,
             unet,
             video_vae,
             audio_vae,
-            _load_dual_clip(_get_name(active_set.get("clip_2")), _get_name(active_set.get("clip"))),
+            _load_clip(_get_name(active_set.get("clip"))),
             _load_image(_get_path(active_set.get("image_path"))),
             _load_audio(_get_path(active_set.get("audio_path"))),
             _get_int(active_set.get("width")),
@@ -349,8 +335,7 @@ class WorkflowConfigLtx23:
             _get_float(active_set.get("fps")),
             lora_1_sd, lora_2_sd, lora_3_sd, lora_4_sd, lora_5_sd, lora_6_sd,
             _get_file(active_set.get("filename")),
-            _apply_loras(unet,       lora_pairs),
-            _apply_loras(ckpt_model, lora_pairs),
+            _apply_loras(unet, lora_pairs),
             active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),
