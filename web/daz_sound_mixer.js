@@ -623,9 +623,13 @@ function openMixEditor(node) {
     // not be hijacked into starting the box's own HTML5 drag — a custom-styled
     // range thumb can otherwise lose its native drag recognition and the
     // ancestor's draggable=true wins instead, showing a no-drop cursor.
+    // `label` matters as much as `input` here: a click on the Fade
+    // checkbox's text targets the <label>, which has the checkbox as a child
+    // rather than an ancestor, so closest() would not otherwise see it — and
+    // a drag started that way swallows the click that would have toggled it.
     let suppressBoxDrag = false
     el.addEventListener("mousedown", (ev) => {
-      suppressBoxDrag = !!ev.target.closest?.("input, canvas, button")
+      suppressBoxDrag = !!ev.target.closest?.("input, canvas, button, label")
     })
     if (hasFile) {
       el.addEventListener("dragstart", (ev) => {
@@ -737,7 +741,11 @@ function openMixEditor(node) {
       inp.step = String(CROP_STEP)
       inp.min = "0"
       inp.disabled = !hasFile
-      inp.style.cssText = "width:48px; flex:none; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 3px;"
+      // border-box so the declared width is the whole footprint — with the
+      // Fade checkbox now sharing this row, content-box padding/border would
+      // silently add 16px and push "Fade" out of the tile once the editor is
+      // narrowed by max-width:95vw.
+      inp.style.cssText = "width:52px; flex:none; box-sizing:border-box; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 3px;"
     }
     const fadeLbl = document.createElement("label")
     fadeLbl.style.cssText = "display:flex; align-items:center; gap:3px; margin-left:auto; cursor:pointer; white-space:nowrap;"
@@ -809,15 +817,18 @@ function openMixEditor(node) {
       renderTimeline()
     }
 
-    // `driving` says which of the two the user is actually moving, so the
-    // other one is what gives way when they would otherwise overlap.
+    // `driving` says which of the two the user is actually moving: that one
+    // gets clamped against the other and stops dead there, leaving the other
+    // untouched — the same way a crop handle stops at its partner instead of
+    // shoving it along (and losing whatever it was set to).
     function applyFade(newIn, newOut, driving) {
       const span = Math.max(0, cropEndNow() - cropStartNow())
-      newIn = Math.max(0, Math.min(newIn, span))
-      newOut = Math.max(0, Math.min(newOut, span))
-      if (newIn + newOut > span) {
-        if (driving === "out") newIn = span - newOut
-        else newOut = span - newIn
+      if (driving === "out") {
+        newIn = Math.max(0, Math.min(newIn, span))
+        newOut = Math.max(0, Math.min(newOut, span - newIn))
+      } else {
+        newOut = Math.max(0, Math.min(newOut, span))
+        newIn = Math.max(0, Math.min(newIn, span - newOut))
       }
       src.fade_in_s = newIn
       src.fade_out_s = newOut
