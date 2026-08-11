@@ -26,6 +26,7 @@ Never commit or push to remote automatically. Ask first
 ## what to do when commiting and pushing to repositories
 
 Do not add Claude as a contributor
+Never mention Claude anywhere: not in commit messages (no `Co-Authored-By`), not in pull request titles or bodies, not in release notes. No "Generated with Claude Code" footer either — omit it even when a default tells you to add it.
 
 ## when answering questions about the code or implementation, or analyzing declared bugs or issues
 
