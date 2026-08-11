@@ -7,13 +7,16 @@ placement (linear) gain and mixes them down into a single AUDIO output.
       "sources": {
         "<source_id>": {
           "filename": str, "label": str, "colorIndex": int,
-          "crop_start_s": float, "crop_end_s": float
+          "crop_start_s": float, "crop_end_s": float,
+          "fade_in_s": float, "fade_out_s": float
         }, ...
       },
       "blocks": [
         {"id": str, "source": "<source_id>", "row": int, "start_s": float, "gain": 1.0},
         ...
-      ]
+      ],
+      "movie_filename": str,  # editor-only reference video, ignored here
+      "movie_fps": float      # editor-only fps override for it, 0 = the file's own
     }
 
 Every filename was uploaded straight into ComfyUI's input directory by the
@@ -31,19 +34,42 @@ import folder_paths
 from .audio_utils import decode_audio_file
 
 
+def _as_float(value, default=0.0):
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return default
+
+
 def _crop_waveform(waveform, sample_rate, start_s, end_s):
     total = waveform.shape[-1]
-    try:
-        start_s = float(start_s or 0.0)
-    except (TypeError, ValueError):
-        start_s = 0.0
-    try:
-        end_s = float(end_s or 0.0)
-    except (TypeError, ValueError):
-        end_s = 0.0
+    start_s = _as_float(start_s)
+    end_s = _as_float(end_s)
     start = max(0, min(total, int(round(start_s * sample_rate))))
     end = total if end_s <= 0 else max(start, min(total, int(round(end_s * sample_rate))))
     return waveform[..., start:end]
+
+
+def _apply_fades(waveform, sample_rate, fade_in_s, fade_out_s):
+    """Linear fade in/out applied to the already-cropped waveform, so the
+    ramps sit at the trimmed start/end rather than the file's own ends. Never
+    mutates `waveform` — the decoded tensor is cached and shared across every
+    block that uses the same source."""
+    total = waveform.shape[-1]
+    if total <= 0:
+        return waveform
+    fade_in_s = max(0.0, _as_float(fade_in_s))
+    fade_out_s = max(0.0, _as_float(fade_out_s))
+    in_n = max(0, min(total, int(round(fade_in_s * sample_rate))))
+    out_n = max(0, min(total - in_n, int(round(fade_out_s * sample_rate))))
+    if in_n <= 0 and out_n <= 0:
+        return waveform
+    env = torch.ones(total, dtype=torch.float32)
+    if in_n > 0:
+        env[:in_n] = torch.linspace(0.0, 1.0, in_n, dtype=torch.float32)
+    if out_n > 0:
+        env[total - out_n:] = torch.linspace(1.0, 0.0, out_n, dtype=torch.float32)
+    return waveform * env
 
 
 def _resample(waveform, src_rate, dst_rate):
@@ -90,8 +116,8 @@ class SoundMixer:
     CATEGORY = "audio"
     DESCRIPTION = (
         "Mixes multiple sound files into one AUDIO output. Use the Edit Mix "
-        "button to upload files, crop each one, and place it (possibly more "
-        "than once) at an exact time with its own gain."
+        "button to upload files, crop each one, give it a fade in/out, and "
+        "place it (possibly more than once) at an exact time with its own gain."
     )
 
     def run(self, duration, sample_rate, mix_state="{}"):
@@ -148,6 +174,8 @@ class SoundMixer:
 
             wav = _crop_waveform(audio["waveform"], audio["sample_rate"],
                                   src_info.get("crop_start_s", 0.0), src_info.get("crop_end_s", 0.0))
+            wav = _apply_fades(wav, audio["sample_rate"],
+                               src_info.get("fade_in_s", 0.0), src_info.get("fade_out_s", 0.0))
             wav = _resample(wav, audio["sample_rate"], sample_rate)
             wav = _fit_channels(wav, 2)
 

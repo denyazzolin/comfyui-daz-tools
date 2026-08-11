@@ -9,7 +9,17 @@ const VIDEO_PANEL_WIDTH = 288
 const MIN_ROWS = 8
 const MAX_BLOCK_ROWS = 30
 const MAX_VISIBLE_ROWS = 31
-const CROP_STEP = 0.0001 // tenths of a millisecond, in seconds
+const CROP_STEP = 0.001 // milliseconds, in seconds
+// Brightness factor the waveform is drawn at outside the crop. Fades ramp
+// between this and 1.0, so a fade region reads as a gradient from the same
+// half-intensity the trimmed-away part uses up to the source's full color.
+const DIM_FACTOR = 0.45
+const FADE_HANDLE_COLOR = "#2f6ad9"
+const FPS_CUSTOM_COLOR = "#e05a5a"
+// Geometric Shapes rather than the Media Controls block, whose glyphs some
+// platform fonts substitute with full-color emoji next to a plain "▶".
+const PLAY_GLYPH = "▶"
+const STOP_GLYPH = "■"
 
 const COLORS = [
   "#e06c75", "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#d19a66", "#be5046",
@@ -21,11 +31,15 @@ function colorFor(source) {
   return COLORS[((i % COLORS.length) + COLORS.length) % COLORS.length]
 }
 
-function darken(hex, amount = 0.55) {
+function shade(hex, factor) {
   const n = parseInt(hex.slice(1), 16)
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
-  const f = (c) => Math.round(c * (1 - amount))
+  const f = (c) => Math.round(c * factor)
   return `rgb(${f(r)}, ${f(g)}, ${f(b)})`
+}
+
+function darken(hex, amount = 0.55) {
+  return shade(hex, 1 - amount)
 }
 
 // Seconds between labeled ruler ticks, picked so ticks stay >=40px apart
@@ -75,6 +89,24 @@ function mkBtn(label, opts = {}) {
 
 function newId(prefix) {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
+}
+
+// The only rule in this file that can't be expressed as an inline style:
+// spin buttons are reachable solely through pseudo-elements. Chrome reveals
+// them on hover and lays them over the field's own text, which in a box only
+// wide enough for "x.yyy" clipped the last digit. Injected once, on first
+// use, since this module has no other stylesheet.
+let _numStyleInjected = false
+function ensureNumberInputStyles() {
+  if (_numStyleInjected) return
+  _numStyleInjected = true
+  const style = document.createElement("style")
+  style.textContent = `
+    .daz-sm-num::-webkit-outer-spin-button,
+    .daz-sm-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .daz-sm-num { -moz-appearance: textfield; appearance: textfield; }
+  `
+  document.head.appendChild(style)
 }
 
 function overlayShell(width, onClose, opts = {}) {
@@ -176,6 +208,15 @@ async function uploadAudioFile(file) {
   return data.subfolder ? `${data.subfolder}/${data.name}` : data.name
 }
 
+// fps/duration/frame count come from the server (PyAV), since browsers don't
+// reliably expose a container's real frame rate.
+async function probeMovie(filename) {
+  const res = await fetch(`/daz/sound-mixer/video-info?filename=${encodeURIComponent(filename)}`)
+  const info = await res.json()
+  if (!res.ok || info.error) throw new Error(info.error || `probe failed (${res.status})`)
+  return info
+}
+
 let _activeNodes = []
 function stopAllPreviews() {
   for (const n of _activeNodes) {
@@ -183,21 +224,34 @@ function stopAllPreviews() {
   }
   _activeNodes = []
 }
-function schedulePreview(buffer, cropStart, cropDur, gain, when = 0) {
+// `playDur` is how long the source actually sounds (Play Mix truncates it at
+// the mix duration); `envDur` is the untruncated crop length the fade-out is
+// anchored to, so a block running past the end of the mix gets its fade-out
+// cut off exactly like sound_mixer.py cuts it off, rather than pulled early.
+function schedulePreview(buffer, cropStart, playDur, gain, when = 0, opts = {}) {
+  const { fadeIn = 0, fadeOut = 0, envDur = playDur } = opts
   const ctx = audioContext()
-  if (!ctx || !buffer || cropDur <= 0) return
+  if (!ctx || !buffer || playDur <= 0) return
   if (ctx.state === "suspended") ctx.resume()
   const gainNode = ctx.createGain()
-  gainNode.gain.value = gain
+  const t0 = ctx.currentTime + when
+  const fi = Math.max(0, Math.min(fadeIn, envDur))
+  const fo = Math.max(0, Math.min(fadeOut, envDur - fi))
+  gainNode.gain.setValueAtTime(fi > 0 ? 0 : gain, t0)
+  if (fi > 0) gainNode.gain.linearRampToValueAtTime(gain, t0 + fi)
+  if (fo > 0) {
+    gainNode.gain.setValueAtTime(gain, t0 + envDur - fo)
+    gainNode.gain.linearRampToValueAtTime(0, t0 + envDur)
+  }
   const bufSrc = ctx.createBufferSource()
   bufSrc.buffer = buffer
   bufSrc.connect(gainNode).connect(ctx.destination)
-  bufSrc.start(ctx.currentTime + when, cropStart, cropDur)
+  bufSrc.start(t0, cropStart, playDur)
   _activeNodes.push(bufSrc)
 }
 
 function drawWave(canvas, peaks, color, opts = {}) {
-  const { errored, cropStart = 0, cropEnd = 0, dur = 0 } = opts
+  const { errored, cropStart = 0, cropEnd = 0, dur = 0, fadeIn = 0, fadeOut = 0 } = opts
   const ctx = canvas.getContext("2d")
   const w = canvas.width, h = canvas.height
   ctx.clearRect(0, 0, w, h)
@@ -209,14 +263,26 @@ function drawWave(canvas, peaks, color, opts = {}) {
   }
   const mid = h / 2
   const barW = w / peaks.length
-  const dimColor = darken(color)
-  const hasCrop = dur > 0 && (cropStart > 0 || cropEnd < dur)
+  const shaded = dur > 0 && (cropStart > 0 || cropEnd < dur || fadeIn > 0 || fadeOut > 0)
+  // Brightness of the bar at time `t`: DIM_FACTOR outside the crop, a linear
+  // ramp up/down across each fade region, full color everywhere else.
+  function factorAt(t) {
+    if (t < cropStart || t > cropEnd) return DIM_FACTOR
+    let f = 1
+    if (fadeIn > 0 && t < cropStart + fadeIn) {
+      f = Math.min(f, DIM_FACTOR + (1 - DIM_FACTOR) * ((t - cropStart) / fadeIn))
+    }
+    if (fadeOut > 0 && t > cropEnd - fadeOut) {
+      f = Math.min(f, DIM_FACTOR + (1 - DIM_FACTOR) * ((cropEnd - t) / fadeOut))
+    }
+    return f
+  }
   for (let i = 0; i < peaks.length; i++) {
     const bh = Math.max(1, peaks[i] * (h - 4))
     let fill = color
-    if (hasCrop) {
-      const t = ((i + 0.5) / peaks.length) * dur
-      if (t < cropStart || t > cropEnd) fill = dimColor
+    if (shaded) {
+      const f = factorAt(((i + 0.5) / peaks.length) * dur)
+      if (f < 1) fill = shade(color, f)
     }
     ctx.fillStyle = fill
     ctx.fillRect(i * barW, mid - bh / 2, Math.max(1, barW - 1), bh)
@@ -230,6 +296,12 @@ function drawWave(canvas, peaks, color, opts = {}) {
 function mixStateWidget(node) {
   return node.widgets?.find((w) => w.name === "mix_state")
 }
+// A file's own rate is often fractional (29.97); a custom rate is always an
+// integer, so this really just trims the original's trailing zeros.
+function fmtFps(v) {
+  return String(Number(Number(v).toFixed(3)))
+}
+
 function durationWidget(node) {
   return node.widgets?.find((w) => w.name === "duration")
 }
@@ -242,9 +314,22 @@ function readState(node) {
     const blocks = normalizeBlocks(Array.isArray(parsed?.blocks) ? parsed.blocks : [])
     let overall_gain = Number(parsed?.overall_gain)
     if (!Number.isFinite(overall_gain)) overall_gain = 1.0
-    return { sources, blocks, overall_gain }
+    // Only the filename and any fps override are kept: the movie is a
+    // reference-timing aid, not part of the mix, and its real fps/duration
+    // are re-probed on reopen so a replaced file on disk can't leave stale
+    // frame math behind. This object is rebuilt from scratch on every read,
+    // so a field missing here is dropped from the widget on the next write —
+    // add, don't assume.
+    const movie_filename = typeof parsed?.movie_filename === "string" ? parsed.movie_filename : ""
+    // 0 means "play at the file's own rate". Anything else is the integer
+    // rate the user says the movie runs at, which rescales playback and the
+    // frame -> timeline-seconds math without touching the file itself. Kept
+    // with the workflow because block placements were made against it.
+    let movie_fps = Number(parsed?.movie_fps)
+    if (!Number.isFinite(movie_fps) || movie_fps <= 0) movie_fps = 0
+    return { sources, blocks, overall_gain, movie_filename, movie_fps }
   } catch {
-    return { sources: {}, blocks: [], overall_gain: 1.0 }
+    return { sources: {}, blocks: [], overall_gain: 1.0, movie_filename: "", movie_fps: 0 }
   }
 }
 
@@ -323,9 +408,21 @@ function openMixEditor(node) {
   let videoPanel = null // DOM element for the movie side panel, when open
   let videoState = null // {filename, fps, duration, frameCount, addAtTime, videoEl, listEl}
   let videoStopTimer = null // pauses the video at the mix duration when Play Mix is used
+  const playButtons = new Map() // play-button id -> live button element
+  let playingId = null // id of the button whose playback is currently sounding
+  let playbackEndTimer = null
+  let editorClosed = false // guards work that resumes after an await (see restoreMovie)
+
+  ensureNumberInputStyles()
 
   const { box, close: closeOverlay } = overlayShell(EDITOR_BASE_WIDTH, () => {
+    editorClosed = true
     stopAll()
+    // A popup normally can't outlive the editor — its backdrop covers every
+    // way of closing one — but committing the fps box by clicking Ok opens a
+    // prompt out of that very click, and it would be left behind writing to
+    // a node whose editor is gone.
+    closeActivePopup?.()
     clearTimeout(errorTimer)
     document.removeEventListener("keydown", onKeyDown)
   }, { closeOnBackdropClick: false })
@@ -365,10 +462,60 @@ function openMixEditor(node) {
     activeRafs.push(() => { cancelAnimationFrame(raf); el.style.display = "none" })
   }
 
+  // Every play button doubles as a stop button, and only one preview ever
+  // sounds at a time (each play path calls stopAll first), so a single
+  // `playingId` is enough to say which button should be showing its stop
+  // label. The label is re-derived from it whenever a button is built, so a
+  // rebuild mid-playback (selecting a block, a source finishing decoding)
+  // can't strand a stale glyph on the new button.
+  function registerPlayButton(id, btn, playLabel, stopLabel) {
+    btn.dataset.playLabel = playLabel
+    btn.dataset.stopLabel = stopLabel
+    playButtons.set(id, btn)
+    btn.textContent = playingId === id ? stopLabel : playLabel
+    return btn
+  }
+
+  function syncPlayButtons() {
+    for (const [id, btn] of playButtons) {
+      // Selecting block after block registers one entry each, and the rows are
+      // rebuilt rather than reused — drop the buttons those rebuilds detached.
+      // Safe to test here: this only ever runs from a play/stop action, never
+      // mid-render, so a live button is always in the document by now.
+      if (!btn.isConnected) {
+        playButtons.delete(id)
+        continue
+      }
+      btn.textContent = playingId === id ? btn.dataset.stopLabel : btn.dataset.playLabel
+    }
+  }
+
+  // Web Audio fires nothing when a scheduled source simply runs out, so the
+  // button is flipped back on a timer matched to the length the playback was
+  // scheduled for. The small margin keeps the glyph from snapping back a
+  // frame early on the last of the audio.
+  function beginPlayback(id, durationS) {
+    clearTimeout(playbackEndTimer)
+    playbackEndTimer = null
+    playingId = id
+    if (durationS > 0 && Number.isFinite(durationS)) {
+      playbackEndTimer = setTimeout(() => {
+        playbackEndTimer = null
+        playingId = null
+        syncPlayButtons()
+      }, durationS * 1000 + 60)
+    }
+    syncPlayButtons()
+  }
+
   function stopAll() {
     stopAllPreviews()
     for (const cancel of activeRafs) cancel()
     activeRafs = []
+    clearTimeout(playbackEndTimer)
+    playbackEndTimer = null
+    playingId = null
+    syncPlayButtons()
     clearTimeout(videoStopTimer)
     videoStopTimer = null
     try { videoState?.stopLoopPlayback?.() } catch { /* nothing to stop */ }
@@ -389,9 +536,10 @@ function openMixEditor(node) {
     if (!file) return
     try {
       const filename = await uploadAudioFile(file)
-      const res = await fetch(`/daz/sound-mixer/video-info?filename=${encodeURIComponent(filename)}`)
-      const info = await res.json()
-      if (!res.ok || info.error) throw new Error(info.error || `probe failed (${res.status})`)
+      const info = await probeMovie(filename)
+      state.movie_filename = filename
+      state.movie_fps = 0 // a new movie always starts at its own rate
+      persist()
       openVideoPanel(filename, info)
       maybeWarnDurationMismatch(info.duration)
     } catch (e) {
@@ -400,8 +548,18 @@ function openMixEditor(node) {
   })
   header.appendChild(movieFileInput)
   header.appendChild(mkBtn("Upload a Movie", { onClick: () => movieFileInput.click() }))
-  // Hidden until a movie is loaded (shown/hidden in openVideoPanel/closeVideoPanel).
-  const discardMovieBtn = mkBtn("Discard Movie", { danger: true, onClick: () => closeVideoPanel() })
+  // Discarding is the only way to forget the movie — closeVideoPanel alone
+  // just tears down the DOM (openVideoPanel calls it to replace one movie
+  // with another), so clearing the persisted filename belongs here.
+  const discardMovieBtn = mkBtn("Discard Movie", {
+    danger: true,
+    onClick: () => {
+      state.movie_filename = ""
+      state.movie_fps = 0
+      persist()
+      closeVideoPanel()
+    },
+  })
   discardMovieBtn.style.display = "none"
   header.appendChild(discardMovieBtn)
   const durLabel = document.createElement("label")
@@ -409,9 +567,10 @@ function openMixEditor(node) {
   durLabel.append("Duration (s)")
   const durInput = document.createElement("input")
   durInput.type = "number"
+  durInput.className = "daz-sm-num"
   durInput.step = "0.001"
   durInput.min = "0"
-  durInput.style.cssText = "width:80px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
+  durInput.style.cssText = "width:56px; box-sizing:border-box; font-size:12px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
   durInput.value = currentDuration()
   function setDuration(v) {
     const w = durationWidget(node)
@@ -424,6 +583,63 @@ function openMixEditor(node) {
   durInput.addEventListener("change", () => setDuration(durInput.value))
   durLabel.appendChild(durInput)
   header.appendChild(durLabel)
+
+  // Overrides the rate the movie is treated as running at. Only meaningful
+  // with a movie loaded, so it appears and disappears with the panel; the
+  // value itself lives in videoState, which openVideoPanel rebuilds from
+  // scratch — that is what makes discarding or re-uploading reset it.
+  const fpsLabel = document.createElement("label")
+  fpsLabel.style.cssText = "display:none; align-items:center; gap:6px; color:#aaa;"
+  fpsLabel.append("FPS")
+  const fpsInput = document.createElement("input")
+  fpsInput.type = "number"
+  fpsInput.className = "daz-sm-num"
+  fpsInput.step = "1"
+  fpsInput.min = "1"
+  fpsInput.title = "Play the movie as if it ran at this frame rate. Esc restores the file's own rate."
+  fpsInput.style.cssText = "width:46px; box-sizing:border-box; font-size:12px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
+  fpsLabel.appendChild(fpsInput)
+  header.appendChild(fpsLabel)
+
+  // Red is the entire hint that the movie is no longer running at its own
+  // rate, so it has to be re-derived from the values rather than latched by
+  // whichever handler last touched the box.
+  let lastSyncedFps = ""
+  function syncFpsInput() {
+    if (!videoState) return
+    lastSyncedFps = fmtFps(videoState.timelineFps)
+    fpsInput.value = lastSyncedFps
+    fpsInput.style.color = videoState.timelineFps === videoState.sourceFps ? "#ddd" : FPS_CUSTOM_COLOR
+  }
+  // Committed on Enter or blur rather than on `change`. With the spin buttons
+  // hidden the arrow keys still adjust a number input, and browsers fire
+  // `change` on every tick — holding one down would stop playback, rescale
+  // the whole timeline and raise a duration prompt once per step. This way
+  // the number can be dialled in freely and nothing moves until it's meant to.
+  function commitFps() {
+    // Leaving the box untouched must never count as a change. A custom rate
+    // is an integer but a file's own rate usually isn't (29.97, 23.976), so
+    // committing the text the box already held would round it to 30 or 24 —
+    // a rate the user never typed, rescaling the timeline on a stray click.
+    if (fpsInput.value === lastSyncedFps) return
+    videoState?.setTimelineFps?.(Number(fpsInput.value))
+  }
+  fpsInput.addEventListener("blur", commitFps)
+  fpsInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault()
+      commitFps()
+      return
+    }
+    if (ev.key !== "Escape") return
+    // The editor's own Escape handler already ignores events from inputs, so
+    // this can't close the editor today — stopped anyway so that guard and
+    // this reset stay independent.
+    ev.stopPropagation()
+    ev.preventDefault()
+    videoState?.setTimelineFps?.(0) // 0 = back to the file's own rate
+  })
+
   box.appendChild(header)
 
   // Body row — a main column (sources/timeline/buttons) plus an optional
@@ -494,6 +710,11 @@ function openMixEditor(node) {
     state.sources[id] = {
       filename: "", label: "", colorIndex: nextColorIndex(state.sources),
       crop_start_s: 0, crop_end_s: 0,
+      fade_in_s: 0, fade_out_s: 0,
+      // Editor-only: whether this box's waveform sliders currently drive the
+      // fades instead of the crop. Persisted so it survives reopening; the
+      // Python side ignores it.
+      fade_mode: false,
     }
     return id
   }
@@ -520,6 +741,8 @@ function openMixEditor(node) {
         if (!src.label) src.label = file.name.replace(/\.[^.]+$/, "")
         src.crop_start_s = 0
         src.crop_end_s = 0
+        src.fade_in_s = 0
+        src.fade_out_s = 0
         delete meta[id]
         persist()
         renderSources()
@@ -532,6 +755,9 @@ function openMixEditor(node) {
   }
 
   function deleteSource(id) {
+    // Its play button is about to disappear, so anything it started would
+    // otherwise keep sounding with no way to stop it.
+    if (playingId === `src:${id}`) stopAll()
     delete state.sources[id]
     delete meta[id]
     state.blocks = state.blocks.filter((b) => b.source !== id)
@@ -582,9 +808,13 @@ function openMixEditor(node) {
     // not be hijacked into starting the box's own HTML5 drag — a custom-styled
     // range thumb can otherwise lose its native drag recognition and the
     // ancestor's draggable=true wins instead, showing a no-drop cursor.
+    // `label` matters as much as `input` here: a click on the Fade
+    // checkbox's text targets the <label>, which has the checkbox as a child
+    // rather than an ancestor, so closest() would not otherwise see it — and
+    // a drag started that way swallows the click that would have toggled it.
     let suppressBoxDrag = false
     el.addEventListener("mousedown", (ev) => {
-      suppressBoxDrag = !!ev.target.closest?.("input, canvas, button")
+      suppressBoxDrag = !!ev.target.closest?.("input, canvas, button, label")
     })
     if (hasFile) {
       el.addEventListener("dragstart", (ev) => {
@@ -638,11 +868,16 @@ function openMixEditor(node) {
 
     const m = meta[id]
     const dur = m?.duration || 0
-    const cropStart = src.crop_start_s || 0
-    const cropEnd = src.crop_end_s > 0 ? src.crop_end_s : dur
 
-    if (hasFile) drawWave(canvas, m?.peaks || null, color, { errored: m?.error, cropStart, cropEnd, dur })
-    else drawWave(canvas, new Float32Array(1), "#3a3a3a")
+    // Live readers — the crop/fade values are mutated in place by the drag
+    // handlers, so nothing may capture them in a local at build time.
+    // crop_end_s === 0 means "uncropped, full duration" everywhere in this
+    // file (and in sound_mixer.py), so it must be resolved before ever being
+    // used as an actual end value.
+    const cropStartNow = () => src.crop_start_s || 0
+    const cropEndNow = () => (src.crop_end_s > 0 ? src.crop_end_s : dur)
+    const fadeInNow = () => src.fade_in_s || 0
+    const fadeOutNow = () => src.fade_out_s || 0
 
     // Custom-drawn crop handles instead of native <input type=range> thumbs:
     // a native thumb's travel is inset by half its own width from the track
@@ -650,20 +885,27 @@ function openMixEditor(node) {
     // waveform/playhead use, so the handle visibly drifted from the true
     // crop point. Positioning these ourselves keeps them pixel-exact and
     // lets the line be as thin as we want.
-    function handleLine() {
+    function handleLine(background) {
       const el = document.createElement("div")
       el.style.cssText = `
-        position:absolute; top:0; bottom:0; width:1px; background:#fff;
+        position:absolute; top:0; bottom:0; width:1px; background:${background};
         pointer-events:none; box-shadow:0 0 2px rgba(0,0,0,0.9); z-index:3;
       `
       return el
     }
-    const startHandleEl = handleLine()
-    const endHandleEl = handleLine()
-    startHandleEl.style.left = dur > 0 ? `${(cropStart / dur) * 100}%` : "0%"
-    endHandleEl.style.left = dur > 0 ? `${(cropEnd / dur) * 100}%` : "100%"
+    const startHandleEl = handleLine("#fff")
+    const endHandleEl = handleLine("#fff")
+    // Fade handles sit at the inner end of each fade, i.e. offset from the
+    // crop edge they are anchored to — so they follow the white handles when
+    // the crop moves, in either mode.
+    const fadeInHandleEl = handleLine(FADE_HANDLE_COLOR)
+    const fadeOutHandleEl = handleLine(FADE_HANDLE_COLOR)
+    fadeInHandleEl.style.zIndex = "4"
+    fadeOutHandleEl.style.zIndex = "4"
     waveWrap.appendChild(startHandleEl)
     waveWrap.appendChild(endHandleEl)
+    waveWrap.appendChild(fadeInHandleEl)
+    waveWrap.appendChild(fadeOutHandleEl)
 
     const playheadEl = document.createElement("div")
     playheadEl.style.cssText = `
@@ -674,7 +916,9 @@ function openMixEditor(node) {
     sourcePlayheads.set(id, playheadEl)
 
     const startEndRow = document.createElement("div")
-    startEndRow.style.cssText = "display:flex; gap:6px; align-items:center; font-size:11px; color:#aaa;"
+    startEndRow.style.cssText = "display:flex; gap:4px; align-items:center; font-size:11px; color:#aaa; overflow:hidden;"
+    const startLabelEl = document.createElement("span")
+    const endLabelEl = document.createElement("span")
     const startNum = document.createElement("input")
     const endNum = document.createElement("input")
     for (const inp of [startNum, endNum]) {
@@ -682,49 +926,144 @@ function openMixEditor(node) {
       inp.step = String(CROP_STEP)
       inp.min = "0"
       inp.disabled = !hasFile
-      inp.style.cssText = "width:70px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
+      inp.className = "daz-sm-num" // suppresses the spin buttons; see ensureNumberInputStyles
+      // border-box so the declared width is the whole footprint — with the
+      // Fade checkbox now sharing this row, content-box padding/border would
+      // silently add 16px and push "Fade" out of the tile once the editor is
+      // narrowed by max-width:95vw. font-size is set explicitly rather than
+      // left at the browser's ~13px input default, which is what made an
+      // x.yyy value overrun the field.
+      inp.style.cssText = "width:52px; flex:none; box-sizing:border-box; font-size:11px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 3px;"
     }
-    startNum.value = cropStart.toFixed(4)
-    endNum.value = cropEnd.toFixed(4)
-    startEndRow.append("Start:")
+    const fadeLbl = document.createElement("label")
+    fadeLbl.style.cssText = "display:flex; align-items:center; gap:3px; margin-left:auto; cursor:pointer; white-space:nowrap;"
+    const fadeChk = document.createElement("input")
+    fadeChk.type = "checkbox"
+    fadeChk.checked = !!src.fade_mode
+    fadeChk.disabled = !hasFile
+    fadeChk.style.cssText = "margin:0;"
+    fadeLbl.appendChild(fadeChk)
+    fadeLbl.append("Fade")
+    startEndRow.appendChild(startLabelEl)
     startEndRow.appendChild(startNum)
-    startEndRow.append("End:")
+    startEndRow.appendChild(endLabelEl)
     startEndRow.appendChild(endNum)
+    startEndRow.appendChild(fadeLbl)
     el.appendChild(startEndRow)
+
+    // Repaints everything derived from the crop/fade values: both handle
+    // pairs, the two number boxes (whose meaning depends on the mode), and
+    // the waveform's dim/gradient shading.
+    function refresh() {
+      const cs = cropStartNow(), ce = cropEndNow()
+      const fi = fadeInNow(), fo = fadeOutNow()
+      startHandleEl.style.left = dur > 0 ? `${(cs / dur) * 100}%` : "0%"
+      endHandleEl.style.left = dur > 0 ? `${(ce / dur) * 100}%` : "100%"
+      fadeInHandleEl.style.display = fi > 0 ? "block" : "none"
+      fadeOutHandleEl.style.display = fo > 0 ? "block" : "none"
+      if (dur > 0) {
+        fadeInHandleEl.style.left = `${((cs + fi) / dur) * 100}%`
+        fadeOutHandleEl.style.left = `${((ce - fo) / dur) * 100}%`
+      }
+      if (src.fade_mode) {
+        startLabelEl.textContent = "In:"
+        endLabelEl.textContent = "Out:"
+        startNum.value = fi.toFixed(3)
+        endNum.value = fo.toFixed(3)
+      } else {
+        startLabelEl.textContent = "Start:"
+        endLabelEl.textContent = "End:"
+        startNum.value = cs.toFixed(3)
+        endNum.value = ce.toFixed(3)
+      }
+      if (hasFile) {
+        drawWave(canvas, m?.peaks || null, color, {
+          errored: m?.error, cropStart: cs, cropEnd: ce, fadeIn: fi, fadeOut: fo, dur,
+        })
+      } else {
+        drawWave(canvas, new Float32Array(1), "#3a3a3a")
+      }
+    }
+
+    // Fades live inside the cropped span and never overlap each other, so a
+    // crop that shrinks past them has to pull them in with it.
+    function clampFadesToCrop() {
+      const span = Math.max(0, cropEndNow() - cropStartNow())
+      const fi = Math.max(0, Math.min(fadeInNow(), span))
+      src.fade_in_s = fi
+      src.fade_out_s = Math.max(0, Math.min(fadeOutNow(), span - fi))
+    }
 
     function applyCrop(newStart, newEnd) {
       newStart = Math.max(0, Math.min(newStart, newEnd))
       newEnd = Math.max(newStart, Math.min(newEnd, dur || newEnd))
       src.crop_start_s = newStart
       src.crop_end_s = newEnd
-      startHandleEl.style.left = dur > 0 ? `${(newStart / dur) * 100}%` : "0%"
-      endHandleEl.style.left = dur > 0 ? `${(newEnd / dur) * 100}%` : "100%"
-      startNum.value = newStart.toFixed(4)
-      endNum.value = newEnd.toFixed(4)
-      drawWave(canvas, m?.peaks || null, color, { cropStart: newStart, cropEnd: newEnd, dur })
+      clampFadesToCrop()
+      refresh()
       persist()
       renderTimeline()
     }
-    startNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
-    endNum.addEventListener("change", () => applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0))
 
-    // A single mousedown on the waveform picks whichever crop boundary is
-    // nearer, snaps it to the click point, and keeps dragging it for the
-    // rest of this same mouse-down — no need to release and click again.
+    // `driving` says which of the two the user is actually moving: that one
+    // gets clamped against the other and stops dead there, leaving the other
+    // untouched — the same way a crop handle stops at its partner instead of
+    // shoving it along (and losing whatever it was set to).
+    function applyFade(newIn, newOut, driving) {
+      const span = Math.max(0, cropEndNow() - cropStartNow())
+      if (driving === "out") {
+        newIn = Math.max(0, Math.min(newIn, span))
+        newOut = Math.max(0, Math.min(newOut, span - newIn))
+      } else {
+        newOut = Math.max(0, Math.min(newOut, span))
+        newIn = Math.max(0, Math.min(newIn, span - newOut))
+      }
+      src.fade_in_s = newIn
+      src.fade_out_s = newOut
+      refresh()
+      persist()
+    }
+
+    startNum.addEventListener("change", () => {
+      if (src.fade_mode) applyFade(Number(startNum.value) || 0, fadeOutNow(), "in")
+      else applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0)
+    })
+    endNum.addEventListener("change", () => {
+      if (src.fade_mode) applyFade(fadeInNow(), Number(endNum.value) || 0, "out")
+      else applyCrop(Number(startNum.value) || 0, Number(endNum.value) || 0)
+    })
+    fadeChk.addEventListener("change", () => {
+      src.fade_mode = fadeChk.checked
+      refresh()
+      persist()
+    })
+
+    // A single mousedown on the waveform picks whichever boundary is nearer,
+    // snaps it to the click point, and keeps dragging it for the rest of this
+    // same mouse-down — no need to release and click again. The Fade
+    // checkbox decides whether that boundary pair is the crop (white) or the
+    // fades (blue).
     waveWrap.addEventListener("mousedown", (ev) => {
       if (!hasFile || !m?.buffer || !dur) return
       const rect = waveWrap.getBoundingClientRect()
       const timeAt = (clientX) => Math.max(0, Math.min(dur, ((clientX - rect.left) / rect.width) * dur))
-      // crop_end_s === 0 means "uncropped, full duration" everywhere else in
-      // this file (and in sound_mixer.py) — resolve that before ever using
-      // it as an actual end value, or dragging start would collapse it to 0.
-      const effEnd = () => (src.crop_end_s > 0 ? src.crop_end_s : dur)
       const t0 = timeAt(ev.clientX)
-      const draggingStart = Math.abs(t0 - src.crop_start_s) <= Math.abs(t0 - effEnd())
-      applyCrop(draggingStart ? t0 : src.crop_start_s, draggingStart ? effEnd() : t0)
+      let setFromTime
+      if (src.fade_mode) {
+        const cs = cropStartNow(), ce = cropEndNow()
+        const draggingIn = Math.abs(t0 - (cs + fadeInNow())) <= Math.abs(t0 - (ce - fadeOutNow()))
+        setFromTime = (t) => (draggingIn
+          ? applyFade(t - cs, fadeOutNow(), "in")
+          : applyFade(fadeInNow(), ce - t, "out"))
+      } else {
+        const draggingStart = Math.abs(t0 - cropStartNow()) <= Math.abs(t0 - cropEndNow())
+        setFromTime = (t) => (draggingStart
+          ? applyCrop(t, cropEndNow())
+          : applyCrop(cropStartNow(), t))
+      }
+      setFromTime(t0)
       function onMove(mv) {
-        const t = timeAt(mv.clientX)
-        applyCrop(draggingStart ? t : src.crop_start_s, draggingStart ? effEnd() : t)
+        setFromTime(timeAt(mv.clientX))
       }
       function onUp() {
         document.removeEventListener("mousemove", onMove)
@@ -735,19 +1074,25 @@ function openMixEditor(node) {
       ev.preventDefault()
     })
 
+    refresh()
+
     const btnRow = document.createElement("div")
     btnRow.style.cssText = "display:flex; gap:6px; margin-top:2px;"
-    btnRow.appendChild(mkBtn("▶", {
+    const playBtnId = `src:${id}`
+    const playBtn = mkBtn("", {
       disabled: !hasFile || !m?.buffer,
       onClick: () => {
+        if (playingId === playBtnId) { stopAll(); return }
         stopAll()
-        const cs = src.crop_start_s || 0
-        const ce = src.crop_end_s > 0 ? src.crop_end_s : (m?.duration || 0)
-        const durS = Math.max(0, ce - cs)
-        schedulePreview(m.buffer, cs, durS, 1, 0)
+        const cs = cropStartNow()
+        const durS = Math.max(0, cropEndNow() - cs)
+        if (durS <= 0) return
+        schedulePreview(m.buffer, cs, durS, 1, 0, { fadeIn: fadeInNow(), fadeOut: fadeOutNow() })
         if (dur > 0) animatePlayhead(playheadEl, (elapsed) => ((cs + elapsed) / dur) * 100, durS, "%")
+        beginPlayback(playBtnId, durS)
       },
-    }))
+    })
+    btnRow.appendChild(registerPlayButton(playBtnId, playBtn, PLAY_GLYPH, STOP_GLYPH))
     btnRow.appendChild(mkBtn("Upload", { onClick: () => uploadForSource(id) }))
     btnRow.appendChild(mkBtn("Delete", { danger: true, onClick: () => deleteSource(id) }))
     el.appendChild(btnRow)
@@ -793,20 +1138,32 @@ function openMixEditor(node) {
     videoPanel = null
     videoState = null
     discardMovieBtn.style.display = "none"
+    fpsLabel.style.display = "none"
     box.style.width = `${EDITOR_BASE_WIDTH}px`
   }
 
+  // Asked whenever the two lengths disagree in either direction: a mix that
+  // stops before the movie ends and one that runs on past it are equally
+  // worth offering to fix. The tolerance keeps float noise in the probe — or
+  // a frame count that doesn't divide evenly — from prompting about a
+  // difference nobody can hear.
   function maybeWarnDurationMismatch(movieDuration) {
-    if (!(movieDuration > currentDuration())) return
+    const mixDuration = currentDuration()
+    if (Math.abs(movieDuration - mixDuration) <= 0.001) return
+    const longer = movieDuration > mixDuration
+    // An fps box can be retyped faster than a popup gets dismissed; never
+    // leave the earlier one orphaned behind the new one.
+    closeActivePopup?.()
     const { box: pbox, close } = overlayShell(340, () => { closeActivePopup = null })
     closeActivePopup = close
     const title = document.createElement("div")
     title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
-    title.textContent = "Movie longer than mix"
+    title.textContent = longer ? "Movie longer than mix" : "Movie shorter than mix"
     pbox.appendChild(title)
     const body = document.createElement("div")
     body.style.cssText = "padding:10px 14px;"
-    body.textContent = "The video is longer than the current mixed audio duration"
+    body.textContent = `The video is ${longer ? "longer" : "shorter"} than the current mixed audio `
+      + `duration (${movieDuration.toFixed(3)}s vs ${mixDuration.toFixed(3)}s)`
     pbox.appendChild(body)
     const foot = document.createElement("div")
     foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
@@ -847,13 +1204,20 @@ function openMixEditor(node) {
     }
   }
 
-  function openVideoPanel(filename, info) {
+  function openVideoPanel(filename, info, customFps = 0) {
     closeVideoPanel()
     discardMovieBtn.style.display = ""
+    fpsLabel.style.display = "flex"
     videoState = {
       filename,
-      fps: info.fps,
-      duration: info.duration,
+      // Two rates, deliberately kept apart. sourceFps is the file's real
+      // rate and governs everything touching videoEl — the file's own
+      // timestamps don't move just because the user renamed its rate.
+      // timelineFps is the rate the user says it runs at, and governs the
+      // frame <-> mix-timeline-seconds mapping. Equal until an override.
+      sourceFps: info.fps,
+      timelineFps: customFps > 0 ? Math.max(1, Math.round(customFps)) : info.fps,
+      duration: info.duration, // source-domain seconds
       frameCount: Math.max(1, info.frame_count | 0),
       addAtTime: 0,
       videoEl: null,
@@ -919,8 +1283,58 @@ function openMixEditor(node) {
     atInput.min = "0"
     atInput.style.cssText = "width:90px; background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:2px 4px;"
 
-    function frameTime(frameIdx) {
-      return Math.min(videoState.duration, Math.max(0, frameIdx) / videoState.fps)
+    // Where a frame actually sits inside the file. Always the file's own
+    // rate — an FPS override doesn't move the file's timestamps, so seeking
+    // by anything else would land on the wrong frame.
+    function sourceTime(frameIdx) {
+      return Math.min(videoState.duration, Math.max(0, frameIdx) / videoState.sourceFps)
+    }
+    // Where that same frame lands on the mix timeline, which is the whole
+    // point of an override: at 30 fps frame 60 is 2 s in, at 24 fps it's 2.5.
+    function timelineTime(frameIdx) {
+      return Math.max(0, frameIdx) / videoState.timelineFps
+    }
+    function timelineDuration() {
+      return videoState.frameCount / videoState.timelineFps
+    }
+
+    // Reinterpreting the same frames at another rate is exactly a uniform
+    // time scale, which is all <video> can do — no frames are added or
+    // dropped, they're just held for a different span. Browsers accept
+    // roughly 0.0625x-16x, so every realistic conversion is well inside.
+    // The rate the override asks for, and the rate the browser will actually
+    // honour. They only differ at extremes, where the movie silently drifts
+    // from the mix — hence the warning, kept separate below.
+    function wantedRate() {
+      const want = videoState.timelineFps / videoState.sourceFps
+      return Number.isFinite(want) && want > 0 ? want : 1
+    }
+    function usableRate() {
+      return Math.min(16, Math.max(0.0625, wantedRate()))
+    }
+    function applyPlayRate() {
+      const rate = usableRate()
+      try {
+        // Loading media resets playbackRate to defaultPlaybackRate, and this
+        // runs while the element is still loading — set both so the rate
+        // survives that rather than snapping back to 1x.
+        videoEl.defaultPlaybackRate = rate
+        videoEl.playbackRate = rate
+      } catch { /* not supported by this UA; it plays at 1x */ }
+    }
+    videoState.applyPlayRate = applyPlayRate
+
+    // Deliberately not part of applyPlayRate, which also runs on every play
+    // click: the warning belongs to the moment a rate is chosen, not to each
+    // replay of one already chosen.
+    function warnIfRateUnreachable() {
+      const want = wantedRate()
+      const rate = usableRate()
+      if (Math.abs(rate - want) <= 1e-6) return
+      showError(
+        `${fmtFps(videoState.timelineFps)} fps needs ${want.toFixed(3)}x playback, ` +
+        `past what browsers allow — the movie will run at ${rate.toFixed(3)}x and drift from the mix.`
+      )
     }
 
     // A seek decodes forward from the nearest keyframe to reach the exact
@@ -953,7 +1367,7 @@ function openMixEditor(node) {
     }
     function runSeek(frameIdx) {
       seekPending = true
-      videoEl.currentTime = frameTime(frameIdx)
+      videoEl.currentTime = sourceTime(frameIdx)
       // Some browsers don't fire `seeked` for a seek issued before metadata
       // is loaded, or for a seek to the time the video is already sitting
       // at (nothing to decode, so no event) — either would wedge
@@ -970,7 +1384,8 @@ function openMixEditor(node) {
     // The numeric readout tracks the scrubber instantly regardless of how
     // far behind the decoded frame is lagging.
     function updateReadout(frameIdx) {
-      const t = frameTime(frameIdx)
+      // Timeline domain: this feeds "Add a sound at", which is a mix time.
+      const t = timelineTime(frameIdx)
       videoState.addAtTime = t
       atInput.value = t.toFixed(4)
       return t
@@ -988,15 +1403,54 @@ function openMixEditor(node) {
     atInput.addEventListener("change", () => {
       let t = Number(atInput.value)
       if (!Number.isFinite(t) || t < 0) t = 0
-      if (t > videoState.duration) {
-        showError(`Time exceeds movie duration (${videoState.duration.toFixed(3)}s).`)
-        t = videoState.duration
+      // Compared against the movie's length *at the current rate*, not the
+      // file's own length, since that is the number the box shows.
+      const maxT = timelineDuration()
+      if (t > maxT) {
+        showError(`Time exceeds movie duration (${maxT.toFixed(3)}s).`)
+        t = maxT
       }
-      const frameIdx = Math.min(videoState.frameCount - 1, Math.max(0, Math.round(t * videoState.fps)))
+      const frameIdx = Math.min(videoState.frameCount - 1, Math.max(0, Math.round(t * videoState.timelineFps)))
       scrub.value = String(frameIdx)
       setFromFrame(frameIdx)
     })
 
+    // Anything <= 0 (Esc) means "back to the file's own rate". The rate is
+    // always an integer otherwise; only the file's original may be
+    // fractional, and that one is never typed, only restored.
+    videoState.setTimelineFps = (fps) => {
+      const prev = videoState.timelineFps
+      const next = fps > 0 && Number.isFinite(fps)
+        ? Math.max(1, Math.round(fps))
+        : videoState.sourceFps
+      videoState.timelineFps = next
+      syncFpsInput()
+      // Retyping the rate it already has (or anything that rounds to it) is
+      // not a change — stop before rescaling by 1 and re-asking about a
+      // duration that hasn't moved. The box is re-synced first so a typed
+      // "30.4" still snaps to the canonical text.
+      if (next === prev) return
+
+      // Anything sounding right now was scheduled against the old rate and
+      // the old block positions, both of which are about to move under it.
+      stopAll()
+      state.movie_fps = next === videoState.sourceFps ? 0 : next
+      rescaleBlocks(prev / next)
+      persist()
+      applyPlayRate()
+      warnIfRateUnreachable()
+      // The scrubber is still on the same frame, but the timeline second
+      // that frame corresponds to just changed.
+      updateReadout(Number(scrub.value))
+      renderTimeline()
+      // The movie is now a different number of seconds long — offer to match,
+      // the same way uploading one does.
+      maybeWarnDurationMismatch(timelineDuration())
+    }
+
+    syncFpsInput()
+    applyPlayRate()
+    warnIfRateUnreachable() // a restored override can be out of range too
     setFromFrame(0)
 
     // Click the video frame to loop-play, starting from the slider's current
@@ -1007,7 +1461,8 @@ function openMixEditor(node) {
     displayWrap.title = "Click to play/stop"
     let loopPlaying = false
     function onLoopTimeUpdate() {
-      const frameIdx = Math.min(videoState.frameCount - 1, Math.round(videoEl.currentTime * videoState.fps))
+      // currentTime is a source-domain time whatever the playback rate is.
+      const frameIdx = Math.min(videoState.frameCount - 1, Math.round(videoEl.currentTime * videoState.sourceFps))
       scrub.value = String(frameIdx)
       updateReadout(frameIdx)
     }
@@ -1025,6 +1480,7 @@ function openMixEditor(node) {
     function startLoopPlayback() {
       videoState.cancelPendingScrub?.()
       videoEl.muted = !playAudioChk.checked
+      applyPlayRate()
       loopPlaying = true
       videoEl.addEventListener("timeupdate", onLoopTimeUpdate)
       videoEl.addEventListener("ended", onLoopEnded)
@@ -1076,6 +1532,21 @@ function openMixEditor(node) {
     return true
   }
 
+  // Blocks are placed against what is happening on screen, so they are really
+  // pinned to video frames rather than to seconds. Re-rating the movie doesn't
+  // move a block off its frame — it moves the second that frame happens at, so
+  // a sound on frame 32 of a 32 fps movie sits at 1s and lands at 2s once the
+  // movie is called 16 fps.
+  //
+  // Deliberately not clamped to the mix duration: an unclamped multiply is
+  // exactly invertible, so Esc (or typing the old rate back) returns every
+  // block to where it was. Clamping would collapse anything past the end onto
+  // it, and no later fps change could undo that.
+  function rescaleBlocks(factor) {
+    if (!(factor > 0) || Math.abs(factor - 1) < 1e-9) return
+    for (const blk of state.blocks) blk.start_s = Math.max(0, (blk.start_s || 0) * factor)
+  }
+
   function cloneSelected() {
     const blk = state.blocks.find((b) => b.id === selectedBlockId)
     if (!blk) return
@@ -1092,6 +1563,9 @@ function openMixEditor(node) {
   }
 
   function deleteBlock(id) {
+    // Same reason as deleteSource: the stop button for this block is about to
+    // be rebuilt away, and anything it started would keep sounding unstoppably.
+    if (playingId === `block:${id}`) stopAll()
     state.blocks = state.blocks.filter((b) => b.id !== id)
     if (selectedBlockId === id) selectedBlockId = null
     persist()
@@ -1099,6 +1573,7 @@ function openMixEditor(node) {
   }
 
   function deleteAllBlocks() {
+    if (playingId?.startsWith("block:")) stopAll()
     state.blocks = []
     selectedBlockId = null
     persist()
@@ -1272,8 +1747,9 @@ function openMixEditor(node) {
 
   function renderButtonRow() {
     buttonRow.innerHTML = ""
-    buttonRow.appendChild(mkBtn("▶ Play Mix", {
+    const mixBtn = mkBtn("", {
       onClick: () => {
+        if (playingId === "mix") { stopAll(); return }
         stopAll()
         const dur = currentDuration()
         for (const blk of state.blocks) {
@@ -1287,19 +1763,27 @@ function openMixEditor(node) {
           if (cropDur <= 0 || startAt >= dur) continue
           const playDur = Math.min(cropDur, dur - startAt)
           if (playDur <= 0) continue
-          schedulePreview(m.buffer, cropStart, playDur, (blk.gain ?? 1) * (state.overall_gain ?? 1), startAt)
+          schedulePreview(m.buffer, cropStart, playDur, (blk.gain ?? 1) * (state.overall_gain ?? 1), startAt, {
+            fadeIn: src.fade_in_s || 0, fadeOut: src.fade_out_s || 0, envDur: cropDur,
+          })
         }
         animatePlayhead(timelinePlayhead, (elapsed) => elapsed * pxPerSec(), dur, "px")
         if (videoState?.videoEl) {
           const v = videoState.videoEl
           videoState.cancelPendingScrub?.()
           v.currentTime = 0
+          // An FPS override makes the movie cover its frames faster or
+          // slower; the stop timer below is wall-clock, so it still lands on
+          // the mix duration either way.
+          videoState.applyPlayRate?.()
           const p = v.play()
           if (p?.catch) p.catch(() => { /* autoplay may be blocked; audio still plays */ })
           videoStopTimer = setTimeout(() => { try { v.pause() } catch { /* already stopped */ } }, dur * 1000)
         }
+        beginPlayback("mix", dur)
       },
-    }))
+    })
+    buttonRow.appendChild(registerPlayButton("mix", mixBtn, `${PLAY_GLYPH} Play Mix`, `${STOP_GLYPH} Stop Mix`))
     buttonRow.appendChild(mkBtn("Add", { onClick: openAddPopup }))
     buttonRow.appendChild(mkBtn("Add All", { onClick: addAllSources }))
     buttonRow.appendChild(sep())
@@ -1308,18 +1792,28 @@ function openMixEditor(node) {
     if (selBlock) {
       const src = state.sources[selBlock.source]
       const m = meta[selBlock.source]
-      buttonRow.appendChild(mkBtn("▶", {
+      // Keyed by block id, not a bare "block": selecting a different block
+      // while one is playing rebuilds this row, and a shared key would show
+      // the new block's button as already-playing.
+      const blockBtnId = `block:${selBlock.id}`
+      const blockBtn = mkBtn("", {
         disabled: !m?.buffer,
         onClick: () => {
+          if (playingId === blockBtnId) { stopAll(); return }
           stopAll()
           const cs = src?.crop_start_s || 0
           const ce = src?.crop_end_s > 0 ? src.crop_end_s : (m?.duration || 0)
           const durS = Math.max(0, ce - cs)
-          schedulePreview(m.buffer, cs, durS, (selBlock.gain ?? 1) * (state.overall_gain ?? 1), 0)
+          if (durS <= 0) return
+          schedulePreview(m.buffer, cs, durS, (selBlock.gain ?? 1) * (state.overall_gain ?? 1), 0, {
+            fadeIn: src?.fade_in_s || 0, fadeOut: src?.fade_out_s || 0,
+          })
           const ph = sourcePlayheads.get(selBlock.source)
           if (ph && m?.duration > 0) animatePlayhead(ph, (elapsed) => ((cs + elapsed) / m.duration) * 100, durS, "%")
+          beginPlayback(blockBtnId, durS)
         },
-      }))
+      })
+      buttonRow.appendChild(registerPlayButton(blockBtnId, blockBtn, PLAY_GLYPH, STOP_GLYPH))
 
       const startLbl = document.createElement("label")
       startLbl.style.cssText = "display:flex; align-items:center; gap:4px; color:#aaa;"
@@ -1407,9 +1901,40 @@ function openMixEditor(node) {
   }
   document.addEventListener("keydown", onKeyDown)
 
+  // Reopening the editor rebuilds the movie panel from the remembered
+  // filename. Deliberately no duration-mismatch prompt here — that belongs
+  // to the moment a movie is chosen, not to every reopen.
+  async function restoreMovie() {
+    const filename = state.movie_filename
+    if (!filename) return
+    try {
+      const info = await probeMovie(filename)
+      // The editor can be dismissed while the probe is still in flight.
+      // Building the panel now would attach a preload="auto" <video> to a
+      // detached tree, downloading the whole movie with nothing left to
+      // pause it — closeVideoPanel and stopAll have already run.
+      if (editorClosed) return
+      // The blocks on the timeline were placed against the overridden rate,
+      // so it comes back with the movie.
+      openVideoPanel(filename, info, state.movie_fps)
+    } catch (e) {
+      // Nothing to tell the user once the editor is gone; leave the filename
+      // in place so the next open re-probes and reports the failure properly.
+      if (editorClosed) return
+      // The upload lives in ComfyUI's input directory and can be cleared out
+      // from under a saved workflow, so a failure here just forgets it
+      // rather than leaving a movie that can never load.
+      state.movie_filename = ""
+      state.movie_fps = 0
+      persist()
+      showError(`Could not reload movie '${filename}': ${e.message || e}`)
+    }
+  }
+
   persist() // write back any row de-duplication normalizeBlocks() applied on load
   renderSources()
   renderTimeline()
+  restoreMovie()
 }
 
 // ---------------------------------------------------------------------------
