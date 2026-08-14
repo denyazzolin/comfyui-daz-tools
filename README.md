@@ -21,7 +21,7 @@ You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ## Nodes
 
-### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config Image (`utils`) · Workflow Config MiniMaxH3 (`utils`)
+### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config LTX2.5 (`utils`) · Workflow Config Image (`utils`) · Workflow Config MiniMaxH3 (`utils`)
 
 These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically for you to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
 
@@ -115,6 +115,17 @@ LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be appli
 | **CFG** | CFG scale |
 
 You can fill in either the checkpoint path or the standalone model paths — both sets of outputs are available on the node. The node outputs a ready-to-use model stack with all enabled LoRAs already applied for both the standalone transformer and the checkpoint model.
+
+**Workflow Config LTX2.5** targets LTX v2.5. It drops the checkpoint loader and the second CLIP slot that LTX2.3 needs — LTX2.5 ships a single text encoder file (`gemma4-12b-with-proj-…`) that already contains the text-embedding projection weights LTX2.3 keeps in a separate file. Otherwise it matches LTX2.3: video/audio dual-VAE split, reference image and audio inputs, single CFG, and 8 LoRA slots.
+
+| Field | What it controls |
+|---|---|
+| **Transformer** | Diffusion model (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
+| **Video VAE / Audio VAE** | Separate VAE models for video and audio, both loaded from `models/vae` |
+| **CLIP** | Single text encoder (loaded with the LTXV CLIP type) |
+| **CFG** | CFG scale |
+
+The node outputs a ready-to-use model stack (`transformer_stack`) with all enabled LoRAs already applied.
 
 **Workflow Config Image** is designed for still-image pipelines. It has no LoRA slots, no audio field, and no video parameters (frames / FPS). The Type filter is also not shown — all scenes/takes are listed regardless of type.
 

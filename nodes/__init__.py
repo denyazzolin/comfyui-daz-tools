@@ -8,6 +8,7 @@ from .lora_inspector import LoraInspector
 from .markdown_display import MarkdownDisplay
 from .workflow_config_wan22 import WorkflowConfigWan22
 from .workflow_config_ltx23 import WorkflowConfigLtx23
+from .workflow_config_ltx25 import WorkflowConfigLtx25
 from .workflow_config_image import WorkflowConfigImage
 from .workflow_config_minimaxh3 import WorkflowConfigMiniMaxH3
 from .prompt_stack_manager import PromptStackManager
@@ -22,6 +23,7 @@ NODE_CLASS_MAPPINGS = {
     "MarkdownDisplay": MarkdownDisplay,
     "WorkflowConfigWan22": WorkflowConfigWan22,
     "WorkflowConfigLtx23": WorkflowConfigLtx23,
+    "WorkflowConfigLtx25": WorkflowConfigLtx25,
     "WorkflowConfigImage": WorkflowConfigImage,
     "WorkflowConfigMiniMaxH3": WorkflowConfigMiniMaxH3,
     "PromptStackManager": PromptStackManager,
@@ -37,6 +39,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MarkdownDisplay": "Markdown Display",
     "WorkflowConfigWan22": "Workflow Config WAN2.2",
     "WorkflowConfigLtx23": "Workflow Config LTX2.3",
+    "WorkflowConfigLtx25": "Workflow Config LTX2.5",
     "WorkflowConfigImage": "Workflow Config Image",
     "WorkflowConfigMiniMaxH3": "Workflow Config MiniMaxH3",
     "PromptStackManager": "Prompt Stack Manager",
