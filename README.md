@@ -71,7 +71,7 @@ Filters check across all takes of a scene, so a scene that has both an I2V and a
 
 #### What each node stores
 
-All four nodes share a common set of configurable fields:
+All five nodes share a common set of configurable fields:
 
 | Field | What it controls |
 |---|---|
@@ -152,7 +152,7 @@ You can fill in either the checkpoint path or the standalone model paths — all
 
 #### GGUF unet loading
 
-The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Diffuser** on Image, **Unet** on MiniMaxH3) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
+The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Transformer** on LTX2.5, **Diffuser** on Image, **Unet** on MiniMaxH3) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
 
 Requires the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) custom node package. Without it installed, `.gguf` files won't be listed, and running a scene configured for GGUF raises a clear error instead of silently falling back.
 
@@ -237,18 +237,18 @@ When no presets exist yet, the node shows an empty state with a centred **Create
 
 The preset library is a shared collection of model-and-parameter templates (`dx_workflow_presets.json` inside `.dx_mgr/`). Presets are not tied to any single workflow — they capture a node's key settings (models, dimensions, CFG, type, etc.) and can be applied to any config of the same class. This makes spinning up a new scene significantly faster: instead of filling in every field from scratch, you pick a preset and the edit panel is pre-filled in one click.
 
-For WAN2.2, LTX2.3, and MiniMax H3, presets also carry the full LoRA setup — all 8 slots, including empty/disabled ones. Applying a preset overwrites all of the current config's LoRA slots, so the pre-filled panel always reflects exactly the preset's LoRA setup rather than a merge with whatever was there before.
+For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets also carry the full LoRA setup — all 8 slots, including empty/disabled ones. Applying a preset overwrites all of the current config's LoRA slots, so the pre-filled panel always reflects exactly the preset's LoRA setup rather than a merge with whatever was there before.
 
 Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes. Presets carry the Qualifiers (trail) prompt alongside Master/Positive/Negative for every node class.
 
 Three buttons in the edit panel footer give access to the library:
 
-**Apply Preset** — opens a browser showing all saved presets for this node class (WAN2.2 and LTX2.3 include a type filter). Select a preset and click **Apply** to write its values into the current edit panel. When you create a new config and presets already exist for that class, this browser opens automatically.
+**Apply Preset** — opens a browser showing all saved presets for this node class (every class except Image includes a type filter). Select a preset and click **Apply** to write its values into the current edit panel. When you create a new config and presets already exist for that class, this browser opens automatically.
 
 **Save / Update Preset** — opens the same browser with three actions:
 - **Update the Version** — overwrites the selected preset version with the current config's values.
 - **Save as new Version** — saves the current config as an additional numbered version under the same preset name.
-- **Save as New Preset** — opens a form to name the new preset, choose its type (WAN2.2 and LTX2.3 only), add an optional version label and note. All model and parameter values are captured from the current config automatically. Saving is blocked if a preset with the same name already exists at version 1 for this class.
+- **Save as New Preset** — opens a form to name the new preset, choose its type (every class except Image), add an optional version label and note. All model and parameter values are captured from the current config automatically. Saving is blocked if a preset with the same name already exists at version 1 for this class.
 
 **Manage Presets** — opens the browser in delete mode. You can remove a single version or the entire preset and all its versions.
 
@@ -265,7 +265,7 @@ This sequencing is particularly useful for video workflows made up of several se
 - **Prompt Stack Manager** stores and edits named prompt stacks, each holding one or more sequences (versions of the stack). It outputs each slot's prompt as a single bundled `DX_PROMPT_SET` value on `prompt_seq_1`…`prompt_seq_10`; slots beyond the sequence's prompt count output nothing (`None`). A first output, `selected_prompt`, carries whichever prompt is picked by the **Prompt** dropdown (or the sequence's first prompt when it's set to **All**) — handy for wiring a single slot without picking through `prompt_seq_1`…`prompt_seq_10`.
 - **Prompt Stack Splitter** takes one `DX_PROMPT_SET` input and unpacks it into `master_prmt`, `pos_prompt`, `neg_prompt`, `is_relay_prompt`, and `trail_prmt` (STRING/STRING/STRING/BOOLEAN/STRING), using the same master+positive combination rule as the WorkflowConfig nodes' prompt handling. `pos_prompt` already has the Qualifiers (trail) prompt merged onto its end; `trail_prmt` externalizes that same text on its own for wiring separately. Feed it `None` (an unused slot) and it outputs `("", "", "", False, "")`.
 
-Stacks are stored in a single file, `dx_prompt_stacks.json` inside `.dx_mgr/`, alongside the movie files. Unlike WorkflowConfig, there's no per-class node or movie-file switching — one node handles every class, and a stack's **Class** (`Wan 2.2`, `LTX 2.3`, `Images`, `Krea2`, `Flux2 Klein 9B`, `Qwen Image`, `Chroma`, `Z-Image Turbo`, `FLux 2`, `Wan Image`, `MiniMax H3`, or none) is just an informational tag you can filter by.
+Stacks are stored in a single file, `dx_prompt_stacks.json` inside `.dx_mgr/`, alongside the movie files. Unlike WorkflowConfig, there's no per-class node or movie-file switching — one node handles every class, and a stack's **Class** (`Wan 2.2`, `LTX 2.3`, `LTX 2.5`, `Images`, `Krea2`, `Flux2 Klein 9B`, `Qwen Image`, `Chroma`, `Z-Image Turbo`, `FLux 2`, `Wan Image`, `MiniMax H3`, or none) is just an informational tag you can filter by.
 
 #### Prompt Stack Manager panel
 

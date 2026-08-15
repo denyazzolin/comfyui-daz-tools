@@ -62,6 +62,31 @@
                 "flags",
                 "custom"
             ],
+            "ltx2.5": [
+                "class",
+                "version",
+                "version_label",
+                "name",
+                "created_at",
+                "updated_at",
+                "type",
+                "note",
+                "master_prompt",
+                "positive_prompt",
+                "negative_prompt",
+                "trail_prompt",
+                "unet_high",
+                "vae",
+                "audio_vae",
+                "clip",
+                "loras",
+                "width",
+                "height",
+                "steps",
+                "cfg_high",
+                "flags",
+                "custom"
+            ],
             "ImageInference": [
                 "class",
                 "version",
@@ -257,6 +282,73 @@
             "cfg_high": {
                 "value": 1.0
             }, // guidance scale (distilled models use low values near 1)
+            "flags": {
+                "flag_1": { "label": "flag 1", "value": false },
+                "flag_2": { "label": "flag 2", "value": false },
+                "flag_3": { "label": "flag 3", "value": false }
+            }, // all 3 flags are saved/applied as a whole, including their labels
+            "custom": {
+                "param_1": { "label": "param 1", "value": "" },
+                "param_2": { "label": "param 2", "value": "" }
+            } // both custom params are saved/applied as a whole, including their labels
+        },
+        {
+            "class": "ltx2.5",
+            "version": "1",
+            "version_label": "",
+            "name": "My First Preset",
+            "created_at": "2026-06-02T00:00:00",
+            "updated_at": "2026-06-02T00:00:00",
+            "type": "T2V",
+            "note": "This is a sample preset for LTX2.5",
+            "master_prompt": {
+                "text": ""
+            }, // base text combined with the positive prompt; empty is saved/applied as-is
+            "positive_prompt": {
+                "text": "",
+                "type": "smart"
+            }, // conditioning text; "type" selects smart/beats/simple/timecode/h3 prompt mode
+            "negative_prompt": {
+                "text": ""
+            }, // negative conditioning text
+            "trail_prompt": {
+                "text": ""
+            }, // qualifiers text appended to the end of the positive prompt after a blank line
+            "unet_high": {
+                "name": "",
+                "gguf": false
+            }, // standalone transformer model (no checkpoint slot on LTX2.5); "gguf" selects the GGUF unet loader
+            "vae": {
+                "name": ""
+            }, // video VAE model filename
+            "audio_vae": {
+                "name": ""
+            }, // audio VAE model filename (loaded from models/vae, same folder as the video VAE)
+            "clip": {
+                "name": ""
+            }, // single text encoder (LTXV CLIP type); LTX2.5's encoder file already carries the projection weights LTX2.3 keeps in clip_2
+            "loras": {
+                "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1 (typically the distillation LoRA)
+                "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
+                "lora_3": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 3
+                "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
+                "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5
+                "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
+                "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
+                "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
+            }, // all 8 lora slots are saved/applied as a whole, including empty ones
+            "width": {
+                "value": 1280
+            }, // output width in pixels
+            "height": {
+                "value": 720
+            }, // output height in pixels
+            "steps": {
+                "value": 30
+            }, // number of denoising steps
+            "cfg_high": {
+                "value": 6.0
+            }, // guidance scale
             "flags": {
                 "flag_1": { "label": "flag 1", "value": false },
                 "flag_2": { "label": "flag 2", "value": false },
