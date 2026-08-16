@@ -313,8 +313,6 @@ app.registerExtension(buildWorkflowConfigExtension({
   useModeLoraCount: 8,
 
   cfgInputIds:    ['#daz-cfg'],
-  // LTX renders duration * fps + 1 frames
-  durationFrameOffset: 1,
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
                    '#daz-cfg','#daz-duration','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip',

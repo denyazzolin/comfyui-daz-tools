@@ -327,8 +327,6 @@ app.registerExtension(buildWorkflowConfigExtension({
   useModeLoraCount: 8,
 
   cfgInputIds:    ['#daz-cfg'],
-  // MiniMax H3 renders duration * fps frames, with no extra first frame
-  durationFrameOffset: 0,
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
                    '#daz-cfg','#daz-duration','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip'],

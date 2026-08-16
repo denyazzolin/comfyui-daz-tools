@@ -8,8 +8,6 @@ import { api } from '../../scripts/api.js'
 //   keys: { detail, editMode, editOverlay, wrap, executedHandler, domWidget }
 //   uidPrefix, folderNames, loraLabels, loraLabelWidth, useModeLoraCount
 //   dimsClearIds, modelsClearIds
-//   durationFrameOffset: frames added on top of duration * fps by the Duration
-//     (s) field — 1 for the LTX classes, 0 (the default) everywhere else
 //   unetGgufFields: [{ select, checkbox }] — pairs whose select should swap
 //     between the 'diffusion_models' and 'unet_gguf' folder listings
 //   hideType, hideAudioPath, hideLorasBox
@@ -376,10 +374,14 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // Quick-set button looks. The selected one tracks the duration field, so
       // typing 10 lights the "10" button and typing 10.5 puts them all out.
-      const durBtn    = 'font-family:monospace;font-size:10px;padding:2px 0;width:26px;' +
-                        'border-radius:3px;cursor:pointer;flex-shrink:0;'
+      // The height matches the seconds input so the two sit on the same line.
+      const durBtn    = 'font-family:monospace;font-size:10px;padding:0;width:26px;height:20px;' +
+                        'box-sizing:border-box;border-radius:3px;cursor:pointer;flex-shrink:0;'
       const durBtnOff = `${durBtn}background:#111;color:#bbb;border:1px solid #444`
       const durBtnOn  = `${durBtn}background:#2d5c43;color:#e8f5ee;border:1px solid #54af7b`
+
+      // Every class renders duration * fps frames plus the first one.
+      const DURATION_FRAME_OFFSET = 1
 
       // Duration row for the Dimensions box — a seconds field plus quick-set
       // buttons. Duration is a UI-only convenience: it is never saved. It is
@@ -388,10 +390,10 @@ export function buildWorkflowConfigExtension(cfg) {
       function durationRow(presets) {
         return `<div style="margin-bottom:4px">
           <div style="display:flex;align-items:flex-end;gap:4px">
-            <div style="flex:1;min-width:0"><label style="${lbl}">Duration (s)</label>
+            <div style="flex-shrink:0"><label style="${lbl}">Duration (s)</label>
               <input id="daz-duration" type="number" step="0.01" min="0" value=""
-                style="width:100%;${ns}"></div>
-            <div style="display:flex;gap:3px;padding-bottom:3px">
+                style="width:62px;height:20px;box-sizing:border-box;${ns}"></div>
+            <div style="display:flex;gap:3px">
               ${presets.map(p => `<button type="button" class="daz-duration-preset" data-seconds="${p}"
                 style="${durBtnOff}">${p}</button>`).join('')}
             </div>
@@ -416,8 +418,6 @@ export function buildWorkflowConfigExtension(cfg) {
         if (!durEl || !framesEl || !fpsEl) return () => {}
 
         const btns = Array.from(panel.querySelectorAll('.daz-duration-preset'))
-        // LTX counts the first frame on top of duration * fps; WAN and H3 don't.
-        const offset = cfg.durationFrameOffset ?? 0
         // Raised by whichever side is writing. Assigning .value does not fire an
         // input event, so this cannot currently loop, but it keeps the rule —
         // a recalculated field must not trigger the opposite recalculation —
@@ -425,7 +425,7 @@ export function buildWorkflowConfigExtension(cfg) {
         let syncing  = false
 
         // frames -> seconds, capped at two decimals. A whole-second clip does
-        // not always divide back cleanly: the extra LTX frame comes back as a
+        // not always divide back cleanly: the first frame comes back as a
         // spurious xx.0y, and a fractional fps loses a part-frame to rounding —
         // 5s at 23.976 returns 5.01, 20s at 29.97 returns 19.99. All of it sits
         // within a tenth of a whole second, so a fraction that small snaps to
@@ -470,7 +470,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const secs = parseFloat(durEl.value)
           if (!isFinite(secs)) return
           syncing = true
-          framesEl.value = String(Math.round(secs * fps) + offset)
+          framesEl.value = String(Math.round(secs * fps) + DURATION_FRAME_OFFSET)
           syncing = false
         }
 

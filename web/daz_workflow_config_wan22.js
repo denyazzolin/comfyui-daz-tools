@@ -317,8 +317,6 @@ app.registerExtension(buildWorkflowConfigExtension({
   useModeLoraCount: 8,
 
   cfgInputIds:    ['#daz-cfg-high', '#daz-cfg-low'],
-  // WAN renders duration * fps frames, with no extra first frame
-  durationFrameOffset: 0,
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-split-step','#daz-seed',
                    '#daz-cfg-high','#daz-cfg-low','#daz-duration','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-unet-low','#daz-unet-low-gguf',
