@@ -112,6 +112,7 @@ LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be appli
 | **UNet / Transformer** | Standalone diffusion model, used when not loading from a checkpoint (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio |
 | **CLIP / CLIP 2** | Primary and secondary text encoders |
+| **Latent Upscaler** | Latent upscale model from `models/latent_upscale_models`, loaded through ComfyUI's **Load Latent Upscale Model** node and exposed on the `latent_upscaler` output. Optional — leave it on *none* and the output is empty |
 | **CFG** | CFG scale |
 
 You can fill in either the checkpoint path or the standalone model paths — both sets of outputs are available on the node. The node outputs a ready-to-use model stack with all enabled LoRAs already applied for both the standalone transformer and the checkpoint model.
@@ -123,6 +124,7 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 | **Transformer** | Diffusion model (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio, both loaded from `models/vae` |
 | **CLIP** | Single text encoder (loaded with the LTXV CLIP type) |
+| **Latent Upscaler** | Latent upscale model from `models/latent_upscale_models`, loaded through ComfyUI's **Load Latent Upscale Model** node and exposed on the `latent_upscaler` output. Optional — leave it on *none* and the output is empty |
 | **CFG** | CFG scale |
 
 The node outputs a ready-to-use model stack (`transformer_stack`) with all enabled LoRAs already applied.

@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 9,                   // internal schema version; do not change
+    "schema_version": 10,                  // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -27,6 +27,7 @@
         "checkpoint": { "name": "" },      // full checkpoint filename (empty for WAN)
         "clip_type": "stable_diffusion",   // NOT USED by WAN node
         "clip_2": { "name": "" },          // second text encoder slot (empty for WAN)
+        "latent_upscale": { "name": "" },  // NOT USED by WAN node (LTX2.3/LTX2.5 only)
         "shift_high": { "value": 5.0 },       // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
         "shift_low": { "value": 5.0 },        // low-pass unet timestep
         "image_path": { "path": "C:/path/to/input_image.png" }, // absolute path to input image (for I2V)
@@ -87,6 +88,7 @@
         "audio_vae": { "name": "" },       // audio VAE filename (leave empty if unused)
         "clip_2": { "name": "t5xxl_fp8_e4m3fn.safetensors" }, // primary text encoder (T5 for LTX)
         "clip": { "name": "" },            // second text encoder slot (optional)
+        "latent_upscale": { "name": "ltxv-latent-upsampler.safetensors" }, // latent upscale model, from models/latent_upscale_models (LTX2.3/LTX2.5 only)
         "clip_type": "stable_diffusion",   // NOT USED by LTX node
         "shift_high": { "value": 5.0 },       // NOT USED by LTX node
         "shift_low": { "value": 5.0 },        // NOT USED by LTX node
@@ -149,6 +151,7 @@
         "clip": { "name": "" },            // standalone text encoder (optional; overrides checkpoint CLIP)
         "clip_type": "stable_diffusion",   // clip loader type (e.g. stable_diffusion, flux2, sd3, hidream)
         "clip_2": { "name": "" },          // NOT USED by Image node
+        "latent_upscale": { "name": "" },  // NOT USED by Image node (LTX2.3/LTX2.5 only)
         "shift_high": { "value": 0.0 },       // NOT USED by Image node
         "shift_low": { "value": 0.0 },        // NOT USED by Image node
         "image_path": { "path": "" },      // input image path (for img2img workflows)

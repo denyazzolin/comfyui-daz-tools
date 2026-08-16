@@ -4,7 +4,7 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, load_latent_upscale_model,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -175,6 +175,7 @@ class WorkflowConfigLtx25:
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
         "STRING", "STRING",
         "LORA", "LORA",
+        "LATENT_UPSCALE_MODEL",
     )
     RETURN_NAMES = (
         "transformer_only",
@@ -195,6 +196,7 @@ class WorkflowConfigLtx25:
         "flag_1", "flag_2", "flag_3",
         "custom_1", "custom_2",
         "lora_7", "lora_8",
+        "latent_upscaler",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -282,6 +284,7 @@ class WorkflowConfigLtx25:
         unet_gguf = _get_gguf(active_set.get("unet_high"))
         vae_name  = _get_name(active_set.get("vae"))
         avae_name = _get_name(active_set.get("audio_vae"))
+        lups_name = _get_name(active_set.get("latent_upscale"))
 
         try:
             unet = _load_unet(unet_name, unet_gguf)
@@ -295,6 +298,10 @@ class WorkflowConfigLtx25:
             audio_vae = _load_vae(avae_name, "audio VAE")
         except Exception as e:
             raise RuntimeError(f"[DAZ TOOLS] LTX2.5: audio VAE load failed ('{avae_name}'): {e}") from e
+        try:
+            latent_upscaler = load_latent_upscale_model(lups_name)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] LTX2.5: latent upscale model load failed ('{lups_name}'): {e}") from e
 
         lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
         lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
@@ -340,4 +347,5 @@ class WorkflowConfigLtx25:
             _get_custom_value(active_set.get("custom", {}).get("param_1")),
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
             lora_7_sd, lora_8_sd,
+            latent_upscaler,
         )

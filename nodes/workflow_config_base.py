@@ -62,7 +62,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 9
+CURRENT_SCHEMA = 10
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -413,7 +413,7 @@ def _apply_set_fields(target: dict, data: dict) -> None:
             else:
                 target[f] = {"name": str(v or ""), "gguf": False}
 
-    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2", "latent_upscale"):
         if f in data:
             v = data[f]
             target[f] = v if isinstance(v, dict) else {"name": str(v or "")}
@@ -505,7 +505,7 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
             s[f] = {"name": str(v.get("name") or ""), "gguf": bool(v.get("gguf", False))}
         else:
             s[f] = {"name": str(v or ""), "gguf": False}
-    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2", "latent_upscale"):
         v = data.get(f)
         s[f] = v if isinstance(v, dict) else {"name": str(v or "")}
     v = data.get("group")
@@ -573,7 +573,7 @@ def _normalize_set(set_obj: dict) -> dict:
         elif "gguf" not in v:
             result[f] = {**v, "gguf": False}
 
-    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2", "latent_upscale"):
         v = result.get(f)
         if not isinstance(v, dict):
             result[f] = {"name": str(v or "")}
@@ -746,6 +746,38 @@ def load_unet_gguf(name: str):
             f"'ComfyUI-GGUF' custom node package (providing 'UnetLoaderGGUF') is not installed"
         )
     return gguf_cls().load_unet(unet_name=name)[0]
+
+
+# ── Latent upscale model loader ───────────────────────────────────────────────
+
+def load_latent_upscale_model(name: str):
+    """Load a latent upscale model from models/latent_upscale_models.
+
+    Delegates to ComfyUI's own 'LatentUpscaleModelLoader' node (looked up in the
+    global node registry, the same way load_unet_gguf finds UnetLoaderGGUF)
+    rather than reimplementing it: that loader sniffs the state dict to tell the
+    several latent-upsampler architectures apart, and that detection is expected
+    to keep growing as new models ship.
+    """
+    if not name:
+        return None
+    try:
+        import nodes as _comfy_nodes
+    except Exception as e:
+        raise RuntimeError(
+            f"[DAZ TOOLS] WorkflowConfig: could not access the ComfyUI node registry "
+            f"to load latent upscale model '{name}' — {e}"
+        ) from e
+    loader_cls = _comfy_nodes.NODE_CLASS_MAPPINGS.get("LatentUpscaleModelLoader")
+    if loader_cls is None:
+        raise RuntimeError(
+            f"[DAZ TOOLS] WorkflowConfig: cannot load latent upscale model '{name}' — "
+            f"this ComfyUI build has no 'LatentUpscaleModelLoader' node"
+        )
+    # V3 node class: FUNCTION resolves to the EXECUTE_NORMALIZED wrapper, whose
+    # NodeOutput is indexable just like a V1 node's plain result tuple.
+    fn = getattr(loader_cls, "FUNCTION", None) or "execute"
+    return getattr(loader_cls(), fn)(model_name=name)[0]
 
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
@@ -1088,6 +1120,11 @@ def _migrate(configs: dict, from_version: int) -> dict:
                         v.setdefault("gguf", False)
                     elif v:
                         s[f] = {"name": str(v), "gguf": False}
+    if from_version < 10:
+        for entry in configs.values():
+            for s in entry.get("sets", []):
+                if not isinstance(s.get("latent_upscale"), dict):
+                    s["latent_upscale"] = {"name": ""}
     return configs
 
 
