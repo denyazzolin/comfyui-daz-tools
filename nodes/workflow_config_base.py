@@ -776,6 +776,14 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "width", "height", "steps", "cfg_high",
         "flags", "custom",
     ],
+    "ltx2.5": [
+        "class", "version", "version_label", "name", "created_at", "updated_at",
+        "type", "note",
+        "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
+        "unet_high", "vae", "audio_vae", "clip", "loras",
+        "width", "height", "steps", "cfg_high",
+        "flags", "custom",
+    ],
     "ImageInference": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "note",

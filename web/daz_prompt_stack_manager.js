@@ -20,11 +20,11 @@ const PROMPT_TYPE_LABELS = { smart: 'Smart', beats: 'Beats', simple: 'Simple', t
 
 // Class filter display <-> stored class value
 const CLASS_FILTER_VALUES = [
-  'All', 'Wan 2.2', 'LTX 2.3', 'Images',
+  'All', 'Wan 2.2', 'LTX 2.3', 'LTX 2.5', 'Images',
   'Krea2', 'Flux2 Klein 9B', 'Qwen Image', 'Chroma', 'Z-Image Turbo', 'FLux 2', 'Wan Image', 'MiniMax H3',
 ]
 const CLASS_FILTER_TO_VALUE = {
-  'All': '', 'Wan 2.2': 'Wan2.2', 'LTX 2.3': 'ltx2.3', 'Images': 'ImageInference',
+  'All': '', 'Wan 2.2': 'Wan2.2', 'LTX 2.3': 'ltx2.3', 'LTX 2.5': 'ltx2.5', 'Images': 'ImageInference',
   'Krea2': 'krea2', 'Flux2 Klein 9B': 'klein9b', 'Qwen Image': 'qwen', 'Chroma': 'chroma',
   'Z-Image Turbo': 'zit', 'FLux 2': 'flux2', 'Wan Image': 'wan_img', 'MiniMax H3': 'm_h3',
 }
@@ -35,6 +35,7 @@ const CLASS_CREATE_OPTIONS = [
   { label: '<no class>',      value: '' },
   { label: 'Wan 2.2',         value: 'Wan2.2' },
   { label: 'LTX 2.3',         value: 'ltx2.3' },
+  { label: 'LTX 2.5',         value: 'ltx2.5' },
   { label: 'Images',          value: 'ImageInference' },
   { label: 'Krea2',           value: 'krea2' },
   { label: 'Flux2 Klein 9B',  value: 'klein9b' },
