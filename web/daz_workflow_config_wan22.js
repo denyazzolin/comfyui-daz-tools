@@ -197,7 +197,7 @@ function buildModelsHtml(folderMap, data, h) {
 // ── WAN2.2 — edit panel: Dimensions box ──────────────────────────────────────
 
 function buildDimsHtml(data, h) {
-  const { fValue, fRandomize, ns, lbl, cb } = h
+  const { fValue, fRandomize, durationRow, ns, lbl, cb } = h
   return `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
       <div><label style="${lbl}">Width</label>
@@ -226,6 +226,7 @@ function buildDimsHtml(data, h) {
       <div><label style="${lbl}">CFG Lo</label>
         <input id="daz-cfg-low" type="number" step="0.1" value="${fValue(data.cfg_low) || 0}" style="width:100%;${ns}"></div>
     </div>
+    ${durationRow([5, 7, 10, 15, 20])}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">
       <div><label style="${lbl}">Frames</label>
         <input id="daz-total-frames" type="number" value="${fValue(data.total_frames) || 0}" style="width:100%;${ns}"></div>
@@ -316,8 +317,10 @@ app.registerExtension(buildWorkflowConfigExtension({
   useModeLoraCount: 8,
 
   cfgInputIds:    ['#daz-cfg-high', '#daz-cfg-low'],
+  // WAN renders duration * fps frames, with no extra first frame
+  durationFrameOffset: 0,
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-split-step','#daz-seed',
-                   '#daz-cfg-high','#daz-cfg-low','#daz-total-frames','#daz-fps'],
+                   '#daz-cfg-high','#daz-cfg-low','#daz-duration','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-unet-low','#daz-unet-low-gguf',
                    '#daz-vae','#daz-clip','#daz-shift-high','#daz-shift-low'],
   unetGgufFields: [

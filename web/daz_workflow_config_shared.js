@@ -8,6 +8,8 @@ import { api } from '../../scripts/api.js'
 //   keys: { detail, editMode, editOverlay, wrap, executedHandler, domWidget }
 //   uidPrefix, folderNames, loraLabels, loraLabelWidth, useModeLoraCount
 //   dimsClearIds, modelsClearIds
+//   durationFrameOffset: frames added on top of duration * fps by the Duration
+//     (s) field — 1 for the LTX classes, 0 (the default) everywhere else
 //   unetGgufFields: [{ select, checkbox }] — pairs whose select should swap
 //     between the 'diffusion_models' and 'unet_gguf' folder listings
 //   hideType, hideAudioPath, hideLorasBox
@@ -372,12 +374,153 @@ export function buildWorkflowConfigExtension(cfg) {
         </div>`
       }
 
+      // Quick-set button looks. The selected one tracks the duration field, so
+      // typing 10 lights the "10" button and typing 10.5 puts them all out.
+      const durBtn    = 'font-family:monospace;font-size:10px;padding:2px 0;width:26px;' +
+                        'border-radius:3px;cursor:pointer;flex-shrink:0;'
+      const durBtnOff = `${durBtn}background:#111;color:#bbb;border:1px solid #444`
+      const durBtnOn  = `${durBtn}background:#2d5c43;color:#e8f5ee;border:1px solid #54af7b`
+
+      // Duration row for the Dimensions box — a seconds field plus quick-set
+      // buttons. Duration is a UI-only convenience: it is never saved. It is
+      // seeded from the panel's frames/fps and it drives #daz-total-frames
+      // through the handlers wired in wireDurationSync().
+      function durationRow(presets) {
+        return `<div style="margin-bottom:4px">
+          <div style="display:flex;align-items:flex-end;gap:4px">
+            <div style="flex:1;min-width:0"><label style="${lbl}">Duration (s)</label>
+              <input id="daz-duration" type="number" step="0.01" min="0" value=""
+                style="width:100%;${ns}"></div>
+            <div style="display:flex;gap:3px;padding-bottom:3px">
+              ${presets.map(p => `<button type="button" class="daz-duration-preset" data-seconds="${p}"
+                style="${durBtnOff}">${p}</button>`).join('')}
+            </div>
+          </div>
+          <div id="daz-duration-err"
+            style="color:#e06c6c;font-size:10px;line-height:13px;height:13px;overflow:hidden"></div>
+        </div>`
+      }
+
+      // Keeps the Duration (s) field and the Frames field in step. Editing
+      // duration recomputes frames; editing frames or fps recomputes duration;
+      // opening the panel seeds duration from the config that was just loaded.
+      // Returns a function that resets the row (error line and button states),
+      // for the Dimensions "clear" button; classes with no duration row get a
+      // no-op.
+      function wireDurationSync(panel) {
+        const durEl    = panel.querySelector('#daz-duration')
+        const framesEl = panel.querySelector('#daz-total-frames')
+        const fpsEl    = panel.querySelector('#daz-fps')
+        const errEl    = panel.querySelector('#daz-duration-err')
+        const setErr   = (msg) => { if (errEl) errEl.textContent = msg }
+        if (!durEl || !framesEl || !fpsEl) return () => {}
+
+        const btns = Array.from(panel.querySelectorAll('.daz-duration-preset'))
+        // LTX counts the first frame on top of duration * fps; WAN and H3 don't.
+        const offset = cfg.durationFrameOffset ?? 0
+        // Raised by whichever side is writing. Assigning .value does not fire an
+        // input event, so this cannot currently loop, but it keeps the rule —
+        // a recalculated field must not trigger the opposite recalculation —
+        // true even if these fields later start dispatching their own events.
+        let syncing  = false
+
+        // frames -> seconds, capped at two decimals. A whole-second clip does
+        // not always divide back cleanly: the extra LTX frame comes back as a
+        // spurious xx.0y, and a fractional fps loses a part-frame to rounding —
+        // 5s at 23.976 returns 5.01, 20s at 29.97 returns 19.99. All of it sits
+        // within a tenth of a whole second, so a fraction that small snaps to
+        // the whole second either side of it; anything a tenth or further in is
+        // a duration the user chose and is left alone. Counted in hundredths to
+        // keep the comparison off binary floats.
+        function framesToSeconds(frames, fps) {
+          const hundredths = Math.round((frames / fps) * 100)
+          const frac       = hundredths % 100
+          if (frac < 10) return Math.floor(hundredths / 100)
+          if (frac > 90) return Math.floor(hundredths / 100) + 1
+          return hundredths / 100
+        }
+
+        function currentFps() {
+          const fps = parseFloat(fpsEl.value)
+          if (!isFinite(fps) || fps <= 0) { setErr('FPS is not defined'); return null }
+          setErr('')
+          return fps
+        }
+
+        function syncButtons() {
+          const secs = parseFloat(durEl.value)
+          btns.forEach(btn => {
+            btn.style.cssText =
+              (isFinite(secs) && secs === parseFloat(btn.dataset.seconds)) ? durBtnOn : durBtnOff
+          })
+        }
+
+        // Cap what can be typed at two decimals. Only rewrites when a third
+        // digit shows up, and a half-typed "5." reads back as '' from a number
+        // input, so nothing here can eat a decimal point mid-entry.
+        function capDuration() {
+          const m = /^(-?\d*\.\d{2})\d+$/.exec(durEl.value)
+          if (m) durEl.value = m[1]
+        }
+
+        function durationToFrames() {
+          if (syncing) return
+          const fps = currentFps()
+          if (fps === null) return
+          const secs = parseFloat(durEl.value)
+          if (!isFinite(secs)) return
+          syncing = true
+          framesEl.value = String(Math.round(secs * fps) + offset)
+          syncing = false
+        }
+
+        function framesToDuration() {
+          if (syncing) return
+          const fps = currentFps()
+          if (fps === null) return
+          const frames = parseFloat(framesEl.value)
+          if (!isFinite(frames)) return
+          syncing = true
+          durEl.value = String(framesToSeconds(frames, fps))
+          syncing = false
+          syncButtons()
+        }
+
+        durEl.addEventListener('input', () => {
+          capDuration()
+          durationToFrames()
+          syncButtons()
+        })
+        framesEl.addEventListener('input', framesToDuration)
+        fpsEl.addEventListener('input', framesToDuration)
+
+        btns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            durEl.value = btn.dataset.seconds
+            // Re-dispatch as a real input event so the panel's delegated
+            // listener marks it dirty, the same as typing the value would.
+            durEl.dispatchEvent(new Event('input', { bubbles: true }))
+          })
+        })
+
+        // Seed from the config that was just loaded. Silent: the panel opens on
+        // whatever was saved, so a missing FPS is not an error to report yet.
+        const seedFps    = parseFloat(fpsEl.value)
+        const seedFrames = parseFloat(framesEl.value)
+        if (isFinite(seedFps) && seedFps > 0 && isFinite(seedFrames) && seedFrames > 0) {
+          durEl.value = String(framesToSeconds(seedFrames, seedFps))
+        }
+        syncButtons()
+
+        return () => { setErr(''); syncButtons() }
+      }
+
       // Helpers object passed to per-class config functions
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
         fFlagLabel, fFlagValue, fCustomValue, fNote, loraEnabled,
         row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
-        box, selOpt, selOptImg, selOptAudio, unetRow,
+        box, selOpt, selOptImg, selOptAudio, unetRow, durationRow,
         fs, ns, tas, lbl, rw, cb,
       }
 
@@ -1164,11 +1307,13 @@ export function buildWorkflowConfigExtension(cfg) {
         }
         _cfgIds.forEach(id => panel.querySelector(id)?.addEventListener('input', checkCfgWarn))
         checkCfgWarn()
+        const resetDurationRow = wireDurationSync(panel)
         panel.querySelector('#daz-dims-clear')?.addEventListener('click', () => {
           dimsClearIds.forEach(id => {
             const el = panel.querySelector(id); if (el) el.value = '0'
           })
           checkCfgWarn()
+          resetDurationRow()
           const r = panel.querySelector('#daz-seed-randomize'); if (r) r.checked = false
         })
         panel.querySelector('#daz-master-default')?.addEventListener('click', () => {
@@ -1455,6 +1600,9 @@ export function buildWorkflowConfigExtension(cfg) {
             case 'float': el.value = String(v.value ?? val ?? 0);  break
           }
         }
+        // A preset can carry fps, so re-derive Duration (s) from the frame count
+        panel.querySelector('#daz-total-frames')
+          ?.dispatchEvent(new Event('input', { bubbles: true }))
       }
 
       // ── Shared preset modal base ──────────────────────────────────────────────
@@ -1981,6 +2129,8 @@ export function buildWorkflowConfigExtension(cfg) {
             if (framesInput) framesInput.value = updates.total_frames.value
             const fpsInput = wrap.querySelector('#daz-fps')
             if (fpsInput) fpsInput.value = updates.fps.value
+            // Announce the new frame count so the Duration (s) field follows it
+            framesInput?.dispatchEvent(new Event('input', { bubbles: true }))
             // Do not save immediately — let the user decide via Save / +Version
             node._dazEditPanelDirty = true
           },
@@ -2261,6 +2411,8 @@ export function buildWorkflowConfigExtension(cfg) {
           if (framesInput) framesInput.value = fValue(detail.total_frames)
           const fpsInput = wrap.querySelector('#daz-fps')
           if (fpsInput) fpsInput.value = fValue(detail.fps)
+          // Announce the new frame count so the Duration (s) field follows it
+          framesInput?.dispatchEvent(new Event('input', { bubbles: true }))
           node._dazEditPanelDirty = false
           nextFn()
         })

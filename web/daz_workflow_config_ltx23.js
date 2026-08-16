@@ -218,7 +218,7 @@ function buildModelsHtml(folderMap, data, h) {
 // ── LTX2.3 — edit panel: Dimensions box ──────────────────────────────────────
 
 function buildDimsHtml(data, h) {
-  const { fValue, fRandomize, ns, lbl, cb } = h
+  const { fValue, fRandomize, durationRow, ns, lbl, cb } = h
   return `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
       <div><label style="${lbl}">Width</label>
@@ -247,6 +247,7 @@ function buildDimsHtml(data, h) {
         <input id="daz-cfg" type="number" step="0.1" value="${fValue(data.cfg_high) || 0}" style="width:100%;${ns}"></div>
       <div></div>
     </div>
+    ${durationRow([5, 7, 10, 15, 20])}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">
       <div><label style="${lbl}">Frames</label>
         <input id="daz-total-frames" type="number" value="${fValue(data.total_frames) || 0}" style="width:100%;${ns}"></div>
@@ -336,8 +337,10 @@ app.registerExtension(buildWorkflowConfigExtension({
   useModeLoraCount: 8,
 
   cfgInputIds:    ['#daz-cfg'],
+  // LTX renders duration * fps + 1 frames
+  durationFrameOffset: 1,
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
-                   '#daz-cfg','#daz-total-frames','#daz-fps'],
+                   '#daz-cfg','#daz-duration','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-checkpoint','#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip','#daz-clip-2',
                    '#daz-latent-upscale'],
   unetGgufFields: [

@@ -83,6 +83,7 @@ All five nodes share a common set of configurable fields:
 | **Width / Height** | Output frame dimensions |
 | **Steps** | Number of denoising steps |
 | **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
+| **Duration (s)** | Editor-only helper on the WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 nodes: type a length in seconds — or hit one of the **5 / 7 / 10 / 15 / 20** quick buttons (no 20 on MiniMax H3) — and **Total frames** is recalculated as `duration × fps` (LTX2.3 and LTX2.5 add the extra first frame, `duration × fps + 1`). The quick button matching the current duration stays highlighted; type anything else and none of them are. Editing Total frames or FPS updates Duration back the other way, as `frames ÷ fps` capped at two decimals, snapped to a whole second when it lands within a tenth of one — a whole-second clip does not always divide back cleanly (LTX's extra frame returns 5.04, and 20s at 29.97 fps returns 19.99), and that noise is not worth showing. Duration is not stored in the config: it is derived from the saved frames and FPS every time the editor opens. FPS must be set first; with FPS at zero the field reports *FPS is not defined* and leaves the frame count alone |
 | **Total frames / FPS** | Video length and playback speed |
 | **Master prompt** | Base text combined with the positive prompt (see Prompts below) |
 | **Positive / Negative prompts** | Conditioning text sent to the sampler |
