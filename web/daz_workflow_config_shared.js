@@ -388,18 +388,17 @@ export function buildWorkflowConfigExtension(cfg) {
       // seeded from the panel's frames/fps and it drives #daz-total-frames
       // through the handlers wired in wireDurationSync().
       function durationRow(presets) {
-        return `<div style="margin-bottom:4px">
-          <div style="display:flex;align-items:flex-end;gap:4px">
-            <div style="flex-shrink:0"><label style="${lbl}">Duration (s)</label>
-              <input id="daz-duration" type="number" step="0.01" min="0" value=""
-                style="width:62px;height:20px;box-sizing:border-box;${ns}"></div>
-            <div style="display:flex;gap:3px">
-              ${presets.map(p => `<button type="button" class="daz-duration-preset" data-seconds="${p}"
-                style="${durBtnOff}">${p}</button>`).join('')}
-            </div>
+        return `<div style="display:flex;align-items:flex-end;gap:4px;margin-bottom:4px">
+          <div style="flex-shrink:0"><label style="${lbl}">Duration (s)</label>
+            <input id="daz-duration" type="number" step="0.01" min="0" value=""
+              style="width:62px;height:20px;box-sizing:border-box;${ns}"></div>
+          <div style="display:flex;gap:3px">
+            ${presets.map(p => `<button type="button" class="daz-duration-preset" data-seconds="${p}"
+              style="${durBtnOff}">${p}</button>`).join('')}
           </div>
           <div id="daz-duration-err"
-            style="color:#e06c6c;font-size:10px;line-height:13px;height:13px;overflow:hidden"></div>
+            style="flex:1;min-width:0;color:#e06c6c;font-size:10px;line-height:20px;
+                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
         </div>`
       }
 
