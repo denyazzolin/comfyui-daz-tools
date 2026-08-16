@@ -782,10 +782,11 @@ def load_latent_upscale_model(name: str):
 
 # ── Preset file I/O ───────────────────────────────────────────────────────────
 
-PRESET_SCHEMA = 4
+PRESET_SCHEMA = 5
 _PRESET_SKIP_APPLY  = {"class", "name", "version", "version_label", "created_at", "updated_at"}
-_PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
-_PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
+_PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae",
+                       "latent_upscale"}
+_PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step", "total_frames"}
 _PRESET_FLOAT_FIELDS = {"cfg_high", "cfg_low", "fps", "shift_high", "shift_low"}
 
 _PRESET_TEXT_FIELDS = {"master_prompt", "negative_prompt", "trail_prompt"}
@@ -798,22 +799,26 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "unet_high", "unet_low", "vae", "clip", "loras",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
+        "total_frames", "fps",
         "flags", "custom",
     ],
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
         "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
-        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
+        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip",
+        "latent_upscale", "loras",
         "width", "height", "steps", "cfg_high",
+        "total_frames", "fps",
         "flags", "custom",
     ],
     "ltx2.5": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
         "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
-        "unet_high", "vae", "audio_vae", "clip", "loras",
+        "unet_high", "vae", "audio_vae", "clip", "latent_upscale", "loras",
         "width", "height", "steps", "cfg_high",
+        "total_frames", "fps",
         "flags", "custom",
     ],
     "ImageInference": [
@@ -830,6 +835,7 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "unet_high", "vae", "audio_vae", "clip", "loras",
         "width", "height", "steps", "cfg_high",
+        "total_frames", "fps",
         "flags", "custom",
     ],
 }
@@ -896,10 +902,11 @@ def _load_preset_file(path: str) -> tuple[list, dict]:
 
 def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[list, dict]:
     """Migrate a preset file's presets list and profiles dict forward. Additive only.
-    v3 → v4 (trail_prompt field, and any missing class profile such as m_h3) is
-    handled by the always-on _backfill_preset_fields instead of here, since that
-    also covers files that already claim v4 but are missing the fields (hand-edited,
-    or created between schema bumps). Kept in the same shape as
+    v3 → v4 (trail_prompt field, and any missing class profile such as m_h3) and
+    v4 → v5 (total_frames/fps on the video classes, latent_upscale on the LTX ones)
+    are handled by the always-on _backfill_preset_fields instead of here, since that
+    also covers files that already claim the current version but are missing the
+    fields (hand-edited, or created between schema bumps). Kept in the same shape as
     prompt_stack_base._migrate so future version-specific migrations have a place
     to land."""
     if from_version < 2:
@@ -936,17 +943,26 @@ def _backfill_preset_fields(presets: list, profiles: dict) -> tuple[list, dict]:
     so it also repairs files that already claim the current version but are missing
     fields (hand-edited, or created between schema bumps). Also backfills a whole
     missing class profile (e.g. a class added after the preset file was first
-    created), not just missing fields on an existing profile."""
+    created), not just missing fields on an existing profile.
+
+    Only the profile lists are completed. A preset that predates a field simply
+    does not carry it, and both _apply_preset_to_set and the panel's
+    applyPresetToPanel skip fields a preset is missing, so it leaves whatever the
+    config already had alone — which is the right answer for a preset saved before
+    the field existed. The prompt fields are the exception: they are given an
+    explicit empty value so that applying an old preset clears the prompts rather
+    than leaving the previous set's text behind."""
     for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
         profile = profiles.get(cls)
         if not isinstance(profile, list):
             profile = list(default_profile)
             profiles[cls] = profile
+        for field in default_profile:
+            if field not in profile:
+                profile.append(field)
         for field in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
             if field not in default_profile:
                 continue
-            if field not in profile:
-                profile.append(field)
             default_val = {"text": "", "type": "smart"} if field == "positive_prompt" else {"text": ""}
             for preset in presets:
                 if preset.get("class") == cls and field not in preset:

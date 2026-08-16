@@ -244,6 +244,10 @@ For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets also carry the full LoRA set
 
 Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes. Presets carry the Qualifiers (trail) prompt alongside Master/Positive/Negative for every node class.
 
+For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets carry **Total frames** and **FPS** as well — applying one re-derives the editor's **Duration (s)** from them. LTX2.3 and LTX2.5 presets additionally carry the **Latent upscale** model. The Image node has no frame count or FPS, so its presets carry neither.
+
+Presets saved before these fields existed simply do not include them, and applying such a preset leaves the corresponding fields in the panel untouched rather than zeroing them.
+
 Three buttons in the edit panel footer give access to the library:
 
 **Apply Preset** — opens a browser showing all saved presets for this node class (every class except Image includes a type filter). Select a preset and click **Apply** to write its values into the current edit panel. When you create a new config and presets already exist for that class, this browser opens automatically.
