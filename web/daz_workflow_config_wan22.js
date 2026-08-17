@@ -197,14 +197,10 @@ function buildModelsHtml(folderMap, data, h) {
 // ── WAN2.2 — edit panel: Dimensions box ──────────────────────────────────────
 
 function buildDimsHtml(data, h) {
-  const { fValue, fRandomize, ns, lbl, cb } = h
+  const { fValue, fRandomize, durationRow, dimensionsRows, sizeRow, ns, lbl, cb } = h
   return `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
-      <div><label style="${lbl}">Width</label>
-        <input id="daz-width" type="number" value="${fValue(data.width) || 0}" style="width:100%;${ns}"></div>
-      <div><label style="${lbl}">Height</label>
-        <input id="daz-height" type="number" value="${fValue(data.height) || 0}" style="width:100%;${ns}"></div>
-    </div>
+    ${dimensionsRows(data)}
+    ${sizeRow(data)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
       <div><label style="${lbl}">Steps</label>
         <input id="daz-steps" type="number" value="${fValue(data.steps) || 0}" style="width:100%;${ns}"></div>
@@ -226,6 +222,7 @@ function buildDimsHtml(data, h) {
       <div><label style="${lbl}">CFG Lo</label>
         <input id="daz-cfg-low" type="number" step="0.1" value="${fValue(data.cfg_low) || 0}" style="width:100%;${ns}"></div>
     </div>
+    ${durationRow([5, 7, 10, 15, 20])}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">
       <div><label style="${lbl}">Frames</label>
         <input id="daz-total-frames" type="number" value="${fValue(data.total_frames) || 0}" style="width:100%;${ns}"></div>
@@ -269,6 +266,13 @@ function buildPayload(wrap) {
     negative_prompt: { text: wrap.querySelector('#daz-negative-prompt')?.value ?? '' },
     trail_prompt:    { text: wrap.querySelector('#daz-trail-prompt')?.value ?? '' },
     filename:        { file: wrap.querySelector('#daz-filename')?.value         ?? '' },
+    dimensions: {
+      use_image: wrap.querySelector('#daz-dim-use-image')?.checked ?? false,
+      scale: {
+        mode:  wrap.querySelector('#daz-dim-scale-mode')?.value ?? 'none',
+        value: parseFloat(wrap.querySelector('#daz-dim-scale-value')?.value ?? '1') || 1.0,
+      },
+    },
     width:        { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
     height:       { value: parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10) },
     steps:        { value: parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10) },
@@ -317,7 +321,7 @@ app.registerExtension(buildWorkflowConfigExtension({
 
   cfgInputIds:    ['#daz-cfg-high', '#daz-cfg-low'],
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-split-step','#daz-seed',
-                   '#daz-cfg-high','#daz-cfg-low','#daz-total-frames','#daz-fps'],
+                   '#daz-cfg-high','#daz-cfg-low','#daz-duration','#daz-total-frames','#daz-fps'],
   modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-unet-low','#daz-unet-low-gguf',
                    '#daz-vae','#daz-clip','#daz-shift-high','#daz-shift-low'],
   unetGgufFields: [

@@ -1,6 +1,6 @@
 {
     "_meta": {
-        "preset_schema_version": 4, // internal schema version; do not change
+        "preset_schema_version": 6, // internal schema version; do not change
         "name": "General Presets", // display name for this preset file
         "version": "1.0", // file format version string
         "created_at": "2026-06-02T00:00:00", // file creation timestamp (ISO 8601)
@@ -24,6 +24,7 @@
                 "vae",
                 "clip",
                 "loras",
+                "dimensions",
                 "width",
                 "height",
                 "shift_high",
@@ -32,6 +33,8 @@
                 "split_step",
                 "cfg_high",
                 "cfg_low",
+                "total_frames",
+                "fps",
                 "flags",
                 "custom"
             ],
@@ -54,11 +57,15 @@
                 "audio_vae",
                 "clip_2",
                 "clip",
+                "latent_upscale",
                 "loras",
+                "dimensions",
                 "width",
                 "height",
                 "steps",
                 "cfg_high",
+                "total_frames",
+                "fps",
                 "flags",
                 "custom"
             ],
@@ -79,11 +86,15 @@
                 "vae",
                 "audio_vae",
                 "clip",
+                "latent_upscale",
                 "loras",
+                "dimensions",
                 "width",
                 "height",
                 "steps",
                 "cfg_high",
+                "total_frames",
+                "fps",
                 "flags",
                 "custom"
             ],
@@ -129,10 +140,13 @@
                 "audio_vae",
                 "clip",
                 "loras",
+                "dimensions",
                 "width",
                 "height",
                 "steps",
                 "cfg_high",
+                "total_frames",
+                "fps",
                 "flags",
                 "custom"
             ]
@@ -191,6 +205,13 @@
             "shift_low": {
                 "value": 5.0
             }, // low-pass unet timestep
+            "dimensions": {
+                "use_image": false, // true takes the width/height from the reference image
+                "scale": {
+                    "mode": "none", // none | factor | longest | fit
+                    "value": 1.0
+                }
+            }, // how the reference image is resized and what the width/height outputs report
             "width": {
                 "value": 1280
             }, // output width in pixels
@@ -209,6 +230,12 @@
             "cfg_low": {
                 "value": 3.5
             }, // guidance scale for the low-pass unet
+            "total_frames": {
+                "value": 81
+            }, // clip length in frames; the editor's Duration (s) field is derived from this and fps, never stored
+            "fps": {
+                "value": 16.0
+            }, // frames per second
             "flags": {
                 "flag_1": { "label": "flag 1", "value": false }, // three boolean toggles with configurable labels
                 "flag_2": { "label": "flag 2", "value": false },
@@ -260,6 +287,9 @@
             "clip": {
                 "name": ""
             }, // second text encoder slot (optional)
+            "latent_upscale": {
+                "name": ""
+            }, // latent upscale model from models/latent_upscale_models (leave empty if unused)
             "loras": {
                 "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1 (typically the distillation LoRA)
                 "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
@@ -270,6 +300,13 @@
                 "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // NOT USED by LTX node
                 "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // NOT USED by LTX node
             }, // all 8 lora slots are saved/applied as a whole, including empty ones
+            "dimensions": {
+                "use_image": false, // true takes the width/height from the reference image
+                "scale": {
+                    "mode": "none", // none | factor | longest | fit
+                    "value": 1.0
+                }
+            }, // how the reference image is resized and what the width/height outputs report
             "width": {
                 "value": 768
             }, // output width in pixels
@@ -282,6 +319,12 @@
             "cfg_high": {
                 "value": 1.0
             }, // guidance scale (distilled models use low values near 1)
+            "total_frames": {
+                "value": 121
+            }, // clip length in frames; the editor's Duration (s) field is derived from this and fps, never stored
+            "fps": {
+                "value": 24.0
+            }, // frames per second
             "flags": {
                 "flag_1": { "label": "flag 1", "value": false },
                 "flag_2": { "label": "flag 2", "value": false },
@@ -327,6 +370,9 @@
             "clip": {
                 "name": ""
             }, // single text encoder (LTXV CLIP type); LTX2.5's encoder file already carries the projection weights LTX2.3 keeps in clip_2
+            "latent_upscale": {
+                "name": ""
+            }, // latent upscale model from models/latent_upscale_models (leave empty if unused)
             "loras": {
                 "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1 (typically the distillation LoRA)
                 "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
@@ -337,6 +383,13 @@
                 "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
                 "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
             }, // all 8 lora slots are saved/applied as a whole, including empty ones
+            "dimensions": {
+                "use_image": false, // true takes the width/height from the reference image
+                "scale": {
+                    "mode": "none", // none | factor | longest | fit
+                    "value": 1.0
+                }
+            }, // how the reference image is resized and what the width/height outputs report
             "width": {
                 "value": 1280
             }, // output width in pixels
@@ -349,6 +402,12 @@
             "cfg_high": {
                 "value": 6.0
             }, // guidance scale
+            "total_frames": {
+                "value": 121
+            }, // clip length in frames; the editor's Duration (s) field is derived from this and fps, never stored
+            "fps": {
+                "value": 24.0
+            }, // frames per second
             "flags": {
                 "flag_1": { "label": "flag 1", "value": false },
                 "flag_2": { "label": "flag 2", "value": false },
@@ -461,6 +520,13 @@
                 "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
                 "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
             }, // all 8 lora slots are saved/applied as a whole, including empty ones
+            "dimensions": {
+                "use_image": false, // true takes the width/height from the reference image
+                "scale": {
+                    "mode": "none", // none | factor | longest | fit
+                    "value": 1.0
+                }
+            }, // how the reference image is resized and what the width/height outputs report
             "width": {
                 "value": 1280
             }, // output width in pixels
@@ -473,6 +539,12 @@
             "cfg_high": {
                 "value": 6.0
             }, // guidance scale
+            "total_frames": {
+                "value": 121
+            }, // clip length in frames; the editor's Duration (s) field is derived from this and fps, never stored
+            "fps": {
+                "value": 24.0
+            }, // frames per second
             "flags": {
                 "flag_1": { "label": "flag 1", "value": false },
                 "flag_2": { "label": "flag 2", "value": false },

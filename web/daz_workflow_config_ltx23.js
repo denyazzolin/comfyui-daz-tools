@@ -51,6 +51,7 @@ function renderDetailHtml(data, h, extra = {}) {
     ${row('Audio VAE',   disp(fName(data.audio_vae)))}
     ${row('CLIP',        disp(fName(data.clip_2)))}
     ${row('CLIP 2',      disp(fName(data.clip)))}
+    ${row('Latent Upscaler', disp(fName(data.latent_upscale)))}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
@@ -170,6 +171,7 @@ function updateOutputLabels(node, data, h) {
     fFlagLabel(data.custom?.param_2, 'param 2') + ': ' + fCustomValue(data.custom?.param_2),
     loraEnabled(loras.lora_7) ? fName(loras.lora_7) : '',
     loraEnabled(loras.lora_8) ? fName(loras.lora_8) : '',
+    fName(data.latent_upscale),
   ]
   values.forEach((val, i) => {
     if (!node.outputs[i]) return
@@ -187,6 +189,7 @@ function buildModelsHtml(folderMap, data, h) {
   const unetAllFiles    = [...(folderMap.diffusion_models || []), ...(folderMap.unet_gguf || [])].sort((a, b) => a.localeCompare(b))
   const vaeFiles        = folderMap.vae              || []
   const clipFiles       = folderMap.text_encoders    || []
+  const latUpsFiles     = folderMap.latent_upscale_models || []
   return `
     <div style="${rw}"><label style="${lbl}">Checkpoint</label>
       <select id="daz-checkpoint" style="${fs}">${selOpt(checkpointFiles, fName(data.checkpoint))}</select>
@@ -204,6 +207,9 @@ function buildModelsHtml(folderMap, data, h) {
     <div style="${rw}"><label style="${lbl}">CLIP 2</label>
       <select id="daz-clip" style="${fs}">${selOpt(clipFiles, fName(data.clip))}</select>
     </div>
+    <div style="${rw}"><label style="${lbl}">Latent Upscaler</label>
+      <select id="daz-latent-upscale" style="${fs}">${selOpt(latUpsFiles, fName(data.latent_upscale))}</select>
+    </div>
     <div style="display:flex;justify-content:flex-end">
       <button id="daz-models-clear" style="${cb}">clear</button>
     </div>`
@@ -212,14 +218,10 @@ function buildModelsHtml(folderMap, data, h) {
 // ── LTX2.3 — edit panel: Dimensions box ──────────────────────────────────────
 
 function buildDimsHtml(data, h) {
-  const { fValue, fRandomize, ns, lbl, cb } = h
+  const { fValue, fRandomize, durationRow, dimensionsRows, sizeRow, ns, lbl, cb } = h
   return `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
-      <div><label style="${lbl}">Width</label>
-        <input id="daz-width" type="number" value="${fValue(data.width) || 0}" style="width:100%;${ns}"></div>
-      <div><label style="${lbl}">Height</label>
-        <input id="daz-height" type="number" value="${fValue(data.height) || 0}" style="width:100%;${ns}"></div>
-    </div>
+    ${dimensionsRows(data)}
+    ${sizeRow(data)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
       <div><label style="${lbl}">Steps</label>
         <input id="daz-steps" type="number" value="${fValue(data.steps) || 0}" style="width:100%;${ns}"></div>
@@ -241,6 +243,7 @@ function buildDimsHtml(data, h) {
         <input id="daz-cfg" type="number" step="0.1" value="${fValue(data.cfg_high) || 0}" style="width:100%;${ns}"></div>
       <div></div>
     </div>
+    ${durationRow([5, 7, 10, 15, 20])}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">
       <div><label style="${lbl}">Frames</label>
         <input id="daz-total-frames" type="number" value="${fValue(data.total_frames) || 0}" style="width:100%;${ns}"></div>
@@ -271,6 +274,7 @@ function buildPayload(wrap) {
     audio_vae:       { name:  wrap.querySelector('#daz-audio-vae')?.value        ?? '' },
     clip_2:          { name:  wrap.querySelector('#daz-clip-2')?.value           ?? '' },
     clip:            { name:  wrap.querySelector('#daz-clip')?.value             ?? '' },
+    latent_upscale:  { name:  wrap.querySelector('#daz-latent-upscale')?.value   ?? '' },
     image_path:      { path:  wrap.querySelector('#daz-image-path')?.value       ?? '' },
     audio_path:      { path:  wrap.querySelector('#daz-audio-path')?.value       ?? '' },
     loras,
@@ -283,6 +287,13 @@ function buildPayload(wrap) {
     negative_prompt: { text:  wrap.querySelector('#daz-negative-prompt')?.value  ?? '' },
     trail_prompt:    { text:  wrap.querySelector('#daz-trail-prompt')?.value    ?? '' },
     filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '' },
+    dimensions: {
+      use_image: wrap.querySelector('#daz-dim-use-image')?.checked ?? false,
+      scale: {
+        mode:  wrap.querySelector('#daz-dim-scale-mode')?.value ?? 'none',
+        value: parseFloat(wrap.querySelector('#daz-dim-scale-value')?.value ?? '1') || 1.0,
+      },
+    },
     width:           { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
     height:          { value: parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10) },
     steps:           { value: parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10) },
@@ -310,7 +321,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   extName:      'daz.workflowConfigLtx23',
   nodeDataName: 'WorkflowConfigLtx23',
   CLASS:        'ltx2.3',
-  PANEL_H: 763, NODE_W: 460, NODE_H: 975,
+  PANEL_H: 786, NODE_W: 460, NODE_H: 998,
 
   keys: {
     detail:          '_dazLtx23Detail',
@@ -322,15 +333,17 @@ app.registerExtension(buildWorkflowConfigExtension({
   },
 
   uidPrefix:        'l',
-  folderNames:      ['checkpoints', 'diffusion_models', 'unet_gguf', 'vae', 'text_encoders', 'input', 'loras'],
+  folderNames:      ['checkpoints', 'diffusion_models', 'unet_gguf', 'vae', 'text_encoders',
+                     'latent_upscale_models', 'input', 'loras'],
   loraLabels:       ['Lora 1','Lora 2','Lora 3','Lora 4','Lora 5','Lora 6','Lora 7','Lora 8'],
   loraLabelWidth:   '44px',
   useModeLoraCount: 8,
 
   cfgInputIds:    ['#daz-cfg'],
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
-                   '#daz-cfg','#daz-total-frames','#daz-fps'],
-  modelsClearIds: ['#daz-checkpoint','#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip','#daz-clip-2'],
+                   '#daz-cfg','#daz-duration','#daz-total-frames','#daz-fps'],
+  modelsClearIds: ['#daz-checkpoint','#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip','#daz-clip-2',
+                   '#daz-latent-upscale'],
   unetGgufFields: [
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],

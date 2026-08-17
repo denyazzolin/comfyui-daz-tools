@@ -372,12 +372,634 @@ export function buildWorkflowConfigExtension(cfg) {
         </div>`
       }
 
+      // Quick-set button looks. The selected one tracks the duration field, so
+      // typing 10 lights the "10" button and typing 10.5 puts them all out.
+      // The height matches the seconds input so the two sit on the same line.
+      const durBtn    = 'font-family:monospace;font-size:10px;padding:0;width:26px;height:20px;' +
+                        'box-sizing:border-box;border-radius:3px;cursor:pointer;flex-shrink:0;'
+      const durBtnOff = `${durBtn}background:#111;color:#bbb;border:1px solid #444`
+      const durBtnOn  = `${durBtn}background:#2d5c43;color:#e8f5ee;border:1px solid #54af7b`
+
+      // Every class renders duration * fps frames plus the first one.
+      const DURATION_FRAME_OFFSET = 1
+
+      // Duration row for the Dimensions box — a seconds field plus quick-set
+      // buttons. Duration is a UI-only convenience: it is never saved. It is
+      // seeded from the panel's frames/fps and it drives #daz-total-frames
+      // through the handlers wired in wireDurationSync().
+      function durationRow(presets) {
+        return `<div style="display:flex;align-items:flex-end;gap:4px;margin-bottom:4px">
+          <div style="flex-shrink:0"><label style="${lbl}">Duration (s)</label>
+            <input id="daz-duration" type="number" step="0.01" min="0" value=""
+              style="width:62px;height:20px;box-sizing:border-box;${ns}"></div>
+          <div style="display:flex;gap:3px">
+            ${presets.map(p => `<button type="button" class="daz-duration-preset" data-seconds="${p}"
+              style="${durBtnOff}">${p}</button>`).join('')}
+          </div>
+          <div id="daz-duration-err"
+            style="flex:1;min-width:0;color:#e06c6c;font-size:10px;line-height:20px;
+                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        </div>`
+      }
+
+      // Width and Height for the Dimensions box, shared by every class. The two
+      // boxes are only as wide as a four-digit size needs, which leaves the rest
+      // of the row for the Sizing button.
+      function sizeRow(data) {
+        const num = `width:62px;height:20px;box-sizing:border-box;${ns}`
+        return `<div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:4px">
+          <div style="flex-shrink:0"><label style="${lbl}">Width</label>
+            <input id="daz-width" type="number" value="${fValue(data.width) || 0}" style="${num}"></div>
+          <div style="flex-shrink:0"><label style="${lbl}">Height</label>
+            <input id="daz-height" type="number" value="${fValue(data.height) || 0}" style="${num}"></div>
+          <button type="button" id="daz-sizing-btn" style="${cb};height:20px">sizing</button>
+          <span id="daz-size-warn" style="color:#d8b13a;font-size:10px;line-height:20px;
+                white-space:nowrap;display:none">(!) not /32</span>
+        </div>`
+      }
+
+      // ── Sizing dialog ─────────────────────────────────────────────────────
+      // Curated width x height pairs, five per aspect ratio per divisor. This is
+      // a fixed table rather than something computed: rounding an aspect ratio to
+      // a divisor has several defensible answers, and these are the chosen ones.
+      // Ordered the way the dialog lays the panels out, three to a row.
+      const SIZING_RATIOS = [
+        ['1:1',   1,  1],
+        ['16:9', 16,  9],
+        ['9:16',  9, 16],
+        ['3:2',   3,  2],
+        ['2:3',   2,  3],
+        ['4:3',   4,  3],
+        ['3:4',   3,  4],
+      ]
+      const SIZING_DIVISORS  = [8, 16, 32, 64]
+      const SIZING_DEF_RATIO = '9:16'
+      const SIZING_DEF_DIV   = 32
+
+      const SIZING_TABLE = {
+        '1:1': {
+           8: [[576, 576], [624, 624], [832, 832], [960, 960], [1280, 1280]],
+          16: [[576, 576], [624, 624], [832, 832], [960, 960], [1280, 1280]],
+          32: [[576, 576], [608, 608], [832, 832], [960, 960], [1280, 1280]],
+          64: [[576, 576], [640, 640], [832, 832], [960, 960], [1280, 1280]],
+        },
+        '16:9': {
+           8: [[608, 352], [704, 400], [832, 480], [1024, 576], [1280, 720]],
+          16: [[608, 352], [704, 400], [832, 480], [1024, 576], [1280, 720]],
+          32: [[608, 352], [704, 384], [832, 480], [1024, 576], [1280, 704]],
+          64: [[640, 384], [704, 384], [832, 512], [1024, 576], [1280, 704]],
+        },
+        '9:16': {
+           8: [[352, 608], [400, 704], [480, 832], [576, 1024], [720, 1280]],
+          16: [[352, 608], [400, 704], [480, 832], [576, 1024], [720, 1280]],
+          32: [[352, 608], [384, 704], [480, 832], [576, 1024], [704, 1280]],
+          64: [[384, 640], [384, 704], [512, 832], [576, 1024], [704, 1280]],
+        },
+        '3:2': {
+           8: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
+          16: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
+          32: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
+          64: [[576, 384], [768, 512], [960, 640], [1152, 768], [1536, 1024]],
+        },
+        '2:3': {
+           8: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
+          16: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
+          32: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
+          64: [[384, 576], [512, 768], [640, 960], [768, 1152], [1024, 1536]],
+        },
+        // The /64 second entry differs from the source list, which repeated the
+        // first entry there and so offered only four distinct sizes.
+        '4:3': {
+           8: [[512, 384], [608, 456], [800, 600], [1024, 768], [1216, 912]],
+          16: [[512, 384], [576, 432], [768, 576], [1024, 768], [1216, 912]],
+          32: [[512, 384], [608, 448], [768, 576], [1024, 768], [1216, 896]],
+          64: [[512, 384], [704, 512], [768, 576], [1024, 768], [1280, 960]],
+        },
+        // The same correction as 4:3, mirrored.
+        '3:4': {
+           8: [[384, 512], [456, 608], [600, 800], [768, 1024], [912, 1216]],
+          16: [[384, 512], [432, 576], [576, 768], [768, 1024], [912, 1216]],
+          32: [[384, 512], [448, 608], [576, 768], [768, 1024], [896, 1216]],
+          64: [[384, 512], [512, 704], [576, 768], [768, 1024], [960, 1280]],
+        },
+      }
+
+      // Which ratio / divisor / set a width x height came from, or null. The
+      // default divisor is tried first because several sets repeat across
+      // divisors, and 32 is the one the dialog would otherwise open on.
+      function sizingLookup(w, h) {
+        if (!(w > 0 && h > 0)) return null
+        const divs = [SIZING_DEF_DIV, ...SIZING_DIVISORS.filter(d => d !== SIZING_DEF_DIV)]
+        for (const [key] of SIZING_RATIOS) {
+          for (const d of divs) {
+            const idx = SIZING_TABLE[key][d].findIndex(([pw, ph]) => pw === w && ph === h)
+            if (idx >= 0) return { ratio: key, div: d, idx }
+          }
+        }
+        return null
+      }
+
+      // A filled rectangle in the ratio's own proportions, fitted into a fixed
+      // box so the panels stay aligned however tall or wide the ratio is.
+      function sizingSwatch(rw, rh) {
+        const w = rw >= rh ? 20 : Math.round(20 * rw / rh)
+        const h = rh >= rw ? 20 : Math.round(20 * rh / rw)
+        return `<span style="display:inline-flex;width:22px;height:22px;flex-shrink:0;
+                             align-items:center;justify-content:center">
+          <span style="width:${w}px;height:${h}px;background:#2a5080;border:1px solid #4a7ab0;
+                       border-radius:2px"></span></span>`
+      }
+
+      // The Sizing dialog behind the button on the Width/Height row. It opens on
+      // whatever the panel's current size matches, or on the defaults when it
+      // matches nothing, and only OK and Cancel close it.
+      function openSizingModal(panel) {
+        const widthEl  = panel.querySelector('#daz-width')
+        const heightEl = panel.querySelector('#daz-height')
+        const found    = sizingLookup(parseInt(widthEl?.value, 10), parseInt(heightEl?.value, 10))
+        const sel      = found ?? { ratio: SIZING_DEF_RATIO, div: SIZING_DEF_DIV, idx: 0 }
+
+        const secLbl = 'color:#888;font-size:10px;display:block;margin-bottom:5px'
+        const rule   = 'border:0;border-top:1px solid #444;margin:11px 0'
+        const bGray  = 'font-family:monospace;font-size:11px;padding:4px 14px;border-radius:3px;' +
+                       'background:#444;color:#ccc;border:1px solid #666;cursor:pointer'
+        const bGreen = 'font-family:monospace;font-size:11px;padding:4px 14px;border-radius:3px;' +
+                       'background:#1a5c35;color:#cde;border:1px solid #2a8050;cursor:pointer'
+
+        const mo = document.createElement('div')
+        mo.style.cssText =
+          'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10001;' +
+          'display:flex;align-items:center;justify-content:center'
+        const mb = document.createElement('div')
+        mb.style.cssText =
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px;' +
+          'padding:16px 18px;width:326px;font-family:monospace'
+        mo.appendChild(mb)
+        document.body.appendChild(mo)
+        // No backdrop-click and no Escape handler on purpose: OK and Cancel are
+        // the only ways out. Keys are swallowed so none reach the graph canvas.
+        mo.addEventListener('keydown', e => e.stopPropagation())
+
+        mb.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 11px;font-weight:bold">Sizing</p>
+          <hr style="${rule}">
+          <label style="${secLbl}">Aspect ratio:</label>
+          <div id="daz-sz-ratios" style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px"></div>
+          <hr style="${rule}">
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="color:#888;font-size:10px;flex-shrink:0">Divisible by:</label>
+            <div id="daz-sz-divs" style="display:flex;gap:4px"></div>
+          </div>
+          <hr style="${rule}">
+          <div id="daz-sz-list" style="display:flex;flex-direction:column;gap:3px"></div>
+          <hr style="${rule}">
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" id="daz-sz-cancel" style="${bGray}">Cancel</button>
+            <button type="button" id="daz-sz-ok" style="${bGreen}">OK</button>
+          </div>`
+
+        const ratiosEl = mb.querySelector('#daz-sz-ratios')
+        const divsEl   = mb.querySelector('#daz-sz-divs')
+        const listEl   = mb.querySelector('#daz-sz-list')
+
+        const pairs = () => SIZING_TABLE[sel.ratio][sel.div]
+
+        function renderRatios() {
+          ratiosEl.innerHTML = SIZING_RATIOS.map(([key, rw, rh]) => {
+            const on = key === sel.ratio
+            return `<button type="button" class="daz-sz-ratio" data-ratio="${key}"
+              style="display:flex;align-items:center;gap:5px;padding:4px 5px;cursor:pointer;
+                     border-radius:4px;font-family:monospace;font-size:11px;
+                     border:1px solid ${on ? '#54af7b' : '#444'};
+                     background:${on ? '#1e3527' : '#111'};color:${on ? '#cde' : '#999'}">
+              ${sizingSwatch(rw, rh)}<span>${key}</span></button>`
+          }).join('')
+        }
+
+        function renderDivs() {
+          divsEl.innerHTML = SIZING_DIVISORS.map(d => {
+            const on = d === sel.div
+            return `<button type="button" class="daz-sz-div" data-div="${d}"
+              style="font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;
+                     border:1px solid ${on ? '#54af7b' : '#444'};
+                     background:${on ? '#1e3527' : '#111'};color:${on ? '#cde' : '#888'}">${d}</button>`
+          }).join('')
+        }
+
+        function renderList() {
+          listEl.innerHTML = pairs().map(([w, h], i) => {
+            const on = i === sel.idx
+            return `<button type="button" class="daz-sz-pair" data-idx="${i}"
+              style="font-family:monospace;font-size:12px;padding:3px 0;cursor:pointer;
+                     border-radius:3px;text-align:center;
+                     border:1px solid ${on ? '#54af7b' : 'transparent'};
+                     background:${on ? '#1e3527' : 'transparent'};color:${on ? '#cde' : '#aaa'}">
+              ${w} x ${h}</button>`
+          }).join('')
+        }
+
+        ratiosEl.addEventListener('click', e => {
+          const b = e.target.closest('.daz-sz-ratio'); if (!b) return
+          // The sets are ratio- and divisor-specific, so the choice of pair does
+          // not carry over — fall back to the first, as on a fresh open.
+          sel.ratio = b.dataset.ratio
+          sel.idx   = 0
+          renderRatios(); renderList()
+        })
+        divsEl.addEventListener('click', e => {
+          const b = e.target.closest('.daz-sz-div'); if (!b) return
+          sel.div = parseInt(b.dataset.div, 10)
+          sel.idx = 0
+          renderDivs(); renderList()
+        })
+        listEl.addEventListener('click', e => {
+          const b = e.target.closest('.daz-sz-pair'); if (!b) return
+          sel.idx = parseInt(b.dataset.idx, 10)
+          renderList()
+        })
+
+        mb.querySelector('#daz-sz-cancel')?.addEventListener('click', () => mo.remove())
+        mb.querySelector('#daz-sz-ok')?.addEventListener('click', () => {
+          const [w, h] = pairs()[sel.idx] ?? []
+          if (w && h) {
+            if (widthEl) {
+              widthEl.value = String(w)
+              widthEl.dispatchEvent(new Event('input', { bubbles: true }))
+            }
+            if (heightEl) {
+              heightEl.value = String(h)
+              heightEl.dispatchEvent(new Event('input', { bubbles: true }))
+            }
+          }
+          mo.remove()
+        })
+
+        renderRatios(); renderDivs(); renderList()
+      }
+
+      // Keeps the Duration (s) field and the Frames field in step. Editing
+      // duration recomputes frames; editing frames or fps recomputes duration;
+      // opening the panel seeds duration from the config that was just loaded.
+      // Returns a function that resets the row (error line and button states),
+      // for the Dimensions "clear" button; classes with no duration row get a
+      // no-op.
+      function wireDurationSync(panel) {
+        const durEl    = panel.querySelector('#daz-duration')
+        const framesEl = panel.querySelector('#daz-total-frames')
+        const fpsEl    = panel.querySelector('#daz-fps')
+        const errEl    = panel.querySelector('#daz-duration-err')
+        const setErr   = (msg) => { if (errEl) errEl.textContent = msg }
+        if (!durEl || !framesEl || !fpsEl) return () => {}
+
+        const btns = Array.from(panel.querySelectorAll('.daz-duration-preset'))
+        // Raised by whichever side is writing. Assigning .value does not fire an
+        // input event, so this cannot currently loop, but it keeps the rule —
+        // a recalculated field must not trigger the opposite recalculation —
+        // true even if these fields later start dispatching their own events.
+        let syncing  = false
+
+        // frames -> seconds, capped at two decimals. A whole-second clip does
+        // not always divide back cleanly: the first frame comes back as a
+        // spurious xx.0y, and a fractional fps loses a part-frame to rounding —
+        // 5s at 23.976 returns 5.01, 20s at 29.97 returns 19.99. All of it sits
+        // within a tenth of a whole second, so a fraction that small snaps to
+        // the whole second either side of it; anything a tenth or further in is
+        // a duration the user chose and is left alone. Counted in hundredths to
+        // keep the comparison off binary floats.
+        function framesToSeconds(frames, fps) {
+          const hundredths = Math.round((frames / fps) * 100)
+          const frac       = hundredths % 100
+          if (frac < 10) return Math.floor(hundredths / 100)
+          if (frac > 90) return Math.floor(hundredths / 100) + 1
+          return hundredths / 100
+        }
+
+        function currentFps() {
+          const fps = parseFloat(fpsEl.value)
+          if (!isFinite(fps) || fps <= 0) { setErr('FPS is not defined'); return null }
+          setErr('')
+          return fps
+        }
+
+        function syncButtons() {
+          const secs = parseFloat(durEl.value)
+          btns.forEach(btn => {
+            btn.style.cssText =
+              (isFinite(secs) && secs === parseFloat(btn.dataset.seconds)) ? durBtnOn : durBtnOff
+          })
+        }
+
+        // Cap what can be typed at two decimals. Only rewrites when a third
+        // digit shows up, and a half-typed "5." reads back as '' from a number
+        // input, so nothing here can eat a decimal point mid-entry.
+        function capDuration() {
+          const m = /^(-?\d*\.\d{2})\d+$/.exec(durEl.value)
+          if (m) durEl.value = m[1]
+        }
+
+        function durationToFrames() {
+          if (syncing) return
+          const fps = currentFps()
+          if (fps === null) return
+          const secs = parseFloat(durEl.value)
+          if (!isFinite(secs)) return
+          syncing = true
+          framesEl.value = String(Math.round(secs * fps) + DURATION_FRAME_OFFSET)
+          syncing = false
+        }
+
+        function framesToDuration() {
+          if (syncing) return
+          const fps = currentFps()
+          if (fps === null) return
+          const frames = parseFloat(framesEl.value)
+          if (!isFinite(frames)) return
+          syncing = true
+          durEl.value = String(framesToSeconds(frames, fps))
+          syncing = false
+          syncButtons()
+        }
+
+        durEl.addEventListener('input', () => {
+          capDuration()
+          durationToFrames()
+          syncButtons()
+        })
+        framesEl.addEventListener('input', framesToDuration)
+        fpsEl.addEventListener('input', framesToDuration)
+
+        btns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            durEl.value = btn.dataset.seconds
+            // Re-dispatch as a real input event so the panel's delegated
+            // listener marks it dirty, the same as typing the value would.
+            durEl.dispatchEvent(new Event('input', { bubbles: true }))
+          })
+        })
+
+        // Seed from the config that was just loaded. Silent: the panel opens on
+        // whatever was saved, so a missing FPS is not an error to report yet.
+        const seedFps    = parseFloat(fpsEl.value)
+        const seedFrames = parseFloat(framesEl.value)
+        if (isFinite(seedFps) && seedFps > 0 && isFinite(seedFrames) && seedFrames > 0) {
+          durEl.value = String(framesToSeconds(seedFrames, seedFps))
+        }
+        syncButtons()
+
+        return () => { setErr(''); syncButtons() }
+      }
+
+      // ── Dimensions: "Use image" + the Scale box ────────────────────────────
+      // Offered in the order the dropdown shows them. 'longest' and 'fit' both
+      // need a size that does not come from the image, so they are withheld
+      // while "Use image" is on — the same pair the server accepts there.
+      const DIM_SCALE_MODES = [
+        ['none',    'None'],
+        ['factor',  'Factor'],
+        ['longest', 'Longest dimension'],
+        ['fit',     'Fit'],
+      ]
+      const DIM_USE_IMAGE_MODES = ['none', 'factor']
+
+      function fDimensions(val) {
+        const src   = (val && typeof val === 'object') ? val : {}
+        const scale = (src.scale && typeof src.scale === 'object') ? src.scale : {}
+        const mode  = DIM_SCALE_MODES.some(([m]) => m === scale.mode) ? scale.mode : 'none'
+        const value = parseFloat(scale.value)
+        return { use_image: src.use_image === true, mode, value: isFinite(value) ? value : 1 }
+      }
+
+      // Rendered at the top of the Dimensions box by the classes that take a
+      // reference image. The Image class has none, so it does not call this.
+      function dimensionsRows(data) {
+        const d = fDimensions(data.dimensions)
+        return `
+          <label style="display:flex;align-items:center;gap:5px;color:#ccc;font-size:11px;
+                        cursor:pointer;margin-bottom:5px">
+            <input type="checkbox" id="daz-dim-use-image"${d.use_image ? ' checked' : ''}
+              style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+            Use image
+            <span id="daz-dim-use-image-hint" style="color:#666;font-size:10px"></span>
+          </label>
+          <div style="margin-bottom:5px">${box('Scale', `
+            <div style="${rw}"><label style="${lbl}">Scale mode</label>
+              <select id="daz-dim-scale-mode" style="${fs}">
+                ${DIM_SCALE_MODES.map(([m, label]) =>
+                  `<option value="${m}"${m === d.mode ? ' selected' : ''}>${label}</option>`).join('')}
+              </select>
+            </div>
+            <div><label id="daz-dim-scale-value-label" style="${lbl}">Scale by</label>
+              <input id="daz-dim-scale-value" type="number" step="0.01" min="0"
+                value="${d.value}" style="${fs}">
+            </div>
+          `)}</div>`
+      }
+
+      // Flags a width or height that is not a multiple of 32, which most models
+      // want. Only a warning — the size is still whatever was typed. Stashed on
+      // the panel so the places that write the fields without firing an event
+      // (the image-derived sizes, applying a preset) can refresh it.
+      function wireSizeWarning(panel) {
+        const widthEl  = panel.querySelector('#daz-width')
+        const heightEl = panel.querySelector('#daz-height')
+        const warnEl   = panel.querySelector('#daz-size-warn')
+        if (!warnEl) return () => {}
+
+        const off = el => {
+          const n = parseInt(el?.value, 10)
+          // A blank or unparsable box is the field's own problem, not this one.
+          return isFinite(n) && n % 32 !== 0
+        }
+        const update = () => {
+          warnEl.style.display = (off(widthEl) || off(heightEl)) ? '' : 'none'
+        }
+
+        ;[widthEl, heightEl].forEach(el => {
+          el?.addEventListener('input', update)
+          el?.addEventListener('change', update)
+        })
+        update()
+        panel._dazSizeWarn = update
+        return update
+      }
+
+      // Keeps the dimensions controls consistent with each other and with the
+      // reference image: "Use image" is only offered when there is an image to
+      // take a size from, and it narrows the mode list to the two modes that
+      // still mean something. Whenever the node computes the size from the image
+      // rather than reading what was typed — "Use image", or 'longest' with an
+      // image loaded — the width and height show that computed size, read-only,
+      // and the typed values are put back when it stops being computed.
+      //
+      // Returns { reset, refresh }: reset for the Dimensions "clear" button,
+      // refresh for the places that change the image or the controls without
+      // firing an event this can hear (clearing the image, applying a preset).
+      // Classes with no dimensions rows get inert stubs.
+      function wireDimensions(panel) {
+        const useEl    = panel.querySelector('#daz-dim-use-image')
+        const modeEl   = panel.querySelector('#daz-dim-scale-mode')
+        const valEl    = panel.querySelector('#daz-dim-scale-value')
+        const valLbl   = panel.querySelector('#daz-dim-scale-value-label')
+        const hintEl   = panel.querySelector('#daz-dim-use-image-hint')
+        const widthEl  = panel.querySelector('#daz-width')
+        const heightEl = panel.querySelector('#daz-height')
+        const imgSel   = panel.querySelector('#daz-image-path')
+        const prevEl   = panel.querySelector('#daz-img-preview-el')
+        if (!useEl || !modeEl || !valEl) {
+          return { reset: () => {}, refresh: () => {}, adopt: () => {} }
+        }
+
+        // What the user last typed, so the fields come back as they left them
+        // once the size stops being derived from the image. Captured on the way
+        // in, restored on the way out, so repeated syncs do not overwrite it.
+        const typed = { width: '', height: '', saved: false }
+
+        function enterDerived() {
+          if (typed.saved) return
+          typed.width  = widthEl?.value  ?? ''
+          typed.height = heightEl?.value ?? ''
+          typed.saved  = true
+        }
+
+        function leaveDerived() {
+          if (!typed.saved) return
+          if (widthEl)  widthEl.value  = typed.width
+          if (heightEl) heightEl.value = typed.height
+          typed.saved = false
+          panel._dazSizeWarn?.()
+        }
+
+        function setSizeEditable(editable, why) {
+          ;[widthEl, heightEl].forEach(el => {
+            if (!el) return
+            el.readOnly    = !editable
+            el.style.color = editable ? '' : '#888'
+            el.title       = editable ? '' : why
+          })
+          // A size picked from the dialog would be overwritten on the next sync
+          // and ignored at execution, so the button goes with the fields.
+          const szBtn = panel.querySelector('#daz-sizing-btn')
+          if (szBtn) {
+            szBtn.disabled      = !editable
+            szBtn.style.opacity = editable ? '' : '0.4'
+            szBtn.style.cursor  = editable ? 'pointer' : 'not-allowed'
+            szBtn.title         = editable ? '' : why
+          }
+        }
+
+        // Whether the width/height are the node's to compute rather than the
+        // user's to type. "Use image" takes the size from the image; so does
+        // 'longest', which ignores what is typed whenever there is an image to
+        // measure. With no image 'longest' falls back to scaling the typed size,
+        // so that stays the user's input and is left alone.
+        function derivedFrom() {
+          if (!imgSel?.value) return null
+          if (useEl.checked)               return 'use_image'
+          if (modeEl.value === 'longest')  return 'longest'
+          return null
+        }
+
+        // The preview <img> is the only place the panel knows the image's size.
+        // Before it has loaded both naturals read 0, and the 'load' listener
+        // below runs this again. Mirrors resolve_dimensions in the backend, so
+        // the boxes show the size the node will actually output.
+        function applyImageSize() {
+          const src = derivedFrom()
+          if (!src) return
+          const iw = prevEl?.naturalWidth  || 0
+          const ih = prevEl?.naturalHeight || 0
+          if (!iw || !ih) return
+
+          let k
+          if (src === 'longest') {
+            // The backend reads the integer part of the value.
+            const target = Math.trunc(parseFloat(valEl.value))
+            if (!isFinite(target) || target <= 0) return
+            k = target / Math.max(iw, ih)
+          } else {
+            const f = modeEl.value === 'factor' ? parseFloat(valEl.value) : 1
+            k = (isFinite(f) && f > 0) ? f : 1
+          }
+          if (widthEl)  widthEl.value  = String(Math.max(1, Math.round(iw * k)))
+          if (heightEl) heightEl.value = String(Math.max(1, Math.round(ih * k)))
+          panel._dazSizeWarn?.()
+        }
+
+        function syncValueField() {
+          const mode = modeEl.value
+          const on   = mode === 'factor' || mode === 'longest'
+          valEl.disabled      = !on
+          valEl.style.opacity = on ? '1' : '0.4'
+          valEl.step          = mode === 'longest' ? '1' : '0.01'
+          if (valLbl) valLbl.textContent =
+            mode === 'factor' ? 'Scale by' : mode === 'longest' ? 'Longest dimension' : 'Value'
+        }
+
+        function syncModeOptions() {
+          const restrict = useEl.checked
+          Array.from(modeEl.options).forEach(opt => {
+            const allowed = !restrict || DIM_USE_IMAGE_MODES.includes(opt.value)
+            opt.hidden   = !allowed
+            opt.disabled = !allowed
+          })
+          if (restrict && !DIM_USE_IMAGE_MODES.includes(modeEl.value)) modeEl.value = 'none'
+        }
+
+        function syncAll() {
+          const hasImage = !!imgSel?.value
+          if (!hasImage) useEl.checked = false
+          useEl.disabled     = !hasImage
+          useEl.style.cursor = hasImage ? 'pointer' : 'not-allowed'
+          if (hintEl) hintEl.textContent = hasImage ? '' : '(no reference image)'
+          syncModeOptions()
+          syncValueField()
+          // After syncModeOptions, which can drop an illegal mode back to 'none'.
+          const src = derivedFrom()
+          if (src) enterDerived(); else leaveDerived()
+          setSizeEditable(!src, src === 'longest'
+            ? "Derived from the image's longest dimension"
+            : 'Taken from the reference image')
+          applyImageSize()
+        }
+
+        useEl.addEventListener('change', syncAll)
+        modeEl.addEventListener('change', syncAll)
+        valEl.addEventListener('input', applyImageSize)
+        imgSel?.addEventListener('change', syncAll)
+        // The naturals only become readable once the preview has loaded.
+        prevEl?.addEventListener('load', syncAll)
+
+        syncAll()
+
+        const ctl = {
+          reset: () => {
+            useEl.checked = false
+            modeEl.value  = 'none'
+            valEl.value   = '1'
+            typed.width   = ''
+            typed.height  = ''
+            typed.saved   = false
+            syncAll()
+          },
+          refresh: syncAll,
+          // The width/height were just written from outside — by a preset — so
+          // whatever size was remembered before is stale. Dropping it stops the
+          // next refresh restoring it over what was just written; if the panel
+          // is still deriving, that refresh re-captures the new values instead.
+          adopt: () => { typed.saved = false },
+        }
+        // Stashed so applyPresetToPanel can re-run the wiring after it writes
+        // the controls, without having to be handed the panel's closure.
+        panel._dazDimsCtl = ctl
+        return ctl
+      }
+
       // Helpers object passed to per-class config functions
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
         fFlagLabel, fFlagValue, fCustomValue, fNote, loraEnabled,
         row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
-        box, selOpt, selOptImg, selOptAudio, unetRow,
+        box, selOpt, selOptImg, selOptAudio, unetRow, durationRow, dimensionsRows, sizeRow,
         fs, ns, tas, lbl, rw, cb,
       }
 
@@ -1041,6 +1663,16 @@ export function buildWorkflowConfigExtension(cfg) {
         }
         imgSel?.addEventListener('change', e => updatePreview(e.target.value))
 
+        // Before wireDimensions, whose first sync already wants to refresh it.
+        wireSizeWarning(panel)
+
+        // Wired here rather than next to the other Dimensions handlers below,
+        // because the image clear and upload handlers need the controller.
+        const dimsCtl = wireDimensions(panel)
+
+        // Sizing
+        panel.querySelector('#daz-sizing-btn')?.addEventListener('click', () => openSizingModal(panel))
+
         // Upload
         panel.querySelector('#daz-upload-btn')?.addEventListener('click', () => {
           panel.querySelector('#daz-upload-input')?.click()
@@ -1066,6 +1698,7 @@ export function buildWorkflowConfigExtension(cfg) {
             const sel = panel.querySelector('#daz-image-path')
             if (sel) sel.innerHTML = selOptImg(fresh, result.name)
             updatePreview(result.name)
+            dimsCtl.refresh()
           } catch (err) {
             if (errDiv) errDiv.textContent = `Upload failed: ${esc(err.message)}`
           }
@@ -1154,6 +1787,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const sel = panel.querySelector('#daz-image-path')
           if (sel) sel.value = ''
           updatePreview('')
+          dimsCtl.refresh()
         })
         const _cfgWarnEl = panel.querySelector('#daz-neg-cfg-warn')
         const _cfgIds    = cfg.cfgInputIds ?? []
@@ -1164,11 +1798,17 @@ export function buildWorkflowConfigExtension(cfg) {
         }
         _cfgIds.forEach(id => panel.querySelector(id)?.addEventListener('input', checkCfgWarn))
         checkCfgWarn()
+        const resetDurationRow = wireDurationSync(panel)
         panel.querySelector('#daz-dims-clear')?.addEventListener('click', () => {
           dimsClearIds.forEach(id => {
             const el = panel.querySelector(id); if (el) el.value = '0'
           })
           checkCfgWarn()
+          resetDurationRow()
+          dimsCtl.reset()
+          // The width/height were zeroed above without firing anything, and on a
+          // panel that was not deriving its size the reset has nothing to say.
+          panel._dazSizeWarn?.()
           const r = panel.querySelector('#daz-seed-randomize'); if (r) r.checked = false
         })
         panel.querySelector('#daz-master-default')?.addEventListener('click', () => {
@@ -1347,6 +1987,7 @@ export function buildWorkflowConfigExtension(cfg) {
         clip_2:     { sel: '#daz-clip-2',                 kind: 'name'  },
         audio_vae:  { sel: '#daz-audio-vae',              kind: 'name'  },
         checkpoint: { sel: '#daz-checkpoint',             kind: 'name'  },
+        latent_upscale: { sel: '#daz-latent-upscale',     kind: 'name'  },
         clip_type:  { sel: '#daz-clip-type',              kind: 'raw'   },
         type:       { sel: '#daz-type',                   kind: 'raw'   },
         note:       { sel: '#daz-note',                   kind: 'note'  },
@@ -1354,6 +1995,7 @@ export function buildWorkflowConfigExtension(cfg) {
         height:     { sel: '#daz-height',                 kind: 'int'   },
         steps:      { sel: '#daz-steps',                  kind: 'int'   },
         split_step: { sel: '#daz-split-step',             kind: 'int'   },
+        total_frames: { sel: '#daz-total-frames',         kind: 'int'   },
         cfg_high:   { sel: ['#daz-cfg-high', '#daz-cfg'], kind: 'float' },
         cfg_low:    { sel: '#daz-cfg-low',                kind: 'float' },
         shift_high: { sel: '#daz-shift-high',             kind: 'float' },
@@ -1393,6 +2035,17 @@ export function buildWorkflowConfigExtension(cfg) {
               : newType === 'beats' ? 'Beats will coerce frame count into full seconds'
               : newType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]'
               : newType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+            continue
+          }
+          if (field === 'dimensions') {
+            if (!(field in preset)) continue
+            const d      = fDimensions(preset.dimensions)
+            const useEl  = panel.querySelector('#daz-dim-use-image')
+            const modeEl = panel.querySelector('#daz-dim-scale-mode')
+            const valEl  = panel.querySelector('#daz-dim-scale-value')
+            if (useEl)  useEl.checked = d.use_image
+            if (modeEl) modeEl.value  = d.mode
+            if (valEl)  valEl.value   = String(d.value)
             continue
           }
           if (field === 'loras') {
@@ -1455,6 +2108,20 @@ export function buildWorkflowConfigExtension(cfg) {
             case 'float': el.value = String(v.value ?? val ?? 0);  break
           }
         }
+        // A preset can carry fps, so re-derive Duration (s) from the frame count
+        panel.querySelector('#daz-total-frames')
+          ?.dispatchEvent(new Event('input', { bubbles: true }))
+        // The dimensions controls constrain each other and the width/height, and
+        // a preset writes them straight rather than through their handlers — so
+        // re-run the wiring: it drops "Use image" if this panel has no reference
+        // image, narrows the mode list, and re-derives the size from the image.
+        // adopt() first, so the width/height the preset just wrote are taken as
+        // the new baseline rather than reverted to what the panel had before.
+        panel._dazDimsCtl?.adopt()
+        panel._dazDimsCtl?.refresh()
+        // The preset writes width/height straight into the fields too, and on a
+        // class with no dimensions rows the refresh above is an inert stub.
+        panel._dazSizeWarn?.()
       }
 
       // ── Shared preset modal base ──────────────────────────────────────────────
@@ -1981,6 +2648,8 @@ export function buildWorkflowConfigExtension(cfg) {
             if (framesInput) framesInput.value = updates.total_frames.value
             const fpsInput = wrap.querySelector('#daz-fps')
             if (fpsInput) fpsInput.value = updates.fps.value
+            // Announce the new frame count so the Duration (s) field follows it
+            framesInput?.dispatchEvent(new Event('input', { bubbles: true }))
             // Do not save immediately — let the user decide via Save / +Version
             node._dazEditPanelDirty = true
           },
@@ -2261,6 +2930,8 @@ export function buildWorkflowConfigExtension(cfg) {
           if (framesInput) framesInput.value = fValue(detail.total_frames)
           const fpsInput = wrap.querySelector('#daz-fps')
           if (fpsInput) fpsInput.value = fValue(detail.fps)
+          // Announce the new frame count so the Duration (s) field follows it
+          framesInput?.dispatchEvent(new Event('input', { bubbles: true }))
           node._dazEditPanelDirty = false
           nextFn()
         })

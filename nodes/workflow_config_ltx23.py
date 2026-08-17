@@ -4,7 +4,8 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, load_latent_upscale_model,
+    resolve_dimensions,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -183,6 +184,7 @@ class WorkflowConfigLtx23:
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
         "STRING", "STRING",
         "LORA", "LORA",
+        "LATENT_UPSCALE_MODEL",
     )
     RETURN_NAMES = (
         "checkpoint_model", "checkpoint_vae", "checkpoint_clip",
@@ -204,6 +206,7 @@ class WorkflowConfigLtx23:
         "flag_1", "flag_2", "flag_3",
         "custom_1", "custom_2",
         "lora_7", "lora_8",
+        "latent_upscaler",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -292,6 +295,7 @@ class WorkflowConfigLtx23:
         unet_gguf = _get_gguf(active_set.get("unet_high"))
         vae_name  = _get_name(active_set.get("vae"))
         avae_name = _get_name(active_set.get("audio_vae"))
+        lups_name = _get_name(active_set.get("latent_upscale"))
 
         try:
             ckpt_model, ckpt_clip, ckpt_vae = load_checkpoint(ckpt_name)
@@ -309,6 +313,10 @@ class WorkflowConfigLtx23:
             audio_vae = _load_audio_vae(avae_name)
         except Exception as e:
             raise RuntimeError(f"[DAZ TOOLS] LTX2.3: audio VAE load failed ('{avae_name}'): {e}") from e
+        try:
+            latent_upscaler = load_latent_upscale_model(lups_name)
+        except Exception as e:
+            raise RuntimeError(f"[DAZ TOOLS] LTX2.3: latent upscale model load failed ('{lups_name}'): {e}") from e
 
         lora_1_sd, lora_1_w = _process_lora(loras.get("lora_1", ""))
         lora_2_sd, lora_2_w = _process_lora(loras.get("lora_2", ""))
@@ -326,6 +334,9 @@ class WorkflowConfigLtx23:
             (lora_7_sd, lora_7_w), (lora_8_sd, lora_8_w),
         ]
 
+        ref_image, out_width, out_height = resolve_dimensions(
+            active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigLTX23")
+
         return (
             ckpt_model,
             ckpt_vae,
@@ -334,10 +345,10 @@ class WorkflowConfigLtx23:
             video_vae,
             audio_vae,
             _load_dual_clip(_get_name(active_set.get("clip_2")), _get_name(active_set.get("clip"))),
-            _load_image(_get_path(active_set.get("image_path"))),
+            ref_image,
             _load_audio(_get_path(active_set.get("audio_path"))),
-            _get_int(active_set.get("width")),
-            _get_int(active_set.get("height")),
+            out_width,
+            out_height,
             _get_int(active_set.get("steps")),
             seed_val,
             master_text,
@@ -358,4 +369,5 @@ class WorkflowConfigLtx23:
             _get_custom_value(active_set.get("custom", {}).get("param_1")),
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
             lora_7_sd, lora_8_sd,
+            latent_upscaler,
         )

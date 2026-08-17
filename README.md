@@ -80,9 +80,11 @@ All five nodes share a common set of configurable fields:
 | **Note** | Free-form note (up to 900 characters), shown on the node while in use |
 | **Image** | Reference input image — a filename inside ComfyUI's input folder, or an absolute path |
 | **Audio** | Reference input audio — a filename inside ComfyUI's input folder, or an absolute path. When set, the node outputs the decoded audio on the `audio` output for use downstream |
-| **Width / Height** | Output frame dimensions |
+| **Width / Height** | Output frame dimensions. On the four video nodes these are the *input* to **Use image / Scale** below, which decides what the `width` and `height` outputs actually report |
+| **Use image / Scale** | On WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 only — governs the reference image and the size outputs together. See [Dimensions and scaling](#dimensions-and-scaling) |
 | **Steps** | Number of denoising steps |
 | **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
+| **Duration (s)** | Editor-only helper on the WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 nodes: type a length in seconds — or hit one of the **5 / 7 / 10 / 15 / 20** quick buttons (no 20 on MiniMax H3) — and **Total frames** is recalculated as `duration × fps + 1`, counting the first frame. The quick button matching the current duration stays highlighted; type anything else and none of them are. Editing Total frames or FPS updates Duration back the other way, as `frames ÷ fps` capped at two decimals, snapped to a whole second when it lands within a tenth of one — a whole-second clip does not always divide back cleanly (the first frame returns 5.04, and 20s at 29.97 fps returns 19.99), and that noise is not worth showing. Duration is not stored in the config: it is derived from the saved frames and FPS every time the editor opens. FPS must be set first; with FPS at zero the field reports *FPS is not defined* and leaves the frame count alone |
 | **Total frames / FPS** | Video length and playback speed |
 | **Master prompt** | Base text combined with the positive prompt (see Prompts below) |
 | **Positive / Negative prompts** | Conditioning text sent to the sampler |
@@ -112,6 +114,7 @@ LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be appli
 | **UNet / Transformer** | Standalone diffusion model, used when not loading from a checkpoint (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio |
 | **CLIP / CLIP 2** | Primary and secondary text encoders |
+| **Latent Upscaler** | Latent upscale model from `models/latent_upscale_models`, loaded through ComfyUI's **Load Latent Upscale Model** node and exposed on the `latent_upscaler` output. Optional — leave it on *none* and the output is empty |
 | **CFG** | CFG scale |
 
 You can fill in either the checkpoint path or the standalone model paths — both sets of outputs are available on the node. The node outputs a ready-to-use model stack with all enabled LoRAs already applied for both the standalone transformer and the checkpoint model.
@@ -123,6 +126,7 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 | **Transformer** | Diffusion model (supports GGUF — see [GGUF unet loading](#gguf-unet-loading)) |
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio, both loaded from `models/vae` |
 | **CLIP** | Single text encoder (loaded with the LTXV CLIP type) |
+| **Latent Upscaler** | Latent upscale model from `models/latent_upscale_models`, loaded through ComfyUI's **Load Latent Upscale Model** node and exposed on the `latent_upscaler` output. Optional — leave it on *none* and the output is empty |
 | **CFG** | CFG scale |
 
 The node outputs a ready-to-use model stack (`transformer_stack`) with all enabled LoRAs already applied.
@@ -150,6 +154,7 @@ You can fill in either the checkpoint path or the standalone model paths — all
 | **CLIP** | Text encoder (loaded with the MiniMax CLIP type) |
 | **CFG** | CFG scale |
 
+
 #### GGUF unet loading
 
 The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Transformer** on LTX2.5, **Diffuser** on Image, **Unet** on MiniMaxH3) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
@@ -173,6 +178,31 @@ Below is a picture of the scene editor.
 In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everything, experiment with new prompts, add other reference images, other loras, etc, all in the context of the same scene.
 
 Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "+ Take" button.
+
+#### Dimensions and scaling
+
+The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `height` outputs and resize the reference image together, from **Use image** and the **Scale** box in the editor's *Dimensions and More* panel. The Image node has neither — its Width and Height are what you type. Resizing always uses **lanczos**.
+
+**Use image off** — the Width and Height you typed are the input to the scale mode:
+
+| Scale mode | Width / height outputs | Reference image |
+|---|---|---|
+| **None** | As typed | Untouched |
+| **Factor** | Both multiplied by **Scale by** | Multiplied by the same factor, on its own aspect ratio |
+| **Longest dimension** | Follow the image's new size, or scale the typed size if there is no image | Its longest side becomes the value, aspect ratio kept |
+| **Fit** | As typed | Scaled to cover the box and cropped at the centre; an image smaller on *both* axes is stretched instead, so nothing needs padding |
+
+**Use image on** — the outputs are the image's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the image and the outputs together. Unavailable when no reference image is selected.
+
+Whenever the size comes from the image the editor fills the boxes in and shows them read-only; what you typed comes back when it stops. The stored Width and Height are never rewritten by a run.
+
+#### The Sizing dialog
+
+The **sizing** button beside Width and Height opens a picker of known-good resolutions: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must divide by (8, 16, 32, 64), and take one of the five sizes offered. **OK** writes the pair into Width and Height, **Cancel** discards — nothing else closes the dialog. It opens on the current size if that size is in the list, otherwise on 9:16 ÷32, and is disabled while the size is being derived from the image.
+
+A yellow **(!) not /32** flags a Width or Height that is not a multiple of 32. Advisory only — a ÷8 or ÷16 size from the dialog raises it legitimately.
+
+![Sizing](content/sizing.png)
 
 #### Managing prompts
 
@@ -240,6 +270,10 @@ The preset library is a shared collection of model-and-parameter templates (`dx_
 For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets also carry the full LoRA setup — all 8 slots, including empty/disabled ones. Applying a preset overwrites all of the current config's LoRA slots, so the pre-filled panel always reflects exactly the preset's LoRA setup rather than a merge with whatever was there before.
 
 Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes. Presets carry the Qualifiers (trail) prompt alongside Master/Positive/Negative for every node class.
+
+For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets carry **Total frames** and **FPS** as well — applying one re-derives the editor's **Duration (s)** from them. Those four also carry the **Use image** and **Scale** settings (see [Dimensions and scaling](#dimensions-and-scaling)); applying one re-checks them against the config being edited, so a preset saved with **Use image** on lands with it off if the config has no reference image. LTX2.3 and LTX2.5 presets additionally carry the **Latent upscale** model. The Image node has no frame count, FPS, or reference image, so its presets carry none of these.
+
+Presets saved before these fields existed simply do not include them, and applying such a preset leaves the corresponding fields in the panel untouched rather than zeroing them.
 
 Three buttons in the edit panel footer give access to the library:
 

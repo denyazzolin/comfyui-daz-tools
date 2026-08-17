@@ -62,7 +62,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 9
+CURRENT_SCHEMA = 11
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -72,6 +72,22 @@ _META_KEY      = "_meta"
 _NON_CONFIG_FILENAMES = {"dx_prompt_stacks.json"}
 
 _LORA_FIELDS = ("lora_1", "lora_2", "lora_3", "lora_4", "lora_5", "lora_6", "lora_7", "lora_8")
+
+# ── Dimensions block ──────────────────────────────────────────────────────────
+# Governs how the reference image is resized and what the width/height outputs
+# report. Only the four video classes carry it; the Image class has no reference
+# image and no IMAGE output, so it has no dimensions block.
+_DIM_SCALE_MODES = ("none", "factor", "longest", "fit")
+
+# With use_image on, the output size comes from the image itself, so the two
+# modes that derive a size from somewhere else make no sense and are not offered.
+_DIM_USE_IMAGE_MODES = ("none", "factor")
+
+_DEFAULT_DIMENSIONS: dict = {"use_image": False, "scale": {"mode": "none", "value": 1.0}}
+
+# The classes that take a reference image, and so are the ones a dimensions block
+# is backfilled onto.
+_DIM_CLASSES = ("Wan2.2", "ltx2.3", "ltx2.5", "m_h3")
 
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
 
@@ -128,6 +144,7 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
 
     backfilled  = _backfill_master_position(configs)
     backfilled |= _backfill_trail_prompt(configs)
+    backfilled |= _backfill_dimensions(configs)
 
     if migrated or backfilled:
         try:
@@ -371,6 +388,146 @@ def _get_prompt_type_int(val, default: int = 1) -> int:
     return _PROMPT_TYPE_TO_INT.get(t, default)
 
 
+def _coerce_dimensions(val) -> dict:
+    """Normalise anything into the canonical dimensions block. Never raises and
+    never returns a partial block, so every reader downstream can assume the
+    shape {"use_image": bool, "scale": {"mode": str, "value": float}}."""
+    src   = val if isinstance(val, dict) else {}
+    scale = src.get("scale") if isinstance(src.get("scale"), dict) else {}
+
+    mode = str(scale.get("mode") or "none")
+    if mode not in _DIM_SCALE_MODES:
+        mode = "none"
+
+    try:
+        value = float(scale.get("value", 1.0))
+    except (ValueError, TypeError):
+        value = 1.0
+
+    return {"use_image": bool(src.get("use_image", False)),
+            "scale": {"mode": mode, "value": value}}
+
+
+def _get_dimensions(set_obj: dict) -> dict:
+    """Return a set's dimensions block, coerced. Missing means 'do nothing'."""
+    return _coerce_dimensions(set_obj.get("dimensions"))
+
+
+def _round_dim(v: float) -> int:
+    """Round a computed pixel size, never below 1 — a zero-sized output would
+    make the resize itself throw rather than just look wrong."""
+    try:
+        return max(1, int(round(float(v))))
+    except (ValueError, TypeError, OverflowError):
+        return 1
+
+
+def _scale_image(image, width: int, height: int, crop: str, node_name: str):
+    """Resize an NHWC image batch with lanczos. crop 'center' cover-scales and
+    centre-crops to the target aspect; 'disabled' stretches to fit exactly.
+    comfy.utils is imported lazily so this module stays importable outside a
+    running ComfyUI."""
+    if image is None or width <= 0 or height <= 0:
+        return image
+    try:
+        import comfy.utils
+    except Exception as e:
+        print(f"[DAZ TOOLS] {node_name}: could not import comfy.utils to resize the "
+              f"reference image — leaving it unscaled ({e})")
+        return image
+    samples = image.movedim(-1, 1)
+    scaled  = comfy.utils.common_upscale(samples, width, height, "lanczos", crop)
+    return scaled.movedim(1, -1)
+
+
+def resolve_dimensions(active_set: dict, image, node_name: str):
+    """Apply a set's dimensions block, returning (image, width, height).
+
+    use_image on takes the size from the reference image and ignores the stored
+    width/height entirely; only 'none' and 'factor' are meaningful there, and
+    anything else is treated as 'none'. If the image cannot be loaded the stored
+    size is passed straight through — the editor writes the already-scaled size
+    into it, so re-applying the factor here would double it.
+
+    With use_image off the stored width and height are the input to the rule:
+
+      none    — nothing is touched.
+      factor  — width, height and the image are each scaled by the value, so
+                every one of them keeps its own aspect ratio.
+      longest — the image's longest side becomes the value and the width/height
+                outputs follow the image's new size. With no image there is
+                nothing to follow, so the rule falls back to the stored size.
+      fit     — the image is cover-scaled and centre-cropped to the stored
+                width x height, which are output unchanged. An image smaller
+                than the box on both axes is stretched to fill it instead, since
+                the point of the mode is to avoid padding.
+
+    The stored width/height are never rewritten from here. They are the input to
+    the rule, so scaling them in place would compound on every run.
+    """
+    dims  = _get_dimensions(active_set)
+    scale = dims["scale"]
+    mode  = scale["mode"]
+    value = scale["value"]
+
+    width  = _get_int(active_set.get("width"))
+    height = _get_int(active_set.get("height"))
+
+    iw = ih = 0
+    if image is not None:
+        try:
+            ih, iw = int(image.shape[1]), int(image.shape[2])
+        except Exception:
+            iw = ih = 0
+
+    if dims["use_image"]:
+        if iw > 0 and ih > 0:
+            width, height = iw, ih
+            if mode not in _DIM_USE_IMAGE_MODES:
+                mode = "none"
+        else:
+            # No image to measure. The stored width/height are the editor's echo
+            # of the image size with the factor already in them, so scaling them
+            # again here would apply it twice — pass them through untouched.
+            mode = "none"
+
+    if mode == "none":
+        return image, width, height
+
+    if mode == "factor":
+        if value <= 0:
+            print(f"[DAZ TOOLS] {node_name}: scale factor {value} is not positive — "
+                  f"leaving the size and the reference image alone")
+            return image, width, height
+        if image is not None:
+            image = _scale_image(image, _round_dim(iw * value), _round_dim(ih * value),
+                                 "disabled", node_name)
+        return image, _round_dim(width * value), _round_dim(height * value)
+
+    if mode == "longest":
+        target = int(value)
+        if target <= 0:
+            print(f"[DAZ TOOLS] {node_name}: longest dimension {target} is not positive — "
+                  f"leaving the size and the reference image alone")
+            return image, width, height
+        if image is not None:
+            factor = target / max(iw, ih)
+            width, height = _round_dim(iw * factor), _round_dim(ih * factor)
+            image = _scale_image(image, width, height, "disabled", node_name)
+        elif max(width, height) > 0:
+            factor = target / max(width, height)
+            width, height = _round_dim(width * factor), _round_dim(height * factor)
+        return image, width, height
+
+    if mode == "fit":
+        if image is not None and width > 0 and height > 0:
+            crop  = "disabled" if (iw < width and ih < height) else "center"
+            image = _scale_image(image, width, height, crop, node_name)
+        return image, width, height
+
+    return image, width, height
+
+
 def _get_loras(set_obj: dict) -> dict:
     """Return the loras mapping from a set object."""
     loras_obj = set_obj.get("loras")
@@ -413,7 +570,7 @@ def _apply_set_fields(target: dict, data: dict) -> None:
             else:
                 target[f] = {"name": str(v or ""), "gguf": False}
 
-    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2", "latent_upscale"):
         if f in data:
             v = data[f]
             target[f] = v if isinstance(v, dict) else {"name": str(v or "")}
@@ -489,6 +646,9 @@ def _apply_set_fields(target: dict, data: dict) -> None:
             if param_key in data["custom"] and isinstance(data["custom"][param_key], dict):
                 target["custom"][param_key] = data["custom"][param_key]
 
+    if "dimensions" in data:
+        target["dimensions"] = _coerce_dimensions(data["dimensions"])
+
     if "note" in data:
         v = data["note"]
         target["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
@@ -505,7 +665,7 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
             s[f] = {"name": str(v.get("name") or ""), "gguf": bool(v.get("gguf", False))}
         else:
             s[f] = {"name": str(v or ""), "gguf": False}
-    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2", "latent_upscale"):
         v = data.get(f)
         s[f] = v if isinstance(v, dict) else {"name": str(v or "")}
     v = data.get("group")
@@ -555,6 +715,8 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
         "param_2": custom_data.get("param_2") if isinstance(custom_data.get("param_2"), dict)
                    else {"label": "param 2", "value": ""},
     }
+    if "dimensions" in data:
+        s["dimensions"] = _coerce_dimensions(data["dimensions"])
     v = data.get("note")
     s["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
     return s
@@ -573,10 +735,16 @@ def _normalize_set(set_obj: dict) -> dict:
         elif "gguf" not in v:
             result[f] = {**v, "gguf": False}
 
-    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2"):
+    for f in ("vae", "clip", "audio_vae", "checkpoint", "clip_2", "latent_upscale"):
         v = result.get(f)
         if not isinstance(v, dict):
             result[f] = {"name": str(v or "")}
+
+    # Only the video classes carry a dimensions block, so it is normalised where
+    # it exists rather than conjured onto every set — the Image class has no
+    # reference image and no IMAGE output, and an inert block there is just noise.
+    if "dimensions" in result:
+        result["dimensions"] = _coerce_dimensions(result["dimensions"])
 
     v = result.get("group")
     if not isinstance(v, dict):
@@ -748,12 +916,45 @@ def load_unet_gguf(name: str):
     return gguf_cls().load_unet(unet_name=name)[0]
 
 
+# ── Latent upscale model loader ───────────────────────────────────────────────
+
+def load_latent_upscale_model(name: str):
+    """Load a latent upscale model from models/latent_upscale_models.
+
+    Delegates to ComfyUI's own 'LatentUpscaleModelLoader' node (looked up in the
+    global node registry, the same way load_unet_gguf finds UnetLoaderGGUF)
+    rather than reimplementing it: that loader sniffs the state dict to tell the
+    several latent-upsampler architectures apart, and that detection is expected
+    to keep growing as new models ship.
+    """
+    if not name:
+        return None
+    try:
+        import nodes as _comfy_nodes
+    except Exception as e:
+        raise RuntimeError(
+            f"[DAZ TOOLS] WorkflowConfig: could not access the ComfyUI node registry "
+            f"to load latent upscale model '{name}' — {e}"
+        ) from e
+    loader_cls = _comfy_nodes.NODE_CLASS_MAPPINGS.get("LatentUpscaleModelLoader")
+    if loader_cls is None:
+        raise RuntimeError(
+            f"[DAZ TOOLS] WorkflowConfig: cannot load latent upscale model '{name}' — "
+            f"this ComfyUI build has no 'LatentUpscaleModelLoader' node"
+        )
+    # V3 node class: FUNCTION resolves to the EXECUTE_NORMALIZED wrapper, whose
+    # NodeOutput is indexable just like a V1 node's plain result tuple.
+    fn = getattr(loader_cls, "FUNCTION", None) or "execute"
+    return getattr(loader_cls(), fn)(model_name=name)[0]
+
+
 # ── Preset file I/O ───────────────────────────────────────────────────────────
 
-PRESET_SCHEMA = 4
+PRESET_SCHEMA = 6
 _PRESET_SKIP_APPLY  = {"class", "name", "version", "version_label", "created_at", "updated_at"}
-_PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae"}
-_PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step"}
+_PRESET_NAME_FIELDS = {"unet_high", "unet_low", "vae", "clip", "checkpoint", "clip_2", "audio_vae",
+                       "latent_upscale"}
+_PRESET_INT_FIELDS  = {"width", "height", "steps", "split_step", "total_frames"}
 _PRESET_FLOAT_FIELDS = {"cfg_high", "cfg_low", "fps", "shift_high", "shift_low"}
 
 _PRESET_TEXT_FIELDS = {"master_prompt", "negative_prompt", "trail_prompt"}
@@ -764,24 +965,31 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "type", "note",
         "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "unet_high", "unet_low", "vae", "clip", "loras",
+        "dimensions",
         "width", "height", "shift_high", "shift_low",
         "steps", "split_step", "cfg_high", "cfg_low",
+        "total_frames", "fps",
         "flags", "custom",
     ],
     "ltx2.3": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
         "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
-        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip", "loras",
+        "checkpoint", "unet_high", "vae", "audio_vae", "clip_2", "clip",
+        "latent_upscale", "loras",
+        "dimensions",
         "width", "height", "steps", "cfg_high",
+        "total_frames", "fps",
         "flags", "custom",
     ],
     "ltx2.5": [
         "class", "version", "version_label", "name", "created_at", "updated_at",
         "type", "note",
         "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
-        "unet_high", "vae", "audio_vae", "clip", "loras",
+        "unet_high", "vae", "audio_vae", "clip", "latent_upscale", "loras",
+        "dimensions",
         "width", "height", "steps", "cfg_high",
+        "total_frames", "fps",
         "flags", "custom",
     ],
     "ImageInference": [
@@ -797,7 +1005,9 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "type", "note",
         "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "unet_high", "vae", "audio_vae", "clip", "loras",
+        "dimensions",
         "width", "height", "steps", "cfg_high",
+        "total_frames", "fps",
         "flags", "custom",
     ],
 }
@@ -864,10 +1074,12 @@ def _load_preset_file(path: str) -> tuple[list, dict]:
 
 def _migrate_presets(presets: list, profiles: dict, from_version: int) -> tuple[list, dict]:
     """Migrate a preset file's presets list and profiles dict forward. Additive only.
-    v3 → v4 (trail_prompt field, and any missing class profile such as m_h3) is
-    handled by the always-on _backfill_preset_fields instead of here, since that
-    also covers files that already claim v4 but are missing the fields (hand-edited,
-    or created between schema bumps). Kept in the same shape as
+    v3 → v4 (trail_prompt field, and any missing class profile such as m_h3) and
+    v4 → v5 (total_frames/fps on the video classes, latent_upscale on the LTX ones)
+    and v5 → v6 (dimensions on the video classes) are handled by the always-on
+    _backfill_preset_fields instead of here, since that also covers files that
+    already claim the current version but are missing the fields (hand-edited, or
+    created between schema bumps). Kept in the same shape as
     prompt_stack_base._migrate so future version-specific migrations have a place
     to land."""
     if from_version < 2:
@@ -904,17 +1116,26 @@ def _backfill_preset_fields(presets: list, profiles: dict) -> tuple[list, dict]:
     so it also repairs files that already claim the current version but are missing
     fields (hand-edited, or created between schema bumps). Also backfills a whole
     missing class profile (e.g. a class added after the preset file was first
-    created), not just missing fields on an existing profile."""
+    created), not just missing fields on an existing profile.
+
+    Only the profile lists are completed. A preset that predates a field simply
+    does not carry it, and both _apply_preset_to_set and the panel's
+    applyPresetToPanel skip fields a preset is missing, so it leaves whatever the
+    config already had alone — which is the right answer for a preset saved before
+    the field existed. The prompt fields are the exception: they are given an
+    explicit empty value so that applying an old preset clears the prompts rather
+    than leaving the previous set's text behind."""
     for cls, default_profile in _DEFAULT_PRESET_PROFILES.items():
         profile = profiles.get(cls)
         if not isinstance(profile, list):
             profile = list(default_profile)
             profiles[cls] = profile
+        for field in default_profile:
+            if field not in profile:
+                profile.append(field)
         for field in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
             if field not in default_profile:
                 continue
-            if field not in profile:
-                profile.append(field)
             default_val = {"text": "", "type": "smart"} if field == "positive_prompt" else {"text": ""}
             for preset in presets:
                 if preset.get("class") == cls and field not in preset:
@@ -979,6 +1200,8 @@ def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
             target[field] = str(val or "")
         elif field == "note":
             target["note"] = val if isinstance(val, dict) else {"value": str(val or "")}
+        elif field == "dimensions":
+            target["dimensions"] = _coerce_dimensions(val)
         elif field in _PRESET_TEXT_FIELDS:
             target[field] = val if isinstance(val, dict) else {"text": str(val or "")}
         elif field == "positive_prompt":
@@ -1088,6 +1311,11 @@ def _migrate(configs: dict, from_version: int) -> dict:
                         v.setdefault("gguf", False)
                     elif v:
                         s[f] = {"name": str(v), "gguf": False}
+    if from_version < 10:
+        for entry in configs.values():
+            for s in entry.get("sets", []):
+                if not isinstance(s.get("latent_upscale"), dict):
+                    s["latent_upscale"] = {"name": ""}
     return configs
 
 
@@ -1120,6 +1348,25 @@ def _backfill_trail_prompt(configs: dict) -> bool:
         for s in entry.get("sets", []):
             if not isinstance(s.get("trail_prompt"), dict):
                 s["trail_prompt"] = {"text": ""}
+                changed = True
+    return changed
+
+
+def _backfill_dimensions(configs: dict) -> bool:
+    """Ensure every set of a class that takes a reference image has a dimensions
+    block. Additive and idempotent, mirroring _backfill_master_position.
+
+    The default is deliberately mode 'none' rather than the factor/1.0 the example
+    file shows: a file written before schema 11 was rendering at the stored width
+    and height with the image untouched, and 'none' is the only value that keeps
+    it doing exactly that."""
+    changed = False
+    for entry in configs.values():
+        if entry.get("class") not in _DIM_CLASSES:
+            continue
+        for s in entry.get("sets", []):
+            if not isinstance(s.get("dimensions"), dict):
+                s["dimensions"] = dict(_DEFAULT_DIMENSIONS, scale=dict(_DEFAULT_DIMENSIONS["scale"]))
                 changed = True
     return changed
 
