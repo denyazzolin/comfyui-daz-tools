@@ -154,34 +154,6 @@ You can fill in either the checkpoint path or the standalone model paths — all
 | **CLIP** | Text encoder (loaded with the MiniMax CLIP type) |
 | **CFG** | CFG scale |
 
-#### Dimensions and scaling
-
-The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) decide their `width` / `height` outputs and resize the reference image together, from the **Use image** checkbox and the **Scale** box at the top of the editor's *Dimensions and More* panel. The Image node has no reference image and no `image` output, so it has neither control — its Width and Height are simply what you type.
-
-Resizing always uses **lanczos**.
-
-**Use image off** — the Width and Height you typed are the input to the scale mode:
-
-| Scale mode | Width / height outputs | Reference image |
-|---|---|---|
-| **None** | As typed | Untouched |
-| **Factor** | Both multiplied by **Scale by** | Multiplied by the same factor, on its own aspect ratio |
-| **Longest dimension** | Follow the image's new size | Its longest side becomes the value, aspect ratio kept |
-| **Fit** | As typed | Scaled to cover the box and cropped at the centre. An image smaller than the box on *both* axes is stretched to fill it instead, so nothing needs padding |
-
-**Longest dimension** takes the size entirely from the image, so the Width and Height you typed are ignored: at 1280×720 with a 1000×1000 image and a value of 960, both the image and the outputs come out 960×960. The editor fills the Width and Height boxes in with that computed size as you type the value, and shows them read-only while the mode is active — switching to another mode gives you back what you had typed. With no reference image loaded there is nothing to follow: the mode falls back to scaling the typed size, and the boxes stay yours to edit.
-
-**Use image on** — the outputs are the reference image's own size, and the typed Width and Height are ignored. The editor fills them in from the image and shows them read-only; unchecking the box gives you back what you had typed. Only **None** and **Factor** are offered here, since the other two derive a size from somewhere other than the image; a factor scales the image and the outputs together. **Use image** is unavailable, and forced off, whenever no reference image is selected.
-
-The stored Width and Height are never rewritten by a run — they are the *input* to the rule, so scaling them in place would compound on every execution.
-
-#### The Sizing dialog
-
-Next to Width and Height, on every class including Image, sits a **sizing** button. It opens a picker of known-good resolutions rather than leaving you to work them out: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must be divisible by (8, 16, 32 or 64 — many models require it), and pick one of the five sizes offered for that combination. **OK** writes the pair into Width and Height; **Cancel** changes nothing, and those two buttons are the only way to close the dialog.
-
-It opens on whatever is already in the boxes: if that size is one of the listed pairs, its ratio, divisor and row come up selected, otherwise it falls back to 9:16 ÷32 and the first size in the list. The button is disabled whenever the size is being derived from the reference image — under **Use image**, or under **Longest dimension** with an image loaded — since a size chosen there would be recomputed away.
-
-A yellow **(!) not /32** appears next to the button whenever the Width or the Height is not a multiple of 32, which is what most models want. It is only a warning — nothing is changed or blocked, and picking a ÷8 or ÷16 size from the dialog can raise it quite legitimately.
 
 #### GGUF unet loading
 
@@ -206,6 +178,31 @@ Below is a picture of the scene editor.
 In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everything, experiment with new prompts, add other reference images, other loras, etc, all in the context of the same scene.
 
 Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "+ Take" button.
+
+#### Dimensions and scaling
+
+The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `height` outputs and resize the reference image together, from **Use image** and the **Scale** box in the editor's *Dimensions and More* panel. The Image node has neither — its Width and Height are what you type. Resizing always uses **lanczos**.
+
+**Use image off** — the Width and Height you typed are the input to the scale mode:
+
+| Scale mode | Width / height outputs | Reference image |
+|---|---|---|
+| **None** | As typed | Untouched |
+| **Factor** | Both multiplied by **Scale by** | Multiplied by the same factor, on its own aspect ratio |
+| **Longest dimension** | Follow the image's new size, or scale the typed size if there is no image | Its longest side becomes the value, aspect ratio kept |
+| **Fit** | As typed | Scaled to cover the box and cropped at the centre; an image smaller on *both* axes is stretched instead, so nothing needs padding |
+
+**Use image on** — the outputs are the image's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the image and the outputs together. Unavailable when no reference image is selected.
+
+Whenever the size comes from the image the editor fills the boxes in and shows them read-only; what you typed comes back when it stops. The stored Width and Height are never rewritten by a run.
+
+#### The Sizing dialog
+
+The **sizing** button beside Width and Height opens a picker of known-good resolutions: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must divide by (8, 16, 32, 64), and take one of the five sizes offered. **OK** writes the pair into Width and Height, **Cancel** discards — nothing else closes the dialog. It opens on the current size if that size is in the list, otherwise on 9:16 ÷32, and is disabled while the size is being derived from the image.
+
+A yellow **(!) not /32** flags a Width or Height that is not a multiple of 32. Advisory only — a ÷8 or ÷16 size from the dialog raises it legitimately.
+
+![Sizing](content/sizing.png)
 
 #### Managing prompts
 
