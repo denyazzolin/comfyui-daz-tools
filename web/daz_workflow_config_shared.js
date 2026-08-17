@@ -416,6 +416,225 @@ export function buildWorkflowConfigExtension(cfg) {
         </div>`
       }
 
+      // ── Sizing dialog ─────────────────────────────────────────────────────
+      // Curated width x height pairs, five per aspect ratio per divisor. This is
+      // a fixed table rather than something computed: rounding an aspect ratio to
+      // a divisor has several defensible answers, and these are the chosen ones.
+      // Ordered the way the dialog lays the panels out, three to a row.
+      const SIZING_RATIOS = [
+        ['1:1',   1,  1],
+        ['16:9', 16,  9],
+        ['9:16',  9, 16],
+        ['3:2',   3,  2],
+        ['2:3',   2,  3],
+        ['4:3',   4,  3],
+        ['3:4',   3,  4],
+      ]
+      const SIZING_DIVISORS  = [8, 16, 32, 64]
+      const SIZING_DEF_RATIO = '9:16'
+      const SIZING_DEF_DIV   = 32
+
+      const SIZING_TABLE = {
+        '1:1': {
+           8: [[576, 576], [624, 624], [832, 832], [960, 960], [1280, 1280]],
+          16: [[576, 576], [624, 624], [832, 832], [960, 960], [1280, 1280]],
+          32: [[576, 576], [608, 608], [832, 832], [960, 960], [1280, 1280]],
+          64: [[576, 576], [640, 640], [832, 832], [960, 960], [1280, 1280]],
+        },
+        '16:9': {
+           8: [[608, 352], [704, 400], [832, 480], [1024, 576], [1280, 720]],
+          16: [[608, 352], [704, 400], [832, 480], [1024, 576], [1280, 720]],
+          32: [[608, 352], [704, 384], [832, 480], [1024, 576], [1280, 704]],
+          64: [[640, 384], [704, 384], [832, 512], [1024, 576], [1280, 704]],
+        },
+        '9:16': {
+           8: [[352, 608], [400, 704], [480, 832], [576, 1024], [720, 1280]],
+          16: [[352, 608], [400, 704], [480, 832], [576, 1024], [720, 1280]],
+          32: [[352, 608], [384, 704], [480, 832], [576, 1024], [704, 1280]],
+          64: [[384, 640], [384, 704], [512, 832], [576, 1024], [704, 1280]],
+        },
+        '3:2': {
+           8: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
+          16: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
+          32: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
+          64: [[576, 384], [768, 512], [960, 640], [1152, 768], [1536, 1024]],
+        },
+        '2:3': {
+           8: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
+          16: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
+          32: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
+          64: [[384, 576], [512, 768], [640, 960], [768, 1152], [1024, 1536]],
+        },
+        // The /64 second entry differs from the source list, which repeated the
+        // first entry there and so offered only four distinct sizes.
+        '4:3': {
+           8: [[512, 384], [608, 456], [800, 600], [1024, 768], [1216, 912]],
+          16: [[512, 384], [576, 432], [768, 576], [1024, 768], [1216, 912]],
+          32: [[512, 384], [608, 448], [768, 576], [1024, 768], [1216, 896]],
+          64: [[512, 384], [704, 512], [768, 576], [1024, 768], [1280, 960]],
+        },
+        // The same correction as 4:3, mirrored.
+        '3:4': {
+           8: [[384, 512], [456, 608], [600, 800], [768, 1024], [912, 1216]],
+          16: [[384, 512], [432, 576], [576, 768], [768, 1024], [912, 1216]],
+          32: [[384, 512], [448, 608], [576, 768], [768, 1024], [896, 1216]],
+          64: [[384, 512], [512, 704], [576, 768], [768, 1024], [960, 1280]],
+        },
+      }
+
+      // Which ratio / divisor / set a width x height came from, or null. The
+      // default divisor is tried first because several sets repeat across
+      // divisors, and 32 is the one the dialog would otherwise open on.
+      function sizingLookup(w, h) {
+        if (!(w > 0 && h > 0)) return null
+        const divs = [SIZING_DEF_DIV, ...SIZING_DIVISORS.filter(d => d !== SIZING_DEF_DIV)]
+        for (const [key] of SIZING_RATIOS) {
+          for (const d of divs) {
+            const idx = SIZING_TABLE[key][d].findIndex(([pw, ph]) => pw === w && ph === h)
+            if (idx >= 0) return { ratio: key, div: d, idx }
+          }
+        }
+        return null
+      }
+
+      // A filled rectangle in the ratio's own proportions, fitted into a fixed
+      // box so the panels stay aligned however tall or wide the ratio is.
+      function sizingSwatch(rw, rh) {
+        const w = rw >= rh ? 20 : Math.round(20 * rw / rh)
+        const h = rh >= rw ? 20 : Math.round(20 * rh / rw)
+        return `<span style="display:inline-flex;width:22px;height:22px;flex-shrink:0;
+                             align-items:center;justify-content:center">
+          <span style="width:${w}px;height:${h}px;background:#2a5080;border:1px solid #4a7ab0;
+                       border-radius:2px"></span></span>`
+      }
+
+      // The Sizing dialog behind the button on the Width/Height row. It opens on
+      // whatever the panel's current size matches, or on the defaults when it
+      // matches nothing, and only OK and Cancel close it.
+      function openSizingModal(panel) {
+        const widthEl  = panel.querySelector('#daz-width')
+        const heightEl = panel.querySelector('#daz-height')
+        const found    = sizingLookup(parseInt(widthEl?.value, 10), parseInt(heightEl?.value, 10))
+        const sel      = found ?? { ratio: SIZING_DEF_RATIO, div: SIZING_DEF_DIV, idx: 0 }
+
+        const secLbl = 'color:#888;font-size:10px;display:block;margin-bottom:5px'
+        const rule   = 'border:0;border-top:1px solid #444;margin:11px 0'
+        const bGray  = 'font-family:monospace;font-size:11px;padding:4px 14px;border-radius:3px;' +
+                       'background:#444;color:#ccc;border:1px solid #666;cursor:pointer'
+        const bGreen = 'font-family:monospace;font-size:11px;padding:4px 14px;border-radius:3px;' +
+                       'background:#1a5c35;color:#cde;border:1px solid #2a8050;cursor:pointer'
+
+        const mo = document.createElement('div')
+        mo.style.cssText =
+          'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10001;' +
+          'display:flex;align-items:center;justify-content:center'
+        const mb = document.createElement('div')
+        mb.style.cssText =
+          'background:#2a2a2a;border:1px solid #555;border-radius:6px;' +
+          'padding:16px 18px;width:326px;font-family:monospace'
+        mo.appendChild(mb)
+        document.body.appendChild(mo)
+        // No backdrop-click and no Escape handler on purpose: OK and Cancel are
+        // the only ways out. Keys are swallowed so none reach the graph canvas.
+        mo.addEventListener('keydown', e => e.stopPropagation())
+
+        mb.innerHTML = `
+          <p style="font-size:13px;color:#ddd;margin:0 0 11px;font-weight:bold">Sizing</p>
+          <hr style="${rule}">
+          <label style="${secLbl}">Aspect ratio:</label>
+          <div id="daz-sz-ratios" style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px"></div>
+          <hr style="${rule}">
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="color:#888;font-size:10px;flex-shrink:0">Divisible by:</label>
+            <div id="daz-sz-divs" style="display:flex;gap:4px"></div>
+          </div>
+          <hr style="${rule}">
+          <div id="daz-sz-list" style="display:flex;flex-direction:column;gap:3px"></div>
+          <hr style="${rule}">
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" id="daz-sz-cancel" style="${bGray}">Cancel</button>
+            <button type="button" id="daz-sz-ok" style="${bGreen}">OK</button>
+          </div>`
+
+        const ratiosEl = mb.querySelector('#daz-sz-ratios')
+        const divsEl   = mb.querySelector('#daz-sz-divs')
+        const listEl   = mb.querySelector('#daz-sz-list')
+
+        const pairs = () => SIZING_TABLE[sel.ratio][sel.div]
+
+        function renderRatios() {
+          ratiosEl.innerHTML = SIZING_RATIOS.map(([key, rw, rh]) => {
+            const on = key === sel.ratio
+            return `<button type="button" class="daz-sz-ratio" data-ratio="${key}"
+              style="display:flex;align-items:center;gap:5px;padding:4px 5px;cursor:pointer;
+                     border-radius:4px;font-family:monospace;font-size:11px;
+                     border:1px solid ${on ? '#54af7b' : '#444'};
+                     background:${on ? '#1e3527' : '#111'};color:${on ? '#cde' : '#999'}">
+              ${sizingSwatch(rw, rh)}<span>${key}</span></button>`
+          }).join('')
+        }
+
+        function renderDivs() {
+          divsEl.innerHTML = SIZING_DIVISORS.map(d => {
+            const on = d === sel.div
+            return `<button type="button" class="daz-sz-div" data-div="${d}"
+              style="font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;
+                     border:1px solid ${on ? '#54af7b' : '#444'};
+                     background:${on ? '#1e3527' : '#111'};color:${on ? '#cde' : '#888'}">${d}</button>`
+          }).join('')
+        }
+
+        function renderList() {
+          listEl.innerHTML = pairs().map(([w, h], i) => {
+            const on = i === sel.idx
+            return `<button type="button" class="daz-sz-pair" data-idx="${i}"
+              style="font-family:monospace;font-size:12px;padding:3px 0;cursor:pointer;
+                     border-radius:3px;text-align:center;
+                     border:1px solid ${on ? '#54af7b' : 'transparent'};
+                     background:${on ? '#1e3527' : 'transparent'};color:${on ? '#cde' : '#aaa'}">
+              ${w} x ${h}</button>`
+          }).join('')
+        }
+
+        ratiosEl.addEventListener('click', e => {
+          const b = e.target.closest('.daz-sz-ratio'); if (!b) return
+          // The sets are ratio- and divisor-specific, so the choice of pair does
+          // not carry over — fall back to the first, as on a fresh open.
+          sel.ratio = b.dataset.ratio
+          sel.idx   = 0
+          renderRatios(); renderList()
+        })
+        divsEl.addEventListener('click', e => {
+          const b = e.target.closest('.daz-sz-div'); if (!b) return
+          sel.div = parseInt(b.dataset.div, 10)
+          sel.idx = 0
+          renderDivs(); renderList()
+        })
+        listEl.addEventListener('click', e => {
+          const b = e.target.closest('.daz-sz-pair'); if (!b) return
+          sel.idx = parseInt(b.dataset.idx, 10)
+          renderList()
+        })
+
+        mb.querySelector('#daz-sz-cancel')?.addEventListener('click', () => mo.remove())
+        mb.querySelector('#daz-sz-ok')?.addEventListener('click', () => {
+          const [w, h] = pairs()[sel.idx] ?? []
+          if (w && h) {
+            if (widthEl) {
+              widthEl.value = String(w)
+              widthEl.dispatchEvent(new Event('input', { bubbles: true }))
+            }
+            if (heightEl) {
+              heightEl.value = String(h)
+              heightEl.dispatchEvent(new Event('input', { bubbles: true }))
+            }
+          }
+          mo.remove()
+        })
+
+        renderRatios(); renderDivs(); renderList()
+      }
+
       // Keeps the Duration (s) field and the Frames field in step. Editing
       // duration recomputes frames; editing frames or fps recomputes duration;
       // opening the panel seeds duration from the config that was just loaded.
@@ -626,6 +845,15 @@ export function buildWorkflowConfigExtension(cfg) {
             el.style.color = editable ? '' : '#888'
             el.title       = editable ? '' : why
           })
+          // A size picked from the dialog would be overwritten on the next sync
+          // and ignored at execution, so the button goes with the fields.
+          const szBtn = panel.querySelector('#daz-sizing-btn')
+          if (szBtn) {
+            szBtn.disabled      = !editable
+            szBtn.style.opacity = editable ? '' : '0.4'
+            szBtn.style.cursor  = editable ? 'pointer' : 'not-allowed'
+            szBtn.title         = editable ? '' : why
+          }
         }
 
         // Whether the width/height are the node's to compute rather than the
@@ -1406,6 +1634,9 @@ export function buildWorkflowConfigExtension(cfg) {
         // Wired here rather than next to the other Dimensions handlers below,
         // because the image clear and upload handlers need the controller.
         const dimsCtl = wireDimensions(panel)
+
+        // Sizing
+        panel.querySelector('#daz-sizing-btn')?.addEventListener('click', () => openSizingModal(panel))
 
         // Upload
         panel.querySelector('#daz-upload-btn')?.addEventListener('click', () => {

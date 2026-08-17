@@ -175,6 +175,12 @@ Resizing always uses **lanczos**.
 
 The stored Width and Height are never rewritten by a run — they are the *input* to the rule, so scaling them in place would compound on every execution.
 
+#### The Sizing dialog
+
+Next to Width and Height, on every class including Image, sits a **sizing** button. It opens a picker of known-good resolutions rather than leaving you to work them out: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must be divisible by (8, 16, 32 or 64 — many models require it), and pick one of the five sizes offered for that combination. **OK** writes the pair into Width and Height; **Cancel** changes nothing, and those two buttons are the only way to close the dialog.
+
+It opens on whatever is already in the boxes: if that size is one of the listed pairs, its ratio, divisor and row come up selected, otherwise it falls back to 9:16 ÷32 and the first size in the list. The button is disabled whenever the size is being derived from the reference image — under **Use image**, or under **Longest dimension** with an image loaded — since a size chosen there would be recomputed away.
+
 #### GGUF unet loading
 
 The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Transformer** on LTX2.5, **Diffuser** on Image, **Unet** on MiniMaxH3) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
