@@ -445,8 +445,11 @@ def resolve_dimensions(active_set: dict, image, node_name: str):
 
     use_image on takes the size from the reference image and ignores the stored
     width/height entirely; only 'none' and 'factor' are meaningful there, and
-    anything else is treated as 'none'. With use_image off the stored width and
-    height are the input to the rule:
+    anything else is treated as 'none'. If the image cannot be loaded the stored
+    size is passed straight through — the editor writes the already-scaled size
+    into it, so re-applying the factor here would double it.
+
+    With use_image off the stored width and height are the input to the rule:
 
       none    — nothing is touched.
       factor  — width, height and the image are each scaled by the value, so
@@ -477,9 +480,15 @@ def resolve_dimensions(active_set: dict, image, node_name: str):
         except Exception:
             iw = ih = 0
 
-    if dims["use_image"] and iw > 0 and ih > 0:
-        width, height = iw, ih
-        if mode not in _DIM_USE_IMAGE_MODES:
+    if dims["use_image"]:
+        if iw > 0 and ih > 0:
+            width, height = iw, ih
+            if mode not in _DIM_USE_IMAGE_MODES:
+                mode = "none"
+        else:
+            # No image to measure. The stored width/height are the editor's echo
+            # of the image size with the factor already in them, so scaling them
+            # again here would apply it twice — pass them through untouched.
             mode = "none"
 
     if mode == "none":

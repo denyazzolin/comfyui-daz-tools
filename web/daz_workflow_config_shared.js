@@ -402,6 +402,20 @@ export function buildWorkflowConfigExtension(cfg) {
         </div>`
       }
 
+      // Width and Height for the Dimensions box, shared by every class. The two
+      // boxes are only as wide as a four-digit size needs, which leaves the rest
+      // of the row for the Sizing button.
+      function sizeRow(data) {
+        const num = `width:62px;height:20px;box-sizing:border-box;${ns}`
+        return `<div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:4px">
+          <div style="flex-shrink:0"><label style="${lbl}">Width</label>
+            <input id="daz-width" type="number" value="${fValue(data.width) || 0}" style="${num}"></div>
+          <div style="flex-shrink:0"><label style="${lbl}">Height</label>
+            <input id="daz-height" type="number" value="${fValue(data.height) || 0}" style="${num}"></div>
+          <button type="button" id="daz-sizing-btn" style="${cb};height:20px">sizing</button>
+        </div>`
+      }
+
       // Keeps the Duration (s) field and the Frames field in step. Editing
       // duration recomputes frames; editing frames or fps recomputes duration;
       // opening the panel seeds duration from the config that was just loaded.
@@ -562,9 +576,11 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // Keeps the dimensions controls consistent with each other and with the
       // reference image: "Use image" is only offered when there is an image to
-      // take a size from, it narrows the mode list to the two modes that still
-      // mean something, and while it is on the width and height are the image's
-      // size (times the factor) and are shown read-only rather than typed.
+      // take a size from, and it narrows the mode list to the two modes that
+      // still mean something. Whenever the node computes the size from the image
+      // rather than reading what was typed — "Use image", or 'longest' with an
+      // image loaded — the width and height show that computed size, read-only,
+      // and the typed values are put back when it stops being computed.
       //
       // Returns { reset, refresh }: reset for the Dimensions "clear" button,
       // refresh for the places that change the image or the controls without
@@ -580,30 +596,71 @@ export function buildWorkflowConfigExtension(cfg) {
         const heightEl = panel.querySelector('#daz-height')
         const imgSel   = panel.querySelector('#daz-image-path')
         const prevEl   = panel.querySelector('#daz-img-preview-el')
-        if (!useEl || !modeEl || !valEl) return { reset: () => {}, refresh: () => {} }
+        if (!useEl || !modeEl || !valEl) {
+          return { reset: () => {}, refresh: () => {}, adopt: () => {} }
+        }
 
         // What the user last typed, so the fields come back as they left them
-        // when "Use image" is switched off again.
-        const typed = { width: widthEl?.value ?? '', height: heightEl?.value ?? '' }
+        // once the size stops being derived from the image. Captured on the way
+        // in, restored on the way out, so repeated syncs do not overwrite it.
+        const typed = { width: '', height: '', saved: false }
 
-        function setSizeEditable(editable) {
+        function enterDerived() {
+          if (typed.saved) return
+          typed.width  = widthEl?.value  ?? ''
+          typed.height = heightEl?.value ?? ''
+          typed.saved  = true
+        }
+
+        function leaveDerived() {
+          if (!typed.saved) return
+          if (widthEl)  widthEl.value  = typed.width
+          if (heightEl) heightEl.value = typed.height
+          typed.saved = false
+        }
+
+        function setSizeEditable(editable, why) {
           ;[widthEl, heightEl].forEach(el => {
             if (!el) return
             el.readOnly    = !editable
             el.style.color = editable ? '' : '#888'
-            el.title       = editable ? '' : 'Taken from the reference image'
+            el.title       = editable ? '' : why
           })
+        }
+
+        // Whether the width/height are the node's to compute rather than the
+        // user's to type. "Use image" takes the size from the image; so does
+        // 'longest', which ignores what is typed whenever there is an image to
+        // measure. With no image 'longest' falls back to scaling the typed size,
+        // so that stays the user's input and is left alone.
+        function derivedFrom() {
+          if (!imgSel?.value) return null
+          if (useEl.checked)               return 'use_image'
+          if (modeEl.value === 'longest')  return 'longest'
+          return null
         }
 
         // The preview <img> is the only place the panel knows the image's size.
         // Before it has loaded both naturals read 0, and the 'load' listener
-        // below runs this again.
+        // below runs this again. Mirrors resolve_dimensions in the backend, so
+        // the boxes show the size the node will actually output.
         function applyImageSize() {
+          const src = derivedFrom()
+          if (!src) return
           const iw = prevEl?.naturalWidth  || 0
           const ih = prevEl?.naturalHeight || 0
           if (!iw || !ih) return
-          const f = modeEl.value === 'factor' ? parseFloat(valEl.value) : 1
-          const k = (isFinite(f) && f > 0) ? f : 1
+
+          let k
+          if (src === 'longest') {
+            // The backend reads the integer part of the value.
+            const target = Math.trunc(parseFloat(valEl.value))
+            if (!isFinite(target) || target <= 0) return
+            k = target / Math.max(iw, ih)
+          } else {
+            const f = modeEl.value === 'factor' ? parseFloat(valEl.value) : 1
+            k = (isFinite(f) && f > 0) ? f : 1
+          }
           if (widthEl)  widthEl.value  = String(Math.max(1, Math.round(iw * k)))
           if (heightEl) heightEl.value = String(Math.max(1, Math.round(ih * k)))
         }
@@ -636,27 +693,21 @@ export function buildWorkflowConfigExtension(cfg) {
           if (hintEl) hintEl.textContent = hasImage ? '' : '(no reference image)'
           syncModeOptions()
           syncValueField()
-          setSizeEditable(!useEl.checked)
-          if (useEl.checked) applyImageSize()
+          // After syncModeOptions, which can drop an illegal mode back to 'none'.
+          const src = derivedFrom()
+          if (src) enterDerived(); else leaveDerived()
+          setSizeEditable(!src, src === 'longest'
+            ? "Derived from the image's longest dimension"
+            : 'Taken from the reference image')
+          applyImageSize()
         }
 
-        useEl.addEventListener('change', () => {
-          if (useEl.checked) {
-            typed.width  = widthEl?.value  ?? ''
-            typed.height = heightEl?.value ?? ''
-          } else {
-            if (widthEl)  widthEl.value  = typed.width
-            if (heightEl) heightEl.value = typed.height
-          }
-          syncAll()
-        })
-        modeEl.addEventListener('change', () => {
-          syncValueField()
-          if (useEl.checked) applyImageSize()
-        })
-        valEl.addEventListener('input', () => { if (useEl.checked) applyImageSize() })
+        useEl.addEventListener('change', syncAll)
+        modeEl.addEventListener('change', syncAll)
+        valEl.addEventListener('input', applyImageSize)
         imgSel?.addEventListener('change', syncAll)
-        prevEl?.addEventListener('load', () => { if (useEl.checked) applyImageSize() })
+        // The naturals only become readable once the preview has loaded.
+        prevEl?.addEventListener('load', syncAll)
 
         syncAll()
 
@@ -667,9 +718,15 @@ export function buildWorkflowConfigExtension(cfg) {
             valEl.value   = '1'
             typed.width   = ''
             typed.height  = ''
+            typed.saved   = false
             syncAll()
           },
           refresh: syncAll,
+          // The width/height were just written from outside — by a preset — so
+          // whatever size was remembered before is stale. Dropping it stops the
+          // next refresh restoring it over what was just written; if the panel
+          // is still deriving, that refresh re-captures the new values instead.
+          adopt: () => { typed.saved = false },
         }
         // Stashed so applyPresetToPanel can re-run the wiring after it writes
         // the controls, without having to be handed the panel's closure.
@@ -682,7 +739,7 @@ export function buildWorkflowConfigExtension(cfg) {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
         fFlagLabel, fFlagValue, fCustomValue, fNote, loraEnabled,
         row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
-        box, selOpt, selOptImg, selOptAudio, unetRow, durationRow, dimensionsRows,
+        box, selOpt, selOptImg, selOptAudio, unetRow, durationRow, dimensionsRows, sizeRow,
         fs, ns, tas, lbl, rw, cb,
       }
 
@@ -1789,6 +1846,9 @@ export function buildWorkflowConfigExtension(cfg) {
         // a preset writes them straight rather than through their handlers — so
         // re-run the wiring: it drops "Use image" if this panel has no reference
         // image, narrows the mode list, and re-derives the size from the image.
+        // adopt() first, so the width/height the preset just wrote are taken as
+        // the new baseline rather than reverted to what the panel had before.
+        panel._dazDimsCtl?.adopt()
         panel._dazDimsCtl?.refresh()
       }
 

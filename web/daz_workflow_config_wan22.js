@@ -197,15 +197,10 @@ function buildModelsHtml(folderMap, data, h) {
 // ── WAN2.2 — edit panel: Dimensions box ──────────────────────────────────────
 
 function buildDimsHtml(data, h) {
-  const { fValue, fRandomize, durationRow, dimensionsRows, ns, lbl, cb } = h
+  const { fValue, fRandomize, durationRow, dimensionsRows, sizeRow, ns, lbl, cb } = h
   return `
     ${dimensionsRows(data)}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
-      <div><label style="${lbl}">Width</label>
-        <input id="daz-width" type="number" value="${fValue(data.width) || 0}" style="width:100%;${ns}"></div>
-      <div><label style="${lbl}">Height</label>
-        <input id="daz-height" type="number" value="${fValue(data.height) || 0}" style="width:100%;${ns}"></div>
-    </div>
+    ${sizeRow(data)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
       <div><label style="${lbl}">Steps</label>
         <input id="daz-steps" type="number" value="${fValue(data.steps) || 0}" style="width:100%;${ns}"></div>

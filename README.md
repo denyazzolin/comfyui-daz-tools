@@ -169,7 +169,7 @@ Resizing always uses **lanczos**.
 | **Longest dimension** | Follow the image's new size | Its longest side becomes the value, aspect ratio kept |
 | **Fit** | As typed | Scaled to cover the box and cropped at the centre. An image smaller than the box on *both* axes is stretched to fill it instead, so nothing needs padding |
 
-**Longest dimension** takes the size entirely from the image, so the Width and Height you typed are ignored: at 1280×720 with a 1000×1000 image and a value of 960, both the image and the outputs come out 960×960. With no reference image loaded there is nothing to follow, and the mode falls back to scaling the typed size.
+**Longest dimension** takes the size entirely from the image, so the Width and Height you typed are ignored: at 1280×720 with a 1000×1000 image and a value of 960, both the image and the outputs come out 960×960. The editor fills the Width and Height boxes in with that computed size as you type the value, and shows them read-only while the mode is active — switching to another mode gives you back what you had typed. With no reference image loaded there is nothing to follow: the mode falls back to scaling the typed size, and the boxes stay yours to edit.
 
 **Use image on** — the outputs are the reference image's own size, and the typed Width and Height are ignored. The editor fills them in from the image and shows them read-only; unchecking the box gives you back what you had typed. Only **None** and **Factor** are offered here, since the other two derive a size from somewhere other than the image; a factor scales the image and the outputs together. **Use image** is unavailable, and forced off, whenever no reference image is selected.
 
