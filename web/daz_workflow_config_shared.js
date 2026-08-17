@@ -413,6 +413,8 @@ export function buildWorkflowConfigExtension(cfg) {
           <div style="flex-shrink:0"><label style="${lbl}">Height</label>
             <input id="daz-height" type="number" value="${fValue(data.height) || 0}" style="${num}"></div>
           <button type="button" id="daz-sizing-btn" style="${cb};height:20px">sizing</button>
+          <span id="daz-size-warn" style="color:#d8b13a;font-size:10px;line-height:20px;
+                white-space:nowrap;display:none">(!) not /32</span>
         </div>`
       }
 
@@ -793,6 +795,34 @@ export function buildWorkflowConfigExtension(cfg) {
           `)}</div>`
       }
 
+      // Flags a width or height that is not a multiple of 32, which most models
+      // want. Only a warning — the size is still whatever was typed. Stashed on
+      // the panel so the places that write the fields without firing an event
+      // (the image-derived sizes, applying a preset) can refresh it.
+      function wireSizeWarning(panel) {
+        const widthEl  = panel.querySelector('#daz-width')
+        const heightEl = panel.querySelector('#daz-height')
+        const warnEl   = panel.querySelector('#daz-size-warn')
+        if (!warnEl) return () => {}
+
+        const off = el => {
+          const n = parseInt(el?.value, 10)
+          // A blank or unparsable box is the field's own problem, not this one.
+          return isFinite(n) && n % 32 !== 0
+        }
+        const update = () => {
+          warnEl.style.display = (off(widthEl) || off(heightEl)) ? '' : 'none'
+        }
+
+        ;[widthEl, heightEl].forEach(el => {
+          el?.addEventListener('input', update)
+          el?.addEventListener('change', update)
+        })
+        update()
+        panel._dazSizeWarn = update
+        return update
+      }
+
       // Keeps the dimensions controls consistent with each other and with the
       // reference image: "Use image" is only offered when there is an image to
       // take a size from, and it narrows the mode list to the two modes that
@@ -836,6 +866,7 @@ export function buildWorkflowConfigExtension(cfg) {
           if (widthEl)  widthEl.value  = typed.width
           if (heightEl) heightEl.value = typed.height
           typed.saved = false
+          panel._dazSizeWarn?.()
         }
 
         function setSizeEditable(editable, why) {
@@ -891,6 +922,7 @@ export function buildWorkflowConfigExtension(cfg) {
           }
           if (widthEl)  widthEl.value  = String(Math.max(1, Math.round(iw * k)))
           if (heightEl) heightEl.value = String(Math.max(1, Math.round(ih * k)))
+          panel._dazSizeWarn?.()
         }
 
         function syncValueField() {
@@ -1631,6 +1663,9 @@ export function buildWorkflowConfigExtension(cfg) {
         }
         imgSel?.addEventListener('change', e => updatePreview(e.target.value))
 
+        // Before wireDimensions, whose first sync already wants to refresh it.
+        wireSizeWarning(panel)
+
         // Wired here rather than next to the other Dimensions handlers below,
         // because the image clear and upload handlers need the controller.
         const dimsCtl = wireDimensions(panel)
@@ -1771,6 +1806,9 @@ export function buildWorkflowConfigExtension(cfg) {
           checkCfgWarn()
           resetDurationRow()
           dimsCtl.reset()
+          // The width/height were zeroed above without firing anything, and on a
+          // panel that was not deriving its size the reset has nothing to say.
+          panel._dazSizeWarn?.()
           const r = panel.querySelector('#daz-seed-randomize'); if (r) r.checked = false
         })
         panel.querySelector('#daz-master-default')?.addEventListener('click', () => {
@@ -2081,6 +2119,9 @@ export function buildWorkflowConfigExtension(cfg) {
         // the new baseline rather than reverted to what the panel had before.
         panel._dazDimsCtl?.adopt()
         panel._dazDimsCtl?.refresh()
+        // The preset writes width/height straight into the fields too, and on a
+        // class with no dimensions rows the refresh above is an inert stub.
+        panel._dazSizeWarn?.()
       }
 
       // ── Shared preset modal base ──────────────────────────────────────────────

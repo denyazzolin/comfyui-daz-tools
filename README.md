@@ -181,6 +181,8 @@ Next to Width and Height, on every class including Image, sits a **sizing** butt
 
 It opens on whatever is already in the boxes: if that size is one of the listed pairs, its ratio, divisor and row come up selected, otherwise it falls back to 9:16 ÷32 and the first size in the list. The button is disabled whenever the size is being derived from the reference image — under **Use image**, or under **Longest dimension** with an image loaded — since a size chosen there would be recomputed away.
 
+A yellow **(!) not /32** appears next to the button whenever the Width or the Height is not a multiple of 32, which is what most models want. It is only a warning — nothing is changed or blocked, and picking a ÷8 or ÷16 size from the dialog can raise it quite legitimately.
+
 #### GGUF unet loading
 
 The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Transformer** on LTX2.3, **Transformer** on LTX2.5, **Diffuser** on Image, **Unet** on MiniMaxH3) can point at a GGUF-quantized model instead of a regular `.safetensors` file. The model dropdown lists regular and `.gguf` files together; picking a `.gguf` entry automatically checks the read-only **gguf** checkbox shown above the dropdown, and the node loads it through ComfyUI-GGUF's unet loader instead of the standard diffusion model loader — no other configuration needed.
