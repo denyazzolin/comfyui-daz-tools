@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 10,                  // internal schema version; do not change
+    "schema_version": 11,                  // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -34,6 +34,13 @@
         "audio_path": { "path": "" },      // absolute path to input reference audio file
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 720 },        // output height in pixels
+        "dimensions":{
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" use the image's width and height
+             "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
+              "mode":"factor",             // "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
+              "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+             }
+        },
         "steps": { "value": 30 },          // number of denoising steps
         "split_step": { "value": 15 },     // step at which high/low-pass unet split occurs
         "seed": { "value": 0, "randomize": false }, // seed value; randomize: re-rolls each run
@@ -96,6 +103,13 @@
         "audio_path": { "path": "" },      // absolute path to input reference audio file
         "width": { "value": 768 },         // output width in pixels
         "height": { "value": 512 },        // output height in pixels
+        "dimensions":{
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" use the image's width and height
+             "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
+              "mode":"none",               // "none" leaves the image and the width/height alone. See the WAN2.2 config above for the other modes
+              "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+             }
+        },
         "steps": { "value": 8 },           // number of denoising steps
         "split_step": { "value": 0 },      // NOT USED by LTX node
         "seed": { "value": 0, "randomize": false }, // seed value; randomize: re-rolls each run

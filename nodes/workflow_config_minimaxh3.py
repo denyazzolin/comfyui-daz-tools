@@ -4,7 +4,7 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -315,15 +315,18 @@ class WorkflowConfigMiniMaxH3:
             (lora_7_sd, lora_7_w), (lora_8_sd, lora_8_w),
         ]
 
+        ref_image, out_width, out_height = resolve_dimensions(
+            active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigMiniMaxH3")
+
         return (
             unet,
             video_vae,
             audio_vae,
             _load_clip(_get_name(active_set.get("clip"))),
-            _load_image(_get_path(active_set.get("image_path"))),
+            ref_image,
             _load_audio(_get_path(active_set.get("audio_path"))),
-            _get_int(active_set.get("width")),
-            _get_int(active_set.get("height")),
+            out_width,
+            out_height,
             _get_int(active_set.get("steps")),
             seed_val,
             master_text,

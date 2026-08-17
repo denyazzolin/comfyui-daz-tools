@@ -80,7 +80,8 @@ All five nodes share a common set of configurable fields:
 | **Note** | Free-form note (up to 900 characters), shown on the node while in use |
 | **Image** | Reference input image — a filename inside ComfyUI's input folder, or an absolute path |
 | **Audio** | Reference input audio — a filename inside ComfyUI's input folder, or an absolute path. When set, the node outputs the decoded audio on the `audio` output for use downstream |
-| **Width / Height** | Output frame dimensions |
+| **Width / Height** | Output frame dimensions. On the four video nodes these are the *input* to **Use image / Scale** below, which decides what the `width` and `height` outputs actually report |
+| **Use image / Scale** | On WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 only — governs the reference image and the size outputs together. See [Dimensions and scaling](#dimensions-and-scaling) |
 | **Steps** | Number of denoising steps |
 | **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
 | **Duration (s)** | Editor-only helper on the WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 nodes: type a length in seconds — or hit one of the **5 / 7 / 10 / 15 / 20** quick buttons (no 20 on MiniMax H3) — and **Total frames** is recalculated as `duration × fps + 1`, counting the first frame. The quick button matching the current duration stays highlighted; type anything else and none of them are. Editing Total frames or FPS updates Duration back the other way, as `frames ÷ fps` capped at two decimals, snapped to a whole second when it lands within a tenth of one — a whole-second clip does not always divide back cleanly (the first frame returns 5.04, and 20s at 29.97 fps returns 19.99), and that noise is not worth showing. Duration is not stored in the config: it is derived from the saved frames and FPS every time the editor opens. FPS must be set first; with FPS at zero the field reports *FPS is not defined* and leaves the frame count alone |
@@ -152,6 +153,27 @@ You can fill in either the checkpoint path or the standalone model paths — all
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio |
 | **CLIP** | Text encoder (loaded with the MiniMax CLIP type) |
 | **CFG** | CFG scale |
+
+#### Dimensions and scaling
+
+The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) decide their `width` / `height` outputs and resize the reference image together, from the **Use image** checkbox and the **Scale** box at the top of the editor's *Dimensions and More* panel. The Image node has no reference image and no `image` output, so it has neither control — its Width and Height are simply what you type.
+
+Resizing always uses **lanczos**.
+
+**Use image off** — the Width and Height you typed are the input to the scale mode:
+
+| Scale mode | Width / height outputs | Reference image |
+|---|---|---|
+| **None** | As typed | Untouched |
+| **Factor** | Both multiplied by **Scale by** | Multiplied by the same factor, on its own aspect ratio |
+| **Longest dimension** | Follow the image's new size | Its longest side becomes the value, aspect ratio kept |
+| **Fit** | As typed | Scaled to cover the box and cropped at the centre. An image smaller than the box on *both* axes is stretched to fill it instead, so nothing needs padding |
+
+**Longest dimension** takes the size entirely from the image, so the Width and Height you typed are ignored: at 1280×720 with a 1000×1000 image and a value of 960, both the image and the outputs come out 960×960. With no reference image loaded there is nothing to follow, and the mode falls back to scaling the typed size.
+
+**Use image on** — the outputs are the reference image's own size, and the typed Width and Height are ignored. The editor fills them in from the image and shows them read-only; unchecking the box gives you back what you had typed. Only **None** and **Factor** are offered here, since the other two derive a size from somewhere other than the image; a factor scales the image and the outputs together. **Use image** is unavailable, and forced off, whenever no reference image is selected.
+
+The stored Width and Height are never rewritten by a run — they are the *input* to the rule, so scaling them in place would compound on every execution.
 
 #### GGUF unet loading
 
@@ -244,7 +266,7 @@ For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets also carry the full LoRA set
 
 Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes. Presets carry the Qualifiers (trail) prompt alongside Master/Positive/Negative for every node class.
 
-For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets carry **Total frames** and **FPS** as well — applying one re-derives the editor's **Duration (s)** from them. LTX2.3 and LTX2.5 presets additionally carry the **Latent upscale** model. The Image node has no frame count or FPS, so its presets carry neither.
+For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets carry **Total frames** and **FPS** as well — applying one re-derives the editor's **Duration (s)** from them. Those four also carry the **Use image** and **Scale** settings (see [Dimensions and scaling](#dimensions-and-scaling)); applying one re-checks them against the config being edited, so a preset saved with **Use image** on lands with it off if the config has no reference image. LTX2.3 and LTX2.5 presets additionally carry the **Latent upscale** model. The Image node has no frame count, FPS, or reference image, so its presets carry none of these.
 
 Presets saved before these fields existed simply do not include them, and applying such a preset leaves the corresponding fields in the panel untouched rather than zeroing them.
 

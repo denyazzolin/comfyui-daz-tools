@@ -1,6 +1,6 @@
 {
     "_meta": {
-        "preset_schema_version": 5, // internal schema version; do not change
+        "preset_schema_version": 6, // internal schema version; do not change
         "name": "General Presets", // display name for this preset file
         "version": "1.0", // file format version string
         "created_at": "2026-06-02T00:00:00", // file creation timestamp (ISO 8601)
@@ -24,6 +24,7 @@
                 "vae",
                 "clip",
                 "loras",
+                "dimensions",
                 "width",
                 "height",
                 "shift_high",
@@ -58,6 +59,7 @@
                 "clip",
                 "latent_upscale",
                 "loras",
+                "dimensions",
                 "width",
                 "height",
                 "steps",
@@ -86,6 +88,7 @@
                 "clip",
                 "latent_upscale",
                 "loras",
+                "dimensions",
                 "width",
                 "height",
                 "steps",
@@ -137,6 +140,7 @@
                 "audio_vae",
                 "clip",
                 "loras",
+                "dimensions",
                 "width",
                 "height",
                 "steps",
@@ -201,6 +205,13 @@
             "shift_low": {
                 "value": 5.0
             }, // low-pass unet timestep
+            "dimensions": {
+                "use_image": false, // true takes the width/height from the reference image
+                "scale": {
+                    "mode": "none", // none | factor | longest | fit
+                    "value": 1.0
+                }
+            }, // how the reference image is resized and what the width/height outputs report
             "width": {
                 "value": 1280
             }, // output width in pixels
@@ -289,6 +300,13 @@
                 "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // NOT USED by LTX node
                 "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // NOT USED by LTX node
             }, // all 8 lora slots are saved/applied as a whole, including empty ones
+            "dimensions": {
+                "use_image": false, // true takes the width/height from the reference image
+                "scale": {
+                    "mode": "none", // none | factor | longest | fit
+                    "value": 1.0
+                }
+            }, // how the reference image is resized and what the width/height outputs report
             "width": {
                 "value": 768
             }, // output width in pixels
@@ -365,6 +383,13 @@
                 "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
                 "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
             }, // all 8 lora slots are saved/applied as a whole, including empty ones
+            "dimensions": {
+                "use_image": false, // true takes the width/height from the reference image
+                "scale": {
+                    "mode": "none", // none | factor | longest | fit
+                    "value": 1.0
+                }
+            }, // how the reference image is resized and what the width/height outputs report
             "width": {
                 "value": 1280
             }, // output width in pixels
@@ -495,6 +520,13 @@
                 "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
                 "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
             }, // all 8 lora slots are saved/applied as a whole, including empty ones
+            "dimensions": {
+                "use_image": false, // true takes the width/height from the reference image
+                "scale": {
+                    "mode": "none", // none | factor | longest | fit
+                    "value": 1.0
+                }
+            }, // how the reference image is resized and what the width/height outputs report
             "width": {
                 "value": 1280
             }, // output width in pixels

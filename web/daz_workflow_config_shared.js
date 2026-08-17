@@ -514,12 +514,175 @@ export function buildWorkflowConfigExtension(cfg) {
         return () => { setErr(''); syncButtons() }
       }
 
+      // ── Dimensions: "Use image" + the Scale box ────────────────────────────
+      // Offered in the order the dropdown shows them. 'longest' and 'fit' both
+      // need a size that does not come from the image, so they are withheld
+      // while "Use image" is on — the same pair the server accepts there.
+      const DIM_SCALE_MODES = [
+        ['none',    'None'],
+        ['factor',  'Factor'],
+        ['longest', 'Longest dimension'],
+        ['fit',     'Fit'],
+      ]
+      const DIM_USE_IMAGE_MODES = ['none', 'factor']
+
+      function fDimensions(val) {
+        const src   = (val && typeof val === 'object') ? val : {}
+        const scale = (src.scale && typeof src.scale === 'object') ? src.scale : {}
+        const mode  = DIM_SCALE_MODES.some(([m]) => m === scale.mode) ? scale.mode : 'none'
+        const value = parseFloat(scale.value)
+        return { use_image: src.use_image === true, mode, value: isFinite(value) ? value : 1 }
+      }
+
+      // Rendered at the top of the Dimensions box by the classes that take a
+      // reference image. The Image class has none, so it does not call this.
+      function dimensionsRows(data) {
+        const d = fDimensions(data.dimensions)
+        return `
+          <label style="display:flex;align-items:center;gap:5px;color:#ccc;font-size:11px;
+                        cursor:pointer;margin-bottom:5px">
+            <input type="checkbox" id="daz-dim-use-image"${d.use_image ? ' checked' : ''}
+              style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+            Use image
+            <span id="daz-dim-use-image-hint" style="color:#666;font-size:10px"></span>
+          </label>
+          <div style="margin-bottom:5px">${box('Scale', `
+            <div style="${rw}"><label style="${lbl}">Scale mode</label>
+              <select id="daz-dim-scale-mode" style="${fs}">
+                ${DIM_SCALE_MODES.map(([m, label]) =>
+                  `<option value="${m}"${m === d.mode ? ' selected' : ''}>${label}</option>`).join('')}
+              </select>
+            </div>
+            <div><label id="daz-dim-scale-value-label" style="${lbl}">Scale by</label>
+              <input id="daz-dim-scale-value" type="number" step="0.01" min="0"
+                value="${d.value}" style="${fs}">
+            </div>
+          `)}</div>`
+      }
+
+      // Keeps the dimensions controls consistent with each other and with the
+      // reference image: "Use image" is only offered when there is an image to
+      // take a size from, it narrows the mode list to the two modes that still
+      // mean something, and while it is on the width and height are the image's
+      // size (times the factor) and are shown read-only rather than typed.
+      //
+      // Returns { reset, refresh }: reset for the Dimensions "clear" button,
+      // refresh for the places that change the image or the controls without
+      // firing an event this can hear (clearing the image, applying a preset).
+      // Classes with no dimensions rows get inert stubs.
+      function wireDimensions(panel) {
+        const useEl    = panel.querySelector('#daz-dim-use-image')
+        const modeEl   = panel.querySelector('#daz-dim-scale-mode')
+        const valEl    = panel.querySelector('#daz-dim-scale-value')
+        const valLbl   = panel.querySelector('#daz-dim-scale-value-label')
+        const hintEl   = panel.querySelector('#daz-dim-use-image-hint')
+        const widthEl  = panel.querySelector('#daz-width')
+        const heightEl = panel.querySelector('#daz-height')
+        const imgSel   = panel.querySelector('#daz-image-path')
+        const prevEl   = panel.querySelector('#daz-img-preview-el')
+        if (!useEl || !modeEl || !valEl) return { reset: () => {}, refresh: () => {} }
+
+        // What the user last typed, so the fields come back as they left them
+        // when "Use image" is switched off again.
+        const typed = { width: widthEl?.value ?? '', height: heightEl?.value ?? '' }
+
+        function setSizeEditable(editable) {
+          ;[widthEl, heightEl].forEach(el => {
+            if (!el) return
+            el.readOnly    = !editable
+            el.style.color = editable ? '' : '#888'
+            el.title       = editable ? '' : 'Taken from the reference image'
+          })
+        }
+
+        // The preview <img> is the only place the panel knows the image's size.
+        // Before it has loaded both naturals read 0, and the 'load' listener
+        // below runs this again.
+        function applyImageSize() {
+          const iw = prevEl?.naturalWidth  || 0
+          const ih = prevEl?.naturalHeight || 0
+          if (!iw || !ih) return
+          const f = modeEl.value === 'factor' ? parseFloat(valEl.value) : 1
+          const k = (isFinite(f) && f > 0) ? f : 1
+          if (widthEl)  widthEl.value  = String(Math.max(1, Math.round(iw * k)))
+          if (heightEl) heightEl.value = String(Math.max(1, Math.round(ih * k)))
+        }
+
+        function syncValueField() {
+          const mode = modeEl.value
+          const on   = mode === 'factor' || mode === 'longest'
+          valEl.disabled      = !on
+          valEl.style.opacity = on ? '1' : '0.4'
+          valEl.step          = mode === 'longest' ? '1' : '0.01'
+          if (valLbl) valLbl.textContent =
+            mode === 'factor' ? 'Scale by' : mode === 'longest' ? 'Longest dimension' : 'Value'
+        }
+
+        function syncModeOptions() {
+          const restrict = useEl.checked
+          Array.from(modeEl.options).forEach(opt => {
+            const allowed = !restrict || DIM_USE_IMAGE_MODES.includes(opt.value)
+            opt.hidden   = !allowed
+            opt.disabled = !allowed
+          })
+          if (restrict && !DIM_USE_IMAGE_MODES.includes(modeEl.value)) modeEl.value = 'none'
+        }
+
+        function syncAll() {
+          const hasImage = !!imgSel?.value
+          if (!hasImage) useEl.checked = false
+          useEl.disabled     = !hasImage
+          useEl.style.cursor = hasImage ? 'pointer' : 'not-allowed'
+          if (hintEl) hintEl.textContent = hasImage ? '' : '(no reference image)'
+          syncModeOptions()
+          syncValueField()
+          setSizeEditable(!useEl.checked)
+          if (useEl.checked) applyImageSize()
+        }
+
+        useEl.addEventListener('change', () => {
+          if (useEl.checked) {
+            typed.width  = widthEl?.value  ?? ''
+            typed.height = heightEl?.value ?? ''
+          } else {
+            if (widthEl)  widthEl.value  = typed.width
+            if (heightEl) heightEl.value = typed.height
+          }
+          syncAll()
+        })
+        modeEl.addEventListener('change', () => {
+          syncValueField()
+          if (useEl.checked) applyImageSize()
+        })
+        valEl.addEventListener('input', () => { if (useEl.checked) applyImageSize() })
+        imgSel?.addEventListener('change', syncAll)
+        prevEl?.addEventListener('load', () => { if (useEl.checked) applyImageSize() })
+
+        syncAll()
+
+        const ctl = {
+          reset: () => {
+            useEl.checked = false
+            modeEl.value  = 'none'
+            valEl.value   = '1'
+            typed.width   = ''
+            typed.height  = ''
+            syncAll()
+          },
+          refresh: syncAll,
+        }
+        // Stashed so applyPresetToPanel can re-run the wiring after it writes
+        // the controls, without having to be handed the panel's closure.
+        panel._dazDimsCtl = ctl
+        return ctl
+      }
+
       // Helpers object passed to per-class config functions
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
         fFlagLabel, fFlagValue, fCustomValue, fNote, loraEnabled,
         row, rowPair, rowNote, rowPairLora, rowDiv, disp, trunc,
-        box, selOpt, selOptImg, selOptAudio, unetRow, durationRow,
+        box, selOpt, selOptImg, selOptAudio, unetRow, durationRow, dimensionsRows,
         fs, ns, tas, lbl, rw, cb,
       }
 
@@ -1183,6 +1346,10 @@ export function buildWorkflowConfigExtension(cfg) {
         }
         imgSel?.addEventListener('change', e => updatePreview(e.target.value))
 
+        // Wired here rather than next to the other Dimensions handlers below,
+        // because the image clear and upload handlers need the controller.
+        const dimsCtl = wireDimensions(panel)
+
         // Upload
         panel.querySelector('#daz-upload-btn')?.addEventListener('click', () => {
           panel.querySelector('#daz-upload-input')?.click()
@@ -1208,6 +1375,7 @@ export function buildWorkflowConfigExtension(cfg) {
             const sel = panel.querySelector('#daz-image-path')
             if (sel) sel.innerHTML = selOptImg(fresh, result.name)
             updatePreview(result.name)
+            dimsCtl.refresh()
           } catch (err) {
             if (errDiv) errDiv.textContent = `Upload failed: ${esc(err.message)}`
           }
@@ -1296,6 +1464,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const sel = panel.querySelector('#daz-image-path')
           if (sel) sel.value = ''
           updatePreview('')
+          dimsCtl.refresh()
         })
         const _cfgWarnEl = panel.querySelector('#daz-neg-cfg-warn')
         const _cfgIds    = cfg.cfgInputIds ?? []
@@ -1313,6 +1482,7 @@ export function buildWorkflowConfigExtension(cfg) {
           })
           checkCfgWarn()
           resetDurationRow()
+          dimsCtl.reset()
           const r = panel.querySelector('#daz-seed-randomize'); if (r) r.checked = false
         })
         panel.querySelector('#daz-master-default')?.addEventListener('click', () => {
@@ -1541,6 +1711,17 @@ export function buildWorkflowConfigExtension(cfg) {
               : newType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
             continue
           }
+          if (field === 'dimensions') {
+            if (!(field in preset)) continue
+            const d      = fDimensions(preset.dimensions)
+            const useEl  = panel.querySelector('#daz-dim-use-image')
+            const modeEl = panel.querySelector('#daz-dim-scale-mode')
+            const valEl  = panel.querySelector('#daz-dim-scale-value')
+            if (useEl)  useEl.checked = d.use_image
+            if (modeEl) modeEl.value  = d.mode
+            if (valEl)  valEl.value   = String(d.value)
+            continue
+          }
           if (field === 'loras') {
             if (!(field in preset)) continue
             const loras = (preset.loras && typeof preset.loras === 'object') ? preset.loras : {}
@@ -1604,6 +1785,11 @@ export function buildWorkflowConfigExtension(cfg) {
         // A preset can carry fps, so re-derive Duration (s) from the frame count
         panel.querySelector('#daz-total-frames')
           ?.dispatchEvent(new Event('input', { bubbles: true }))
+        // The dimensions controls constrain each other and the width/height, and
+        // a preset writes them straight rather than through their handlers — so
+        // re-run the wiring: it drops "Use image" if this panel has no reference
+        // image, narrows the mode list, and re-derives the size from the image.
+        panel._dazDimsCtl?.refresh()
       }
 
       // ── Shared preset modal base ──────────────────────────────────────────────

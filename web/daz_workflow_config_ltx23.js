@@ -218,8 +218,9 @@ function buildModelsHtml(folderMap, data, h) {
 // ── LTX2.3 — edit panel: Dimensions box ──────────────────────────────────────
 
 function buildDimsHtml(data, h) {
-  const { fValue, fRandomize, durationRow, ns, lbl, cb } = h
+  const { fValue, fRandomize, durationRow, dimensionsRows, ns, lbl, cb } = h
   return `
+    ${dimensionsRows(data)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
       <div><label style="${lbl}">Width</label>
         <input id="daz-width" type="number" value="${fValue(data.width) || 0}" style="width:100%;${ns}"></div>
@@ -291,6 +292,13 @@ function buildPayload(wrap) {
     negative_prompt: { text:  wrap.querySelector('#daz-negative-prompt')?.value  ?? '' },
     trail_prompt:    { text:  wrap.querySelector('#daz-trail-prompt')?.value    ?? '' },
     filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '' },
+    dimensions: {
+      use_image: wrap.querySelector('#daz-dim-use-image')?.checked ?? false,
+      scale: {
+        mode:  wrap.querySelector('#daz-dim-scale-mode')?.value ?? 'none',
+        value: parseFloat(wrap.querySelector('#daz-dim-scale-value')?.value ?? '1') || 1.0,
+      },
+    },
     width:           { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
     height:          { value: parseInt(wrap.querySelector('#daz-height')?.value       ?? '0', 10) },
     steps:           { value: parseInt(wrap.querySelector('#daz-steps')?.value        ?? '0', 10) },
