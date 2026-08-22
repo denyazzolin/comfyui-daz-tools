@@ -11,6 +11,9 @@ import { api } from '../../scripts/api.js'
 //   unetGgufFields: [{ select, checkbox }] — pairs whose select should swap
 //     between the 'diffusion_models' and 'unet_gguf' folder listings
 //   hideType, hideAudioPath, hideLorasBox
+//   durationModel: { toFrames(secs, fps), toSeconds(frames, fps) } — how the
+//     Duration (s) field maps to Total frames and back. Omit for the usual
+//     "duration * fps plus the first frame"
 //   renderDetailHtml(data, h, extra), updateOutputLabels(node, data, h),
 //   buildModelsHtml(folderMap, data, h), buildDimsHtml(data, h),
 //   buildPayload(wrap)
@@ -380,8 +383,33 @@ export function buildWorkflowConfigExtension(cfg) {
       const durBtnOff = `${durBtn}background:#111;color:#bbb;border:1px solid #444`
       const durBtnOn  = `${durBtn}background:#2d5c43;color:#e8f5ee;border:1px solid #54af7b`
 
-      // Every class renders duration * fps frames plus the first one.
-      const DURATION_FRAME_OFFSET = 1
+      // How a class converts between the Duration (s) field and its frame
+      // count. Most of them render duration * fps frames plus the first one and
+      // use the pair below; a class whose frame count has to land on a fixed
+      // grid supplies its own through cfg.durationModel. Both directions take
+      // (value, fps) with fps already checked to be a positive number, and both
+      // must return a number — toSeconds especially, since the panel seeds the
+      // duration field from it on every open.
+      const DEFAULT_DURATION_MODEL = {
+        toFrames: (secs, fps) => Math.round(secs * fps) + 1,
+
+        // frames -> seconds, capped at two decimals. A whole-second clip does
+        // not always divide back cleanly: the first frame comes back as a
+        // spurious xx.0y, and a fractional fps loses a part-frame to rounding —
+        // 5s at 23.976 returns 5.01, 20s at 29.97 returns 19.99. All of it sits
+        // within a tenth of a whole second, so a fraction that small snaps to
+        // the whole second either side of it; anything a tenth or further in is
+        // a duration the user chose and is left alone. Counted in hundredths to
+        // keep the comparison off binary floats.
+        toSeconds: (frames, fps) => {
+          const hundredths = Math.round((frames / fps) * 100)
+          const frac       = hundredths % 100
+          if (frac < 10) return Math.floor(hundredths / 100)
+          if (frac > 90) return Math.floor(hundredths / 100) + 1
+          return hundredths / 100
+        },
+      }
+      const durationModel = cfg.durationModel ?? DEFAULT_DURATION_MODEL
 
       // Duration row for the Dimensions box — a seconds field plus quick-set
       // buttons. Duration is a UI-only convenience: it is never saved. It is
@@ -658,22 +686,6 @@ export function buildWorkflowConfigExtension(cfg) {
         // true even if these fields later start dispatching their own events.
         let syncing  = false
 
-        // frames -> seconds, capped at two decimals. A whole-second clip does
-        // not always divide back cleanly: the first frame comes back as a
-        // spurious xx.0y, and a fractional fps loses a part-frame to rounding —
-        // 5s at 23.976 returns 5.01, 20s at 29.97 returns 19.99. All of it sits
-        // within a tenth of a whole second, so a fraction that small snaps to
-        // the whole second either side of it; anything a tenth or further in is
-        // a duration the user chose and is left alone. Counted in hundredths to
-        // keep the comparison off binary floats.
-        function framesToSeconds(frames, fps) {
-          const hundredths = Math.round((frames / fps) * 100)
-          const frac       = hundredths % 100
-          if (frac < 10) return Math.floor(hundredths / 100)
-          if (frac > 90) return Math.floor(hundredths / 100) + 1
-          return hundredths / 100
-        }
-
         function currentFps() {
           const fps = parseFloat(fpsEl.value)
           if (!isFinite(fps) || fps <= 0) { setErr('FPS is not defined'); return null }
@@ -704,7 +716,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const secs = parseFloat(durEl.value)
           if (!isFinite(secs)) return
           syncing = true
-          framesEl.value = String(Math.round(secs * fps) + DURATION_FRAME_OFFSET)
+          framesEl.value = String(durationModel.toFrames(secs, fps))
           syncing = false
         }
 
@@ -715,7 +727,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const frames = parseFloat(framesEl.value)
           if (!isFinite(frames)) return
           syncing = true
-          durEl.value = String(framesToSeconds(frames, fps))
+          durEl.value = String(durationModel.toSeconds(frames, fps))
           syncing = false
           syncButtons()
         }
@@ -742,7 +754,7 @@ export function buildWorkflowConfigExtension(cfg) {
         const seedFps    = parseFloat(fpsEl.value)
         const seedFrames = parseFloat(framesEl.value)
         if (isFinite(seedFps) && seedFps > 0 && isFinite(seedFrames) && seedFrames > 0) {
-          durEl.value = String(framesToSeconds(seedFrames, seedFps))
+          durEl.value = String(durationModel.toSeconds(seedFrames, seedFps))
         }
         syncButtons()
 

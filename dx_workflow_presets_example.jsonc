@@ -540,8 +540,9 @@
                 "value": 6.0
             }, // guidance scale
             "total_frames": {
-                "value": 121
-            }, // clip length in frames; the editor's Duration (s) field is derived from this and fps, never stored
+                "value": 124
+            }, // clip length in frames; the editor's Duration (s) field is derived from this and fps, never stored.
+               // MiniMax H3 pads to a 17-frame grid anchored at 5, so 5s at 24 fps lands on 124
             "fps": {
                 "value": 24.0
             }, // frames per second

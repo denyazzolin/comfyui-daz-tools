@@ -1,6 +1,70 @@
 import { app } from '../../scripts/app.js'
 import { buildWorkflowConfigExtension } from './daz_workflow_config_shared.js'
 
+// ── MiniMax H3 — duration model ──────────────────────────────────────────────
+// MiniMax H3 renders best on frame counts that sit on a 17-frame grid anchored
+// at 5 — (frames - 5) % 17 === 0 — so a duration is padded up to the next such
+// count rather than taking the plain "+ 1 first frame" every other class uses.
+// At 24 fps, the rate the model is meant to run at, that gives 3s -> 73,
+// 5s -> 124, 7s -> 175, 10s -> 243, 15s -> 362. Other rates and longer clips
+// are outside what the model is good at and are simply left to whatever the
+// same arithmetic produces.
+
+const ANCHOR  = 17
+const RESIDUE = 5
+
+// True modulo. The plain % keeps the sign of the dividend, which would pad
+// *down* — losing up to 11 frames — whenever the raw count lands past a grid
+// point rather than short of one.
+const mod = (a, b) => ((a % b) + b) % b
+
+function toFrames(secs, fps) {
+  const n = Math.round(secs * fps)
+  // Counts below the first grid point have nothing to snap to; the clamp
+  // leaves them at their raw value instead of jumping them up to 5.
+  return n + mod(RESIDUE - mod(Math.max(RESIDUE, n), ANCHOR), ANCHOR)
+}
+
+// Coarsest first, so a duration that was typed as a whole second comes back as
+// one instead of as the fraction the frame count divides into.
+const GRAINS = [1, 0.5, 0.1, 0.01]
+
+// Frames -> seconds. A whole window of durations pads up to the same frame
+// count, so dividing does not recover what was typed: 124 frames at 24 fps is
+// 5.17s by division but was asked for as 5s. What the window does pin down is
+// the roundest duration inside it, which in every ordinary case is the one the
+// user chose. For a count on the grid what comes back always pads forward to
+// that same count, so the two fields never disagree.
+function toSeconds(frames, fps) {
+  const raw = frames / fps
+  // toFrames maps every count in [T - 16, T] onto a grid point T. Off-grid
+  // counts (hand-edited, or saved before the node used the grid) and counts
+  // below the first grid point are not in the map's range at all, and only
+  // stand for themselves.
+  const onGrid  = frames >= RESIDUE && mod(frames - RESIDUE, ANCHOR) === 0
+  const loFrame = onGrid ? Math.max(RESIDUE, frames - ANCHOR + 1) : frames
+  const lo = (loFrame - 0.5) / fps
+  const hi = (frames   + 0.5) / fps
+
+  // The candidates at a given grain are evenly spaced, and raw always sits
+  // inside the window, so the nearest one to it is found by rounding rather
+  // than by scanning: clamp raw's own multiple into the range of multiples the
+  // window holds. Empty range means this grain is too coarse for the window.
+  for (const grain of GRAINS) {
+    const kLo = Math.ceil(lo / grain - 1e-9)      // first multiple at or after lo
+    const kHi = Math.ceil(hi / grain - 1e-9) - 1  // last one still short of hi
+    if (kLo > kHi) continue
+    const k    = Math.min(kHi, Math.max(kLo, Math.round(raw / grain)))
+    const secs = Math.round(k * grain * 100) / 100
+    if (secs >= 0) return secs
+  }
+  // The window held nothing at all — an fps high enough to make it narrower
+  // than a hundredth of a second. Plain division always answers.
+  return Math.round(raw * 100) / 100
+}
+
+const DURATION_MODEL = { toFrames, toSeconds }
+
 // ── MiniMax H3 — use-mode detail table ───────────────────────────────────────
 
 function renderDetailHtml(data, h, extra = {}) {
@@ -336,6 +400,7 @@ app.registerExtension(buildWorkflowConfigExtension({
   unetGgufFields: [
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],
+  durationModel:  DURATION_MODEL,
   defaultNegativePrompt: '',
   defaultMasterPrompt:   DEFAULT_MASTER_PROMPT,
   defaultTrailPrompt:    'overall_soundscape: [AMBIENCE, FOR THE FULL SHOTS]\n\nnon_diegetic_music: N/A [OR DESCRIBE THE MUSIC]',
