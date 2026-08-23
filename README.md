@@ -84,7 +84,7 @@ All five nodes share a common set of configurable fields:
 | **Use image / Scale** | On WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 only — governs the reference image and the size outputs together. See [Dimensions and scaling](#dimensions-and-scaling) |
 | **Steps** | Number of denoising steps |
 | **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
-| **Duration (s)** | Editor-only helper on the WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 nodes: type a length in seconds — or hit one of the **5 / 7 / 10 / 15 / 20** quick buttons (no 20 on MiniMax H3) — and **Total frames** is recalculated as `duration × fps + 1`, counting the first frame. The quick button matching the current duration stays highlighted; type anything else and none of them are. Editing Total frames or FPS updates Duration back the other way, as `frames ÷ fps` capped at two decimals, snapped to a whole second when it lands within a tenth of one — a whole-second clip does not always divide back cleanly (the first frame returns 5.04, and 20s at 29.97 fps returns 19.99), and that noise is not worth showing. Duration is not stored in the config: it is derived from the saved frames and FPS every time the editor opens. FPS must be set first; with FPS at zero the field reports *FPS is not defined* and leaves the frame count alone |
+| **Duration (s)** | Editor-only helper on the WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 nodes: type a length in seconds — or hit one of the **5 / 7 / 10 / 15 / 20** quick buttons (no 20 on MiniMax H3) — and **Total frames** is recalculated for you. The quick button matching the current duration stays highlighted; type anything else and none of them are. Editing Total frames or FPS updates Duration back the other way. FPS must be set first; with FPS at zero the field reports *FPS is not defined* and leaves the frame count alone. How the two convert depends on the node — see [Duration and frame counts](#duration-and-frame-counts) |
 | **Total frames / FPS** | Video length and playback speed |
 | **Master prompt** | Base text combined with the positive prompt (see Prompts below) |
 | **Positive / Negative prompts** | Conditioning text sent to the sampler |
@@ -195,6 +195,17 @@ The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `h
 **Use image on** — the outputs are the image's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the image and the outputs together. Unavailable when no reference image is selected.
 
 Whenever the size comes from the image the editor fills the boxes in and shows them read-only; what you typed comes back when it stops. The stored Width and Height are never rewritten by a run.
+
+#### Duration and frame counts
+
+**Duration (s)** is never stored — only **Total frames** and **FPS** are, and the duration is parsed back from them every time the editor opens. Each node converts the two its own way:
+
+| Node | Duration → Total frames |
+|---|---|
+| **WAN2.2, LTX2.3, LTX2.5** | `duration × fps + 1`, counting the first frame |
+| **MiniMax H3** | padded up to the next count where `(frames - 5) ÷ 17` is whole, the grid the model renders best on — at 24 fps that is 5s → 124, 7s → 175, 10s → 243, 15s → 362 |
+
+You can always type a frame count of your own; the duration follows it. Parsing back aims to reproduce the duration originally entered rather than to divide, so a clip asked for as 5s reads as 5s and not as the fraction its frame count divides into. Rounding shows up at values the formula would not have produced — a hand-typed frame count, a fractional duration, or MiniMax below 17 fps — where the duration reported may differ slightly from what was entered.
 
 #### The Sizing dialog
 
