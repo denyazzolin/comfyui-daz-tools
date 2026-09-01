@@ -1,7 +1,7 @@
 // Example of a saved Sound Mixer mix.
 //
 // Written by the Sound Mixer node's "Save Mix" button, and read back by its
-// "Load Mix" button, at
+// "Load / Manage Mix" button, at
 //     <workflows root>/.dx_mgr/sound_mixes/[<folder>/]<name>.json
 // Every saved mix lives under sound_mixes/, always — that is what lets them
 // all be read back with one directory walk. <folder> is an optional subfolder
@@ -20,7 +20,7 @@
   "_meta": {
     // Structure version of this file. Bumped only when the shape below
     // changes in a way an older reader could not handle; a loader should
-    // refuse (or migrate) anything it does not recognise. "Load Mix" refuses
+    // refuse (or migrate) anything it does not recognise. Loading refuses
     // a schema it does not know and reports it instead of loading; an older
     // one it migrates on read, and the upgraded shape reaches the disk the
     // next time the mix is saved.
@@ -28,7 +28,7 @@
     "name": "mix", // the name the mix was saved under = this file's stem
     // Subfolder of sound_mixes/ this was saved into; "" means sound_mixes/
     // itself, and it is what the Save Mix dialog prepopulates from. A record
-    // of where the file was written, not of where it is now: "Load Mix"
+    // of where the file was written, not of where it is now: loading
     // prepopulates from the path it actually found the file at, so moving one
     // between folders by hand still does the right thing.
     "folder": "action_scenes",

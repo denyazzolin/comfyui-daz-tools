@@ -269,6 +269,21 @@ async function loadMixFile(folder, name) {
   return data
 }
 
+// Deletes saved mixes. The request succeeds even when some files could not be
+// removed and names those in `errors`, so one locked file doesn't hide the
+// rest having gone.
+async function deleteMixFiles(items) {
+  const res = await fetch("/daz/sound-mixer/mix-delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  })
+  let data = {}
+  try { data = await res.json() } catch { /* server sent no JSON body */ }
+  if (!res.ok) throw new Error(data.error || `delete failed (${res.status})`)
+  return data
+}
+
 // fps/duration/frame count come from the server (PyAV), since browsers don't
 // reliably expose a container's real frame rate.
 async function probeMovie(filename) {
@@ -687,7 +702,7 @@ function openMixEditor(node) {
       showError(`Could not load movie: ${e.message || e}`)
     }
   })
-  header.appendChild(mkBtn("Load Mix", { onClick: () => openLoadMixPopup() }))
+  header.appendChild(mkBtn("Load / Manage Mix", { onClick: () => openLoadMixPopup() }))
   header.appendChild(movieFileInput)
   header.appendChild(mkBtn("Upload a Movie", { onClick: () => movieFileInput.click() }))
   // Discarding is the only way to forget the movie — closeVideoPanel alone
@@ -2137,6 +2152,35 @@ function openMixEditor(node) {
     cbox.appendChild(foot)
   }
 
+  // Same two-layer chain as confirmDiscardMix: the list stays open underneath,
+  // so Cancel comes back to it with the ticks still where the user left them.
+  function confirmDeleteMixes(count, onContinue) {
+    const prevClose = closeActivePopup
+    const { box: cbox, close } = overlayShell(360, () => { closeActivePopup = prevClose })
+    closeActivePopup = () => { close(); prevClose?.() }
+
+    const title = document.createElement("div")
+    title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
+    title.textContent = count === 1 ? "Delete the selected mix?" : "Delete the selected mixes?"
+    cbox.appendChild(title)
+    const body = document.createElement("div")
+    body.style.cssText = "padding:10px 14px; line-height:1.45;"
+    body.textContent = `${count} saved mix file${count === 1 ? "" : "s"} will be deleted from disk. `
+      + "This cannot be undone. A mix already loaded into an editor is not affected."
+    cbox.appendChild(body)
+    const foot = document.createElement("div")
+    foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
+    foot.appendChild(mkBtn("Cancel", { onClick: close }))
+    foot.appendChild(mkBtn("Continue", {
+      danger: true,
+      onClick: () => {
+        close() // the list stays open: it has to show what is left
+        onContinue()
+      },
+    }))
+    cbox.appendChild(foot)
+  }
+
   function openLoadMixPopup() {
     // An fps box or an Add popup can still be open behind this one.
     closeActivePopup?.()
@@ -2145,7 +2189,7 @@ function openMixEditor(node) {
 
     const title = document.createElement("div")
     title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
-    title.textContent = "Load Mix"
+    title.textContent = "Load / Manage Mix"
     pbox.appendChild(title)
 
     // Always exactly MIX_LIST_VISIBLE rows tall, however many mixes there
@@ -2162,6 +2206,29 @@ function openMixEditor(node) {
     `
     pbox.appendChild(listEl)
 
+    // The mixes ticked for deletion, keyed by the path the server listed them
+    // under. Emptied on every re-list, whose rows are new objects.
+    const selected = new Map()
+
+    // Under the list: whatever the last delete had to report on the left,
+    // Delete itself on the right, dead until a row is ticked.
+    const actions = document.createElement("div")
+    actions.style.cssText = "display:flex; align-items:center; gap:8px; margin:0 14px 10px;"
+    const actionMsg = document.createElement("div")
+    actionMsg.style.cssText = "flex:1; min-width:0; font-size:12px; color:#ff8080;"
+    actions.appendChild(actionMsg)
+    const deleteBtn = mkBtn("Delete", { danger: true, onClick: () => askDeleteSelected() })
+    actions.appendChild(deleteBtn)
+    pbox.appendChild(actions)
+
+    function syncDeleteBtn() {
+      const on = selected.size > 0
+      deleteBtn.disabled = !on
+      deleteBtn.style.opacity = on ? "1" : "0.4"
+      deleteBtn.style.cursor = on ? "pointer" : "default"
+    }
+    syncDeleteBtn()
+
     const foot = document.createElement("div")
     foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
     foot.appendChild(mkBtn("Cancel", { onClick: close }))
@@ -2176,7 +2243,6 @@ function openMixEditor(node) {
       el.textContent = text
       listEl.appendChild(el)
     }
-    note("Reading saved mixes…")
 
     // Only worth asking about discarding when there is something to lose.
     function hasContent() {
@@ -2185,41 +2251,98 @@ function openMixEditor(node) {
         || !!state.movie_filename
     }
 
-    listMixFiles().then((items) => {
-      if (!pbox.isConnected) return
-      if (!items.length) {
-        note(`No saved mixes in .dx_mgr/${MIX_ROOT_FOLDER}/ yet.`)
-        return
-      }
-      listEl.textContent = ""
-      for (const entry of items) {
-        const row = document.createElement("div")
-        row.textContent = mixListLabel(entry)
-        row.title = mixDisplayPath(entry.folder, `${entry.name}.json`)
-        // line-height rather than flex centring: ellipsis needs the text in a
-        // block box, and as a flex container the row would clip mid-character.
-        row.style.cssText = `
-          flex:0 0 ${MIX_LIST_ROW_H}px; line-height:${MIX_LIST_ROW_H}px;
-          box-sizing:border-box; padding:0 8px; border-radius:3px;
-          cursor:pointer; color:#ddd; font-size:12px;
-          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-        `
-        row.addEventListener("mouseenter", () => { row.style.background = "#333" })
-        row.addEventListener("mouseleave", () => { row.style.background = "" })
-        row.addEventListener("click", () => {
-          if (!hasContent()) {
-            close()
-            doLoadMix(entry)
-            return
+    function askDeleteSelected() {
+      if (!selected.size) return
+      const entries = [...selected.values()]
+      confirmDeleteMixes(entries.length, async () => {
+        actionMsg.textContent = ""
+        try {
+          const res = await deleteMixFiles(entries.map((e) => ({ folder: e.folder, name: e.name })))
+          if (!pbox.isConnected) return
+          // A partial failure still deleted the rest, so the list is re-read
+          // either way and the message says which ones are still there.
+          if (res.errors?.length) actionMsg.textContent = res.errors.join(" ")
+          // The title stops naming a file that has just been deleted. The mix
+          // itself is untouched — still open, still exactly as it was, only
+          // no longer claiming to be that file.
+          const titled = state.save_name
+            ? mixDisplayPath(state.save_folder, `${state.save_name}.json`)
+            : ""
+          if (titled && res.deleted?.includes(titled)) {
+            state.save_folder = ""
+            state.save_name = ""
+            persist()
+            refreshTitle()
           }
-          confirmDiscardMix(() => doLoadMix(entry)) // Continue closes this list too
-        })
-        listEl.appendChild(row)
-      }
-    }).catch((e) => {
-      if (!pbox.isConnected) return
-      note(`Could not list mixes: ${e.message || e}`, "#ff8080")
-    })
+        } catch (e) {
+          if (!pbox.isConnected) return
+          actionMsg.textContent = `Could not delete: ${e.message || e}`
+        }
+        refreshList()
+      })
+    }
+
+    function refreshList() {
+      selected.clear()
+      syncDeleteBtn()
+      note("Reading saved mixes…")
+      listMixFiles().then((items) => {
+        if (!pbox.isConnected) return
+        if (!items.length) {
+          note(`No saved mixes in .dx_mgr/${MIX_ROOT_FOLDER}/ yet.`)
+          return
+        }
+        listEl.textContent = ""
+        for (const entry of items) {
+          const row = document.createElement("div")
+          row.style.cssText = `
+            display:flex; align-items:center; gap:8px; box-sizing:border-box;
+            flex:0 0 ${MIX_LIST_ROW_H}px; padding:0 8px; border-radius:3px;
+            cursor:pointer;
+          `
+          // line-height rather than flex centring: ellipsis needs the text in
+          // a block box, and centred as a flex item it clips mid-character.
+          const label = document.createElement("div")
+          label.textContent = mixListLabel(entry)
+          label.title = mixDisplayPath(entry.folder, `${entry.name}.json`)
+          label.style.cssText = `
+            flex:1; min-width:0; line-height:${MIX_LIST_ROW_H}px;
+            color:#ddd; font-size:12px;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+          `
+          row.appendChild(label)
+
+          // Ticking a row marks that mix for Delete; the row's own click
+          // still loads, so the box keeps its clicks to itself.
+          const check = document.createElement("input")
+          check.type = "checkbox"
+          check.style.cssText = "flex:0 0 auto; margin:0; cursor:pointer;"
+          check.addEventListener("click", (ev) => ev.stopPropagation())
+          check.addEventListener("change", () => {
+            if (check.checked) selected.set(entry.rel, entry)
+            else selected.delete(entry.rel)
+            syncDeleteBtn()
+          })
+          row.appendChild(check)
+
+          row.addEventListener("mouseenter", () => { row.style.background = "#333" })
+          row.addEventListener("mouseleave", () => { row.style.background = "" })
+          row.addEventListener("click", () => {
+            if (!hasContent()) {
+              close()
+              doLoadMix(entry)
+              return
+            }
+            confirmDiscardMix(() => doLoadMix(entry)) // Continue closes this list too
+          })
+          listEl.appendChild(row)
+        }
+      }).catch((e) => {
+        if (!pbox.isConnected) return
+        note(`Could not list mixes: ${e.message || e}`, "#ff8080")
+      })
+    }
+    refreshList()
   }
 
   function renderRuler() {
