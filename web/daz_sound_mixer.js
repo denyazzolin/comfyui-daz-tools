@@ -4,7 +4,10 @@ const CLASS = "daz_sound_mixer"
 
 const MAX_SOURCES = 16
 const GRID_COLS = 4
-const EDITOR_BASE_WIDTH = 1040
+// Wide enough that the bottom button bar, at its fullest (a block selected,
+// with blocks on the timeline), still lays out on one row. Its flex-wrap is
+// only a fallback for a viewport too narrow to give the box this much.
+const EDITOR_BASE_WIDTH = 1180
 const VIDEO_PANEL_WIDTH = 288
 const MIN_ROWS = 8
 const MAX_BLOCK_ROWS = 30
