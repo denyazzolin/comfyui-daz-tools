@@ -2148,16 +2148,17 @@ function openMixEditor(node) {
     title.textContent = "Load Mix"
     pbox.appendChild(title)
 
-    // Sized to exactly MIX_LIST_VISIBLE rows, so the row after them is what
-    // brings the scrollbar in rather than some height that happens to cut one
-    // in half. Rows are fixed-height for the same reason.
+    // Always exactly MIX_LIST_VISIBLE rows tall, however many mixes there
+    // are: a fixed height, not a cap, so the box does not grow as it fills.
+    // Rows are fixed-height too, so the row after the last visible one is
+    // what brings the scrollbar in rather than a height that halves one.
     const listEl = document.createElement("div")
-    const maxH = MIX_LIST_VISIBLE * MIX_LIST_ROW_H + (MIX_LIST_VISIBLE - 1) * MIX_LIST_ROW_GAP
+    const listH = MIX_LIST_VISIBLE * MIX_LIST_ROW_H + (MIX_LIST_VISIBLE - 1) * MIX_LIST_ROW_GAP
     listEl.style.cssText = `
       display:flex; flex-direction:column; gap:${MIX_LIST_ROW_GAP}px;
       margin:10px 14px; padding:6px; background:#1a1a1a;
       border:1px solid #444; border-radius:4px;
-      max-height:${maxH}px; overflow-y:auto;
+      height:${listH}px; overflow-y:auto;
     `
     pbox.appendChild(listEl)
 
