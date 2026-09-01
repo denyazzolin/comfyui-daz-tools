@@ -96,6 +96,28 @@ def _mix_read_path(folder: str, name: str) -> tuple:
     return folder, filename, path
 
 
+def _prune_empty_mix_dirs(path: str) -> None:
+    """Remove the folders a deleted mix leaves empty, up to but never
+    including the mix root.
+
+    A folder with no mixes in it never appears in the Load list — the walk
+    only reports .json files — so leaving it behind would keep an invisible
+    folder on disk that the save dialog could still land back in. os.rmdir
+    only succeeds while the folder is empty, so a folder still holding
+    another mix (or anything else) stops the walk.
+    """
+    root = os.path.realpath(MIX_ROOT_DIR)
+    folder = os.path.dirname(os.path.realpath(path))
+    while os.path.normcase(folder) != os.path.normcase(root):
+        if os.path.commonpath([root, folder]) != root:
+            return
+        try:
+            os.rmdir(folder)
+        except OSError:
+            return  # not empty, or in use
+        folder = os.path.dirname(folder)
+
+
 def _migrate_mix(mix: dict, schema: int) -> dict:
     """Bring a mix body saved under an older schema up to MIX_SCHEMA.
 
@@ -265,6 +287,49 @@ try:
                     })
         items.sort(key=lambda i: (i["folder"].lower(), i["name"].lower()))
         return web.json_response(items)
+
+    @PromptServer.instance.routes.post("/daz/sound-mixer/mix-delete")
+    async def _daz_sound_mixer_mix_delete(request):
+        """Delete saved mixes the Load list reported.
+
+        Resolved with the loader's path rule, not the save dialog's: a folder
+        made by hand in a file manager is still one the list offers, so it has
+        to be one the list can delete. Failures are per file — one that is
+        locked or already gone does not stop the rest — and are reported back
+        so the dialog can say which ones are still there.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+        items = data.get("items")
+        if not isinstance(items, list) or not items:
+            return web.json_response({"error": "'items' must be a non-empty list"}, status=400)
+
+        deleted, errors = [], []
+        for item in items:
+            if not isinstance(item, dict):
+                errors.append("Could not delete an entry that was not a mix.")
+                continue
+            try:
+                folder, filename, path = _mix_read_path(item.get("folder", ""), item.get("name", ""))
+            except ValueError as e:
+                errors.append(f"Could not delete: {e}")
+                continue
+            rel = _mix_rel(folder, filename)
+            try:
+                os.remove(path)
+                deleted.append(rel)
+            except FileNotFoundError:
+                # The list was stale — the file being gone is the wanted result.
+                deleted.append(rel)
+            except Exception as e:
+                errors.append(f"Could not delete '{rel}': {e}")
+                continue
+            _prune_empty_mix_dirs(path)
+
+        return web.json_response({"ok": not errors, "deleted": deleted, "errors": errors})
 
     @PromptServer.instance.routes.get("/daz/sound-mixer/mix-load")
     async def _daz_sound_mixer_mix_load(request):
