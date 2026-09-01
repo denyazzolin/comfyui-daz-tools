@@ -18,6 +18,10 @@ const CROP_STEP = 0.001 // milliseconds, in seconds
 // dx_sound_mix_setting_example.jsonc.
 const MIX_ROOT_FOLDER = "sound_mixes"
 const DEFAULT_MIX_NAME = "mix"
+// Rows the Load Mix list shows before it starts scrolling.
+const MIX_LIST_VISIBLE = 12
+const MIX_LIST_ROW_H = 26
+const MIX_LIST_ROW_GAP = 4
 // Brightness factor the waveform is drawn at outside the crop. Fades ramp
 // between this and 1.0, so a fade region reads as a gradient from the same
 // half-intensity the trimmed-away part uses up to the source's full color.
@@ -238,6 +242,30 @@ async function saveMixFile(folder, name, mix, overwrite) {
   return data
 }
 
+// The Load Mix list: a plain directory walk under .dx_mgr/sound_mixes/. The
+// files aren't opened for it, so an unreadable one is reported when it's
+// actually picked rather than quietly missing from the list.
+async function listMixFiles() {
+  const res = await fetch("/daz/sound-mixer/mix-list")
+  let data = null
+  try { data = await res.json() } catch { /* server sent no JSON body */ }
+  if (!res.ok) throw new Error(data?.error || `list failed (${res.status})`)
+  return Array.isArray(data) ? data : []
+}
+
+// Reads one mix back. The schema check happens server-side, so a file this
+// node can't understand arrives as an error and nothing is applied — there is
+// no half-loaded state to unwind. A file written under an older schema is
+// migrated on the way out and comes back as the current one.
+async function loadMixFile(folder, name) {
+  const qs = `folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(name)}`
+  const res = await fetch(`/daz/sound-mixer/mix-load?${qs}`)
+  let data = {}
+  try { data = await res.json() } catch { /* server sent no JSON body */ }
+  if (!res.ok) throw new Error(data.error || `load failed (${res.status})`)
+  return data
+}
+
 // fps/duration/frame count come from the server (PyAV), since browsers don't
 // reliably expose a container's real frame rate.
 async function probeMovie(filename) {
@@ -340,6 +368,13 @@ function mixKey(node, folder, name) {
 function mixDisplayPath(folder, file) {
   return [MIX_ROOT_FOLDER, folder, file].filter(Boolean).join("/")
 }
+// How a saved mix reads in the Load Mix list: "folder\name", or just the
+// name for one sitting directly in sound_mixes/. The mix root is left off
+// here — every entry is under it, so repeating it on 12 rows says nothing.
+function mixListLabel(entry) {
+  const folder = String(entry.folder || "").replace(/\//g, "\\")
+  return folder ? `${folder}\\${entry.name}` : entry.name
+}
 
 function mixStateWidget(node) {
   return node.widgets?.find((w) => w.name === "mix_state")
@@ -356,6 +391,18 @@ function durationWidget(node) {
 
 function sampleRateWidget(node) {
   return node.widgets?.find((w) => w.name === "sample_rate")
+}
+
+// A saved file can be edited by hand into a duration or rate the node's own
+// widget would never accept, and the mix gets built from the widget value
+// server-side — so a load pins both to the range the widget declares.
+function clampToWidget(w, v) {
+  const min = Number(w?.options?.min)
+  const max = Number(w?.options?.max)
+  let val = v
+  if (Number.isFinite(min)) val = Math.max(min, val)
+  if (Number.isFinite(max)) val = Math.min(max, val)
+  return val
 }
 
 function readState(node) {
@@ -619,6 +666,7 @@ function openMixEditor(node) {
       showError(`Could not load movie: ${e.message || e}`)
     }
   })
+  header.appendChild(mkBtn("Load Mix", { onClick: () => openLoadMixPopup() }))
   header.appendChild(movieFileInput)
   header.appendChild(mkBtn("Upload a Movie", { onClick: () => movieFileInput.click() }))
   // Discarding is the only way to forget the movie — closeVideoPanel alone
@@ -1915,6 +1963,241 @@ function openMixEditor(node) {
     nameInput.select()
   }
 
+  // Applying a loaded mix -------------------------------------------------
+  // Wholesale replacement, deliberately: the user has already agreed the
+  // current mix is being discarded, and merging two sets of generated source
+  // ids would produce something neither file describes.
+  function applyMixDocument(res) {
+    const mix = res.mix || {}
+    stopAll()
+    selectedBlockId = null
+    closeVideoPanel()
+    // Decoded waveforms and peaks are keyed by source id, and the ids coming
+    // in mean different files now; none of it survives the swap.
+    for (const k of Object.keys(meta)) delete meta[k]
+
+    // Ids are carried over from the file so the blocks keep pointing at the
+    // right source, but a hand-edited file can repeat or omit one — remap
+    // through a table rather than trusting them.
+    const sources = {}
+    const idMap = new Map()
+    for (const s of Array.isArray(mix.sources) ? mix.sources : []) {
+      if (!s || typeof s !== "object") continue
+      if (Object.keys(sources).length >= MAX_SOURCES) break
+      const rawId = typeof s.id === "string" && s.id ? s.id : ""
+      let id = rawId || newId("s")
+      if (sources[id]) id = newId("s")
+      // First claim on an id wins: a file that repeats one still loads both
+      // boxes, but the blocks naming it keep meaning the first, rather than
+      // being quietly handed to the second. A source with no id at all gets
+      // one, but nothing can refer to it — mapping it would make every block
+      // with a missing `source` land on whichever came last.
+      if (rawId && !idMap.has(rawId)) idMap.set(rawId, id)
+      sources[id] = {
+        filename: String(s.filename || ""),
+        label: String(s.label || ""),
+        colorIndex: Number.isInteger(s.color_index) ? s.color_index : 0,
+        // Clamped at 0 because a hand-edited negative is something the
+        // editor's own controls can't produce and its waveform can't draw
+        // (Python clamps it at mix time regardless).
+        crop_start_s: Math.max(0, Number(s.crop_start_s) || 0),
+        crop_end_s: Math.max(0, Number(s.crop_end_s) || 0), // 0 = uncropped
+        fade_in_s: Math.max(0, Number(s.fade_in_s) || 0),
+        fade_out_s: Math.max(0, Number(s.fade_out_s) || 0),
+        fade_mode: !!s.fade_mode,
+      }
+    }
+
+    const blocks = []
+    for (const b of Array.isArray(mix.blocks) ? mix.blocks : []) {
+      if (!b || typeof b !== "object") continue
+      const source = idMap.get(b.source)
+      // A block whose source did not make it in has nothing to sound or draw,
+      // so it would sit on the timeline as an unexplainable empty lane.
+      if (!source || !sources[source]) continue
+      blocks.push({
+        id: typeof b.id === "string" && b.id ? b.id : newId("b"),
+        source,
+        row: Number.isInteger(b.row) ? b.row : -1,
+        start_s: Math.max(0, Number(b.start_s) || 0),
+        gain: Number.isFinite(Number(b.gain)) ? Math.max(0, Number(b.gain)) : 1.0,
+      })
+    }
+
+    state.sources = sources
+    state.blocks = normalizeBlocks(blocks) // repairs rows, drops any overflow
+    const gain = Number(mix.overall_gain)
+    state.overall_gain = Number.isFinite(gain) && gain >= 0 ? gain : 1.0
+
+    const movie = mix.movie && typeof mix.movie === "object" ? mix.movie : {}
+    state.movie_filename = String(movie.filename || "")
+    const fps = Number(movie.fps)
+    state.movie_fps = Number.isFinite(fps) && fps > 0 ? fps : 0
+    state.movie_play_audio = !!movie.play_audio
+
+    // Where a save of this would actually go, so the Save Mix dialog opens
+    // on it. Not always where it came from: the loader accepts folder names
+    // typed in by hand that the save dialog's own sanitiser would rewrite.
+    state.save_folder = res.save_folder || ""
+    state.save_name = res.save_name || res.name || ""
+
+    // Block positions are only meaningful against the duration they were
+    // placed under, so the node's own widgets come back with them.
+    const dur = Number(mix.duration)
+    if (Number.isFinite(dur) && dur > 0) {
+      const dw = durationWidget(node)
+      const val = clampToWidget(dw, dur)
+      if (dw) dw.value = val
+      durInput.value = val
+    }
+    const sr = Number(mix.sample_rate)
+    if (Number.isFinite(sr) && sr > 0) {
+      const sw = sampleRateWidget(node)
+      if (sw) sw.value = Math.round(clampToWidget(sw, sr))
+    }
+
+    persist()
+    renderSources()
+    renderTimeline()
+    restoreMovie() // re-probes the movie file and rebuilds the panel
+  }
+
+  async function doLoadMix(entry) {
+    try {
+      const res = await loadMixFile(entry.folder, entry.name)
+      // The editor can be dismissed while the read is still in flight.
+      if (editorClosed) return
+      applyMixDocument(res)
+      // What is on screen is now exactly what that file holds, so saving it
+      // straight back is not a question worth asking — but only when the
+      // dialog's defaults really do resolve to the file just loaded, which
+      // `same_path` is the server's answer to.
+      if (res.same_path) _savedMixKeys.add(mixKey(node, state.save_folder, state.save_name))
+      showNotice(`Loaded ${res.rel}`)
+    } catch (e) {
+      if (editorClosed) return
+      // Validation happens before anything is handed back, so a rejected file
+      // leaves the current mix untouched rather than half-replaced.
+      showError(`Could not load mix: ${e.message || e}`)
+    }
+  }
+
+  // Same two-layer chain as confirmReplaceMix: the list stays open underneath
+  // so Cancel returns to it instead of dropping the user out of loading
+  // altogether. See that function for why closeActivePopup is swapped.
+  function confirmDiscardMix(onContinue) {
+    const prevClose = closeActivePopup
+    const { box: cbox, close } = overlayShell(360, () => { closeActivePopup = prevClose })
+    closeActivePopup = () => { close(); prevClose?.() }
+
+    const title = document.createElement("div")
+    title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
+    title.textContent = "Discard current mix?"
+    cbox.appendChild(title)
+    const body = document.createElement("div")
+    body.style.cssText = "padding:10px 14px; line-height:1.45;"
+    body.textContent = "Loading replaces everything set up here: the sounds with their "
+      + "crops and fades, every block on the timeline, and the reference movie. "
+      + "Anything not already saved is lost."
+    cbox.appendChild(body)
+    const foot = document.createElement("div")
+    foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
+    foot.appendChild(mkBtn("Cancel", { onClick: close }))
+    foot.appendChild(mkBtn("Continue", {
+      danger: true,
+      onClick: () => {
+        close()
+        prevClose?.() // the list has done its job too
+        onContinue()
+      },
+    }))
+    cbox.appendChild(foot)
+  }
+
+  function openLoadMixPopup() {
+    // An fps box or an Add popup can still be open behind this one.
+    closeActivePopup?.()
+    const { box: pbox, close } = overlayShell(420, () => { closeActivePopup = null })
+    closeActivePopup = close
+
+    const title = document.createElement("div")
+    title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
+    title.textContent = "Load Mix"
+    pbox.appendChild(title)
+
+    // Sized to exactly MIX_LIST_VISIBLE rows, so the row after them is what
+    // brings the scrollbar in rather than some height that happens to cut one
+    // in half. Rows are fixed-height for the same reason.
+    const listEl = document.createElement("div")
+    const maxH = MIX_LIST_VISIBLE * MIX_LIST_ROW_H + (MIX_LIST_VISIBLE - 1) * MIX_LIST_ROW_GAP
+    listEl.style.cssText = `
+      display:flex; flex-direction:column; gap:${MIX_LIST_ROW_GAP}px;
+      margin:10px 14px; padding:6px; background:#1a1a1a;
+      border:1px solid #444; border-radius:4px;
+      max-height:${maxH}px; overflow-y:auto;
+    `
+    pbox.appendChild(listEl)
+
+    const foot = document.createElement("div")
+    foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
+    foot.appendChild(mkBtn("Cancel", { onClick: close }))
+    pbox.appendChild(foot)
+
+    // The editor's own error strip is behind this overlay, so anything the
+    // list has to say has to be said inside it.
+    function note(text, color = "#888") {
+      listEl.textContent = ""
+      const el = document.createElement("div")
+      el.style.cssText = `padding:6px; font-size:12px; color:${color};`
+      el.textContent = text
+      listEl.appendChild(el)
+    }
+    note("Reading saved mixes…")
+
+    // Only worth asking about discarding when there is something to lose.
+    function hasContent() {
+      return Object.keys(state.sources).length > 0
+        || state.blocks.length > 0
+        || !!state.movie_filename
+    }
+
+    listMixFiles().then((items) => {
+      if (!pbox.isConnected) return
+      if (!items.length) {
+        note(`No saved mixes in .dx_mgr/${MIX_ROOT_FOLDER}/ yet.`)
+        return
+      }
+      listEl.textContent = ""
+      for (const entry of items) {
+        const row = document.createElement("div")
+        row.textContent = mixListLabel(entry)
+        row.title = mixDisplayPath(entry.folder, `${entry.name}.json`)
+        // line-height rather than flex centring: ellipsis needs the text in a
+        // block box, and as a flex container the row would clip mid-character.
+        row.style.cssText = `
+          flex:0 0 ${MIX_LIST_ROW_H}px; line-height:${MIX_LIST_ROW_H}px;
+          box-sizing:border-box; padding:0 8px; border-radius:3px;
+          cursor:pointer; color:#ddd; font-size:12px;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        `
+        row.addEventListener("mouseenter", () => { row.style.background = "#333" })
+        row.addEventListener("mouseleave", () => { row.style.background = "" })
+        row.addEventListener("click", () => {
+          if (!hasContent()) {
+            close()
+            doLoadMix(entry)
+            return
+          }
+          confirmDiscardMix(() => doLoadMix(entry)) // Continue closes this list too
+        })
+        listEl.appendChild(row)
+      }
+    }).catch((e) => {
+      if (!pbox.isConnected) return
+      note(`Could not list mixes: ${e.message || e}`, "#ff8080")
+    })
+  }
+
   function renderRuler() {
     const dur = currentDuration()
     const ppS = pxPerSec()
@@ -2199,6 +2482,9 @@ function openMixEditor(node) {
       // detached tree, downloading the whole movie with nothing left to
       // pause it — closeVideoPanel and stopAll have already run.
       if (editorClosed) return
+      // Loading another mix while the probe was in flight leaves this talking
+      // about a movie that is no longer the one the editor holds.
+      if (state.movie_filename !== filename) return
       // The blocks on the timeline were placed against the overridden rate,
       // so it comes back with the movie.
       openVideoPanel(filename, info, state.movie_fps)
@@ -2206,6 +2492,9 @@ function openMixEditor(node) {
       // Nothing to tell the user once the editor is gone; leave the filename
       // in place so the next open re-probes and reports the failure properly.
       if (editorClosed) return
+      // Same for a mix loaded over this one: forgetting the filename here
+      // would wipe the movie belonging to the mix now on screen.
+      if (state.movie_filename !== filename) return
       // The upload lives in ComfyUI's input directory and can be cleared out
       // from under a saved workflow, so a failure here just forgets it
       // rather than leaving a movie that can never load.
