@@ -1,0 +1,133 @@
+// Example of a saved Sound Mixer mix.
+//
+// Written by the Sound Mixer node's "Save Mix" button, and read back by its
+// "Load Mix" button, at
+//     <workflows root>/.dx_mgr/sound_mixes/[<folder>/]<name>.json
+// Every saved mix lives under sound_mixes/, always — that is what lets them
+// all be read back with one directory walk. <folder> is an optional subfolder
+// of it, for the user's own grouping, and is empty by default; <name>
+// defaults to "mix". The real files are plain .json (no comments) — this
+// .jsonc copy exists only to document the structure.
+//
+// Everything needed to rebuild a mix from scratch is here: the node's own
+// duration/sample_rate widgets, every uploaded sound with its crop/fade
+// settings, every placement of those sounds on the timeline with its gain,
+// and the reference movie with its frame-rate override and Play Audio state.
+// The sound and movie files themselves are NOT copied — only their filenames
+// are stored, and they are resolved against ComfyUI's input/ directory (which
+// is where the editor's own upload buttons put them).
+{
+  "_meta": {
+    // Structure version of this file. Bumped only when the shape below
+    // changes in a way an older reader could not handle; a loader should
+    // refuse (or migrate) anything it does not recognise. "Load Mix" refuses
+    // a schema it does not know and reports it instead of loading; an older
+    // one it migrates on read, and the upgraded shape reaches the disk the
+    // next time the mix is saved.
+    "schema": 1,
+    "name": "mix", // the name the mix was saved under = this file's stem
+    // Subfolder of sound_mixes/ this was saved into; "" means sound_mixes/
+    // itself, and it is what the Save Mix dialog prepopulates from. A record
+    // of where the file was written, not of where it is now: "Load Mix"
+    // prepopulates from the path it actually found the file at, so moving one
+    // between folders by hand still does the right thing.
+    "folder": "action_scenes",
+    "created_at": "2026-08-31T10:14:22.531000", // first time this file was written (ISO 8601)
+    "updated_at": "2026-08-31T11:02:47.118000" // last time it was overwritten (ISO 8601)
+  },
+
+  "mix": {
+    // The two Sound Mixer node widgets. Restoring a mix writes these back
+    // onto the node, since block positions are only meaningful against the
+    // duration they were placed under.
+    "duration": 12.5, // length of the mixed output, in seconds
+    "sample_rate": 44100, // sample rate of the mixed output, in Hz
+
+    // Linear gain applied on top of every block's own gain. 1.0 = unchanged.
+    "overall_gain": 0.9,
+
+    // Every sound slot in the editor's source grid (16 max). A source is the
+    // file plus how it is trimmed and faded; where and how loudly it is heard
+    // belongs to the blocks below, so one source can be placed many times.
+    // Saved as an array (rather than an id-keyed object) so the file stays
+    // readable and diffable; "id" carries the identity the blocks refer to.
+    "sources": [
+      {
+        "id": "smf3k9a2b", // referenced by blocks[].source; unique within this file
+        "filename": "door_slam.wav", // file in ComfyUI's input/ directory
+        "label": "Door Slam", // display name in the editor and on timeline blocks
+        "color_index": 0, // index into the editor's 16-colour palette
+
+        // Crop, in seconds from the START OF THE FILE. crop_end_s = 0 is the
+        // "uncropped" sentinel and means "to the end of the file" — a real
+        // 0-length crop is not expressible, and not useful.
+        "crop_start_s": 0.25,
+        "crop_end_s": 1.8,
+
+        // Linear fades, in seconds, measured inward from the CROPPED edges
+        // (not the file's own ends). They live inside the cropped span and
+        // never overlap: fade_in_s + fade_out_s <= crop_end_s - crop_start_s.
+        "fade_in_s": 0.0,
+        "fade_out_s": 0.35,
+
+        // Editor-only: whether this box's waveform handles are currently
+        // dragging the fades (true) or the crop (false). Has no effect on the
+        // rendered audio; saved so the editor comes back as it was left.
+        "fade_mode": false
+      },
+      {
+        "id": "smf7c1d4e",
+        "filename": "rain_loop.mp3",
+        "label": "Rain",
+        "color_index": 1,
+        "crop_start_s": 0.0,
+        "crop_end_s": 0.0, // 0 = uncropped, use the whole file
+        "fade_in_s": 1.0,
+        "fade_out_s": 1.0,
+        "fade_mode": true
+      }
+    ],
+
+    // Placements on the timeline (30 max). Each block is one source sounding
+    // once, at one time, with one gain.
+    "blocks": [
+      {
+        "id": "bmf2a8c7d", // unique within this file
+        "source": "smf7c1d4e", // must match a sources[].id above
+        "row": 0, // timeline lane, 0-29; display only, but must be unique
+        "start_s": 0.0, // where the block starts on the mix timeline, in seconds
+        "gain": 0.4 // linear gain for this placement, multiplied by overall_gain
+      },
+      {
+        "id": "bmf5e3f1a",
+        "source": "smf3k9a2b",
+        "row": 1,
+        "start_s": 3.75,
+        "gain": 1.0
+      },
+      {
+        // The same door slam again, later and quieter — one source, two blocks.
+        "id": "bmf9b6d2c",
+        "source": "smf3k9a2b",
+        "row": 2,
+        "start_s": 8.2,
+        "gain": 0.65
+      }
+    ],
+
+    // The optional reference movie in the editor's side panel. It is a timing
+    // aid only and is never mixed into the AUDIO output. Omit the block, or
+    // leave "filename" empty, when no movie is loaded.
+    "movie": {
+      "filename": "scene_04.mp4", // file in ComfyUI's input/ directory
+      // Frame rate the movie is treated as running at, which sets the
+      // frame -> timeline-seconds mapping the blocks were placed against.
+      // 0 means "the file's own rate" (re-probed on load); any other value is
+      // the integer rate the user overrode it with.
+      "fps": 0,
+      // State of the panel's "Play Audio" checkbox: whether the movie's own
+      // soundtrack is audible while previewing.
+      "play_audio": true
+    }
+  }
+}

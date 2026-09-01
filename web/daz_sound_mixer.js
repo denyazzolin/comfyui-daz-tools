@@ -4,12 +4,27 @@ const CLASS = "daz_sound_mixer"
 
 const MAX_SOURCES = 16
 const GRID_COLS = 4
-const EDITOR_BASE_WIDTH = 1040
+// Wide enough that the bottom button bar, at its fullest (a block selected,
+// with blocks on the timeline), still lays out on one row. Its flex-wrap is
+// only a fallback for a viewport too narrow to give the box this much.
+const EDITOR_BASE_WIDTH = 1180
 const VIDEO_PANEL_WIDTH = 288
 const MIN_ROWS = 8
 const MAX_BLOCK_ROWS = 30
 const MAX_VISIBLE_ROWS = 31
 const CROP_STEP = 0.001 // milliseconds, in seconds
+// Every saved mix lives under .dx_mgr/<MIX_ROOT_FOLDER>/ (kept in step with
+// nodes/sound_mixer_base.py), so they can be read back with one directory
+// walk. The Save Mix dialog's folder box is an optional subfolder of that,
+// for the user's own grouping — hence no default. The saved file's own
+// structure version (_meta.schema) is stamped server-side and documented in
+// dx_sound_mix_setting_example.jsonc.
+const MIX_ROOT_FOLDER = "sound_mixes"
+const DEFAULT_MIX_NAME = "mix"
+// Rows the Load Mix list shows before it starts scrolling.
+const MIX_LIST_VISIBLE = 12
+const MIX_LIST_ROW_H = 26
+const MIX_LIST_ROW_GAP = 4
 // Brightness factor the waveform is drawn at outside the crop. Fades ramp
 // between this and 1.0, so a fade region reads as a gradient from the same
 // half-intensity the trimmed-away part uses up to the source's full color.
@@ -208,6 +223,52 @@ async function uploadAudioFile(file) {
   return data.subfolder ? `${data.subfolder}/${data.name}` : data.name
 }
 
+// Posts a mix document to be written at
+// .dx_mgr/sound_mixes/[<folder>/]<name>.json. Without
+// `overwrite` the server refuses an existing file with a 409 carrying
+// `exists`, which is what the editor turns into its replace/cancel prompt —
+// asking the server rather than probing first means there is no window
+// between the check and the write.
+async function saveMixFile(folder, name, mix, overwrite) {
+  const res = await fetch("/daz/sound-mixer/mix-save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder, name, mix, overwrite: !!overwrite }),
+  })
+  let data = {}
+  try { data = await res.json() } catch { /* server sent no JSON body */ }
+  if (!res.ok) {
+    const err = new Error(data.error || `save failed (${res.status})`)
+    err.exists = !!data.exists
+    throw err
+  }
+  return data
+}
+
+// The Load Mix list: a plain directory walk under .dx_mgr/sound_mixes/. The
+// files aren't opened for it, so an unreadable one is reported when it's
+// actually picked rather than quietly missing from the list.
+async function listMixFiles() {
+  const res = await fetch("/daz/sound-mixer/mix-list")
+  let data = null
+  try { data = await res.json() } catch { /* server sent no JSON body */ }
+  if (!res.ok) throw new Error(data?.error || `list failed (${res.status})`)
+  return Array.isArray(data) ? data : []
+}
+
+// Reads one mix back. The schema check happens server-side, so a file this
+// node can't understand arrives as an error and nothing is applied — there is
+// no half-loaded state to unwind. A file written under an older schema is
+// migrated on the way out and comes back as the current one.
+async function loadMixFile(folder, name) {
+  const qs = `folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(name)}`
+  const res = await fetch(`/daz/sound-mixer/mix-load?${qs}`)
+  let data = {}
+  try { data = await res.json() } catch { /* server sent no JSON body */ }
+  if (!res.ok) throw new Error(data.error || `load failed (${res.status})`)
+  return data
+}
+
 // fps/duration/frame count come from the server (PyAV), since browsers don't
 // reliably expose a container's real frame rate.
 async function probeMovie(filename) {
@@ -293,6 +354,32 @@ function drawWave(canvas, peaks, color, opts = {}) {
 // State (mix_state widget JSON)
 // ---------------------------------------------------------------------------
 
+// Every mix already written during this browser session, as
+// "<node id>|<folder>/<name>". The replace/cancel prompt guards against
+// clobbering a file the user forgot about, which stops being a risk once
+// *this* node has deliberately written that exact name — from then on Save
+// Mix just replaces. Module-level so closing and reopening the editor doesn't
+// make an already-answered question come back; keyed by node so a second
+// Sound Mixer saving under the same default name still has to answer for
+// itself rather than silently destroying the first node's file.
+const _savedMixKeys = new Set()
+function mixKey(node, folder, name) {
+  return `${node?.id}|${folder}/${name}`
+}
+// What the user is shown: the real location under .dx_mgr, which keeps the
+// mix root visible even when the folder box was left empty.
+function mixDisplayPath(folder, file) {
+  return [MIX_ROOT_FOLDER, folder, file].filter(Boolean).join("/")
+}
+// How a saved mix reads in the Load Mix list and in the editor's own title:
+// "folder\name", or just the name for one sitting directly in
+// sound_mixes/. The mix root is left off — everything is under it, so naming
+// it on all 12 rows, or in a header already short on room, says nothing.
+function mixListLabel(entry) {
+  const folder = String(entry.folder || "").replace(/\//g, "\\")
+  return folder ? `${folder}\\${entry.name}` : entry.name
+}
+
 function mixStateWidget(node) {
   return node.widgets?.find((w) => w.name === "mix_state")
 }
@@ -304,6 +391,22 @@ function fmtFps(v) {
 
 function durationWidget(node) {
   return node.widgets?.find((w) => w.name === "duration")
+}
+
+function sampleRateWidget(node) {
+  return node.widgets?.find((w) => w.name === "sample_rate")
+}
+
+// A saved file can be edited by hand into a duration or rate the node's own
+// widget would never accept, and the mix gets built from the widget value
+// server-side — so a load pins both to the range the widget declares.
+function clampToWidget(w, v) {
+  const min = Number(w?.options?.min)
+  const max = Number(w?.options?.max)
+  let val = v
+  if (Number.isFinite(min)) val = Math.max(min, val)
+  if (Number.isFinite(max)) val = Math.min(max, val)
+  return val
 }
 
 function readState(node) {
@@ -327,9 +430,21 @@ function readState(node) {
     // with the workflow because block placements were made against it.
     let movie_fps = Number(parsed?.movie_fps)
     if (!Number.isFinite(movie_fps) || movie_fps <= 0) movie_fps = 0
-    return { sources, blocks, overall_gain, movie_filename, movie_fps }
+    // Whether the movie's own soundtrack is audible during previews. Purely a
+    // panel setting, but it is part of what "Save Mix" round-trips, so it has
+    // to survive in the widget rather than living only on the checkbox.
+    const movie_play_audio = !!parsed?.movie_play_audio
+    // Last folder/name the mix was saved under, so the Save Mix dialog opens
+    // on them again instead of back on its defaults.
+    const save_folder = typeof parsed?.save_folder === "string" ? parsed.save_folder : ""
+    const save_name = typeof parsed?.save_name === "string" ? parsed.save_name : ""
+    return { sources, blocks, overall_gain, movie_filename, movie_fps, movie_play_audio, save_folder, save_name }
   } catch {
-    return { sources: {}, blocks: [], overall_gain: 1.0, movie_filename: "", movie_fps: 0 }
+    return {
+      sources: {}, blocks: [], overall_gain: 1.0,
+      movie_filename: "", movie_fps: 0, movie_play_audio: false,
+      save_folder: "", save_name: "",
+    }
   }
 }
 
@@ -432,11 +547,20 @@ function openMixEditor(node) {
     return Math.max(0.001, Number(w?.value) || 0.001)
   }
 
-  function showError(msg) {
+  function flash(msg, color) {
     errorEl.textContent = msg
+    errorEl.style.color = color
     errorEl.style.display = "block"
     clearTimeout(errorTimer)
     errorTimer = setTimeout(() => { errorEl.style.display = "none" }, 4000)
+  }
+  function showError(msg) {
+    flash(msg, "#ff8080")
+  }
+  // Same strip, green: a save is worth confirming, but not worth a dialog the
+  // user has to dismiss.
+  function showNotice(msg) {
+    flash(msg, "#7ec97e")
   }
 
   function persist() {
@@ -525,7 +649,24 @@ function openMixEditor(node) {
   // Header ---------------------------------------------------------------
   const header = document.createElement("div")
   header.style.cssText = "display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid #3a3a3a;"
-  header.innerHTML = `<div style="font-weight:600; flex:1;">Sound Mixer</div>`
+  const titleEl = document.createElement("div")
+  titleEl.style.cssText = "font-weight:600; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+  header.appendChild(titleEl)
+
+  // Once a mix has been saved or loaded, the node knows which file it is and
+  // the header says so. It reads off state rather than off the save dialog,
+  // so it comes back with the workflow and follows a save under a new name.
+  function refreshTitle() {
+    const label = state.save_name
+      ? mixListLabel({ folder: state.save_folder, name: state.save_name })
+      : ""
+    titleEl.textContent = label ? `Sound Mixer - ${label}` : "Sound Mixer"
+    // The header drops the mix root to stay short; the tooltip is where the
+    // full location, extension and all, is available.
+    titleEl.title = label ? mixDisplayPath(state.save_folder, `${state.save_name}.json`) : ""
+  }
+  refreshTitle()
+
   const movieFileInput = document.createElement("input")
   movieFileInput.type = "file"
   movieFileInput.accept = "video/*"
@@ -546,6 +687,7 @@ function openMixEditor(node) {
       showError(`Could not load movie: ${e.message || e}`)
     }
   })
+  header.appendChild(mkBtn("Load Mix", { onClick: () => openLoadMixPopup() }))
   header.appendChild(movieFileInput)
   header.appendChild(mkBtn("Upload a Movie", { onClick: () => movieFileInput.click() }))
   // Discarding is the only way to forget the movie — closeVideoPanel alone
@@ -556,6 +698,7 @@ function openMixEditor(node) {
     onClick: () => {
       state.movie_filename = ""
       state.movie_fps = 0
+      state.movie_play_audio = false
       persist()
       closeVideoPanel()
     },
@@ -1242,6 +1385,7 @@ function openMixEditor(node) {
     playAudioLbl.style.cssText = "display:flex; align-items:center; gap:4px; color:#aaa; white-space:nowrap; flex-shrink:0;"
     const playAudioChk = document.createElement("input")
     playAudioChk.type = "checkbox"
+    playAudioChk.checked = !!state.movie_play_audio
     playAudioLbl.appendChild(playAudioChk)
     playAudioLbl.append("Play Audio")
     topRow.appendChild(playAudioLbl)
@@ -1257,7 +1401,9 @@ function openMixEditor(node) {
     `
     const videoEl = document.createElement("video")
     videoEl.src = `/view?filename=${encodeURIComponent(filename)}&type=input`
-    videoEl.muted = true
+    // Follows the restored checkbox rather than always starting muted, so a
+    // reopened panel behaves the way it was left without needing a click.
+    videoEl.muted = !playAudioChk.checked
     videoEl.preload = "auto"
     videoEl.style.cssText = "max-width:100%; max-height:100%; object-fit:contain;"
     displayWrap.appendChild(videoEl)
@@ -1265,7 +1411,11 @@ function openMixEditor(node) {
     videoState.videoEl = videoEl
     // Unmuted only while checked, so Play Mix's video.play() lets the OS mix
     // the video's own soundtrack in alongside the constructed Web Audio mix.
-    playAudioChk.addEventListener("change", () => { videoEl.muted = !playAudioChk.checked })
+    playAudioChk.addEventListener("change", () => {
+      videoEl.muted = !playAudioChk.checked
+      state.movie_play_audio = playAudioChk.checked
+      persist()
+    })
 
     const scrub = document.createElement("input")
     scrub.type = "range"
@@ -1631,6 +1781,447 @@ function openMixEditor(node) {
     pbox.appendChild(foot)
   }
 
+  // -------------------------------------------------------------------
+  // Save Mix
+  // -------------------------------------------------------------------
+
+  // Everything needed to rebuild this mix, in the shape documented by
+  // dx_sound_mix_setting_example.jsonc. Deliberately not a dump of
+  // `mix_state`: the widget is keyed by generated source ids and carries no
+  // duration/sample_rate (those are node widgets), and a saved file should
+  // stay readable and stable even as the widget's own layout shifts.
+  function buildMixDocument() {
+    const doc = {
+      duration: currentDuration(),
+      sample_rate: Number(sampleRateWidget(node)?.value) || 44100,
+      overall_gain: Number.isFinite(state.overall_gain) ? state.overall_gain : 1.0,
+      sources: Object.keys(state.sources).map((id) => {
+        const s = state.sources[id]
+        return {
+          id,
+          filename: s.filename || "",
+          label: s.label || "",
+          color_index: Number.isInteger(s.colorIndex) ? s.colorIndex : 0,
+          crop_start_s: Number(s.crop_start_s) || 0,
+          crop_end_s: Number(s.crop_end_s) || 0, // 0 = uncropped; see readState
+          fade_in_s: Number(s.fade_in_s) || 0,
+          fade_out_s: Number(s.fade_out_s) || 0,
+          fade_mode: !!s.fade_mode,
+        }
+      }),
+      blocks: state.blocks.map((b) => ({
+        id: b.id,
+        source: b.source,
+        row: b.row,
+        start_s: Number(b.start_s) || 0,
+        gain: Number.isFinite(Number(b.gain)) ? Number(b.gain) : 1.0,
+      })),
+    }
+    // Omitted entirely rather than written as an empty filename, so a mix
+    // with no reference movie doesn't look like one whose movie went missing.
+    if (state.movie_filename) {
+      doc.movie = {
+        filename: state.movie_filename,
+        fps: state.movie_fps || 0, // 0 = the file's own rate
+        play_audio: !!state.movie_play_audio,
+      }
+    }
+    return doc
+  }
+
+  // Sits on top of the save dialog rather than replacing it, so cancelling
+  // returns to the folder/name the user had typed. `prevClose` is captured
+  // and handed back on close because `closeActivePopup` holds exactly one
+  // popup — without the chain, Escape (or closing the editor) would tear down
+  // this prompt and leave the dialog underneath orphaned.
+  function confirmReplaceMix(folder, name, onReplace) {
+    const prevClose = closeActivePopup
+    const { box: cbox, close } = overlayShell(340, () => { closeActivePopup = prevClose })
+    closeActivePopup = () => { close(); prevClose?.() }
+
+    const title = document.createElement("div")
+    title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
+    title.textContent = "File already exists"
+    cbox.appendChild(title)
+    const body = document.createElement("div")
+    body.style.cssText = "padding:10px 14px;"
+    body.textContent = `'${mixDisplayPath(folder, `${name}.json`)}' already exists. Replace it?`
+    cbox.appendChild(body)
+    const foot = document.createElement("div")
+    foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
+    foot.appendChild(mkBtn("Cancel", { onClick: close }))
+    foot.appendChild(mkBtn("Replace", {
+      danger: true,
+      onClick: () => {
+        close()
+        prevClose?.() // the save dialog's work is done too
+        onReplace()
+      },
+    }))
+    cbox.appendChild(foot)
+  }
+
+  function openSaveMixPopup() {
+    // An fps box or an Add popup can still be open behind this one.
+    closeActivePopup?.()
+    const { box: pbox, close } = overlayShell(360, () => { closeActivePopup = null })
+    closeActivePopup = close
+
+    const title = document.createElement("div")
+    title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
+    title.textContent = "Save Mix"
+    pbox.appendChild(title)
+
+    const body = document.createElement("div")
+    body.style.cssText = "display:flex; flex-direction:column; gap:10px; padding:10px 14px;"
+    function field(labelText, value, hint) {
+      const wrap = document.createElement("label")
+      wrap.style.cssText = "display:flex; flex-direction:column; gap:4px; color:#aaa;"
+      wrap.append(labelText)
+      const input = document.createElement("input")
+      input.type = "text"
+      input.value = value
+      input.style.cssText = "background:#1a1a1a; color:#ddd; border:1px solid #444; border-radius:3px; padding:4px 6px; font-size:12px;"
+      wrap.appendChild(input)
+      const note = document.createElement("div")
+      note.style.cssText = "color:#777; font-size:11px;"
+      note.textContent = hint
+      wrap.appendChild(note)
+      body.appendChild(wrap)
+      return input
+    }
+    const folderInput = field("Folder", state.save_folder || "",
+      `Optional subfolder of .dx_mgr/${MIX_ROOT_FOLDER}/. Leave empty to save there directly.`)
+    const nameInput = field("Name", state.save_name || DEFAULT_MIX_NAME,
+      "Saved as <name>.json.")
+    pbox.appendChild(body)
+
+    // Reported inside the dialog rather than on the editor's own error strip,
+    // which is behind this overlay and so would go unseen.
+    const msgEl = document.createElement("div")
+    msgEl.style.cssText = "display:none; padding:0 14px 10px; color:#ff8080; font-size:11px;"
+    pbox.appendChild(msgEl)
+    function dialogError(msg) {
+      msgEl.textContent = msg
+      msgEl.style.display = "block"
+    }
+
+    const foot = document.createElement("div")
+    foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
+    foot.appendChild(mkBtn("Cancel", { onClick: close }))
+    const saveBtn = mkBtn("Save", { onClick: () => submit() })
+    foot.appendChild(saveBtn)
+    pbox.appendChild(foot)
+
+    let saving = false
+    function setSaving(on) {
+      saving = on
+      saveBtn.disabled = on
+      saveBtn.style.opacity = on ? "0.4" : "1"
+    }
+
+    // `overwrite` is only ever forced from the replace prompt; the first
+    // attempt always asks the server, which answers 409 if something is there.
+    async function write(folder, name, overwrite) {
+      if (saving) return
+      setSaving(true)
+      try {
+        const res = await saveMixFile(folder, name, buildMixDocument(), overwrite)
+        // The server sanitises both, so what came back is the name the file
+        // actually has — remember that, not what was typed.
+        state.save_folder = res.folder
+        state.save_name = res.name
+        persist()
+        refreshTitle()
+        // Both spellings: the sanitised one is what the dialog will offer
+        // next time, but the user may retype the original (say "my mix!" for
+        // "my mix_"), and that must not re-raise a question already answered.
+        _savedMixKeys.add(mixKey(node, res.folder, res.name))
+        _savedMixKeys.add(mixKey(node, folder, name))
+        if (!editorClosed) showNotice(`Saved ${res.rel}`)
+        close()
+      } catch (e) {
+        if (e.exists) {
+          // Leaves the dialog open underneath; the prompt closes both if the
+          // user goes ahead.
+          confirmReplaceMix(folder, name, () => write(folder, name, true))
+          return
+        }
+        // Deliberately stays open: closing would throw away the folder/name
+        // the user typed, and a failed save is exactly when they want it back.
+        // The retry from the replace prompt runs with the dialog already gone,
+        // though, so that one has to report on the editor's own strip.
+        const msg = `Could not save mix: ${e.message || e}`
+        if (pbox.isConnected) dialogError(msg)
+        else if (!editorClosed) showError(msg)
+      } finally {
+        setSaving(false)
+      }
+    }
+
+    function submit() {
+      msgEl.style.display = "none"
+      // Empty is a legitimate answer here — it means the mix root itself.
+      const folder = folderInput.value.trim()
+      const name = nameInput.value.trim()
+      if (!name) {
+        dialogError("A name is required.")
+        nameInput.focus()
+        return
+      }
+      // Already written to this exact name in this session, so the "are you
+      // sure" has been answered — replace without asking again.
+      write(folder, name, _savedMixKeys.has(mixKey(node, folder, name)))
+    }
+
+    for (const inp of [folderInput, nameInput]) {
+      inp.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter") return
+        ev.preventDefault()
+        submit()
+      })
+    }
+    nameInput.focus()
+    nameInput.select()
+  }
+
+  // Applying a loaded mix -------------------------------------------------
+  // Wholesale replacement, deliberately: the user has already agreed the
+  // current mix is being discarded, and merging two sets of generated source
+  // ids would produce something neither file describes.
+  function applyMixDocument(res) {
+    const mix = res.mix || {}
+    stopAll()
+    selectedBlockId = null
+    closeVideoPanel()
+    // Decoded waveforms and peaks are keyed by source id, and the ids coming
+    // in mean different files now; none of it survives the swap.
+    for (const k of Object.keys(meta)) delete meta[k]
+
+    // Ids are carried over from the file so the blocks keep pointing at the
+    // right source, but a hand-edited file can repeat or omit one — remap
+    // through a table rather than trusting them.
+    const sources = {}
+    const idMap = new Map()
+    for (const s of Array.isArray(mix.sources) ? mix.sources : []) {
+      if (!s || typeof s !== "object") continue
+      if (Object.keys(sources).length >= MAX_SOURCES) break
+      const rawId = typeof s.id === "string" && s.id ? s.id : ""
+      let id = rawId || newId("s")
+      if (sources[id]) id = newId("s")
+      // First claim on an id wins: a file that repeats one still loads both
+      // boxes, but the blocks naming it keep meaning the first, rather than
+      // being quietly handed to the second. A source with no id at all gets
+      // one, but nothing can refer to it — mapping it would make every block
+      // with a missing `source` land on whichever came last.
+      if (rawId && !idMap.has(rawId)) idMap.set(rawId, id)
+      sources[id] = {
+        filename: String(s.filename || ""),
+        label: String(s.label || ""),
+        colorIndex: Number.isInteger(s.color_index) ? s.color_index : 0,
+        // Clamped at 0 because a hand-edited negative is something the
+        // editor's own controls can't produce and its waveform can't draw
+        // (Python clamps it at mix time regardless).
+        crop_start_s: Math.max(0, Number(s.crop_start_s) || 0),
+        crop_end_s: Math.max(0, Number(s.crop_end_s) || 0), // 0 = uncropped
+        fade_in_s: Math.max(0, Number(s.fade_in_s) || 0),
+        fade_out_s: Math.max(0, Number(s.fade_out_s) || 0),
+        fade_mode: !!s.fade_mode,
+      }
+    }
+
+    const blocks = []
+    for (const b of Array.isArray(mix.blocks) ? mix.blocks : []) {
+      if (!b || typeof b !== "object") continue
+      const source = idMap.get(b.source)
+      // A block whose source did not make it in has nothing to sound or draw,
+      // so it would sit on the timeline as an unexplainable empty lane.
+      if (!source || !sources[source]) continue
+      blocks.push({
+        id: typeof b.id === "string" && b.id ? b.id : newId("b"),
+        source,
+        row: Number.isInteger(b.row) ? b.row : -1,
+        start_s: Math.max(0, Number(b.start_s) || 0),
+        gain: Number.isFinite(Number(b.gain)) ? Math.max(0, Number(b.gain)) : 1.0,
+      })
+    }
+
+    state.sources = sources
+    state.blocks = normalizeBlocks(blocks) // repairs rows, drops any overflow
+    const gain = Number(mix.overall_gain)
+    state.overall_gain = Number.isFinite(gain) && gain >= 0 ? gain : 1.0
+
+    const movie = mix.movie && typeof mix.movie === "object" ? mix.movie : {}
+    state.movie_filename = String(movie.filename || "")
+    const fps = Number(movie.fps)
+    state.movie_fps = Number.isFinite(fps) && fps > 0 ? fps : 0
+    state.movie_play_audio = !!movie.play_audio
+
+    // Where a save of this would actually go, so the Save Mix dialog opens
+    // on it. Not always where it came from: the loader accepts folder names
+    // typed in by hand that the save dialog's own sanitiser would rewrite.
+    state.save_folder = res.save_folder || ""
+    state.save_name = res.save_name || res.name || ""
+    refreshTitle()
+
+    // Block positions are only meaningful against the duration they were
+    // placed under, so the node's own widgets come back with them.
+    const dur = Number(mix.duration)
+    if (Number.isFinite(dur) && dur > 0) {
+      const dw = durationWidget(node)
+      const val = clampToWidget(dw, dur)
+      if (dw) dw.value = val
+      durInput.value = val
+    }
+    const sr = Number(mix.sample_rate)
+    if (Number.isFinite(sr) && sr > 0) {
+      const sw = sampleRateWidget(node)
+      if (sw) sw.value = Math.round(clampToWidget(sw, sr))
+    }
+
+    persist()
+    renderSources()
+    renderTimeline()
+    restoreMovie() // re-probes the movie file and rebuilds the panel
+  }
+
+  async function doLoadMix(entry) {
+    try {
+      const res = await loadMixFile(entry.folder, entry.name)
+      // The editor can be dismissed while the read is still in flight.
+      if (editorClosed) return
+      applyMixDocument(res)
+      // What is on screen is now exactly what that file holds, so saving it
+      // straight back is not a question worth asking — but only when the
+      // dialog's defaults really do resolve to the file just loaded, which
+      // `same_path` is the server's answer to.
+      if (res.same_path) _savedMixKeys.add(mixKey(node, state.save_folder, state.save_name))
+      showNotice(`Loaded ${res.rel}`)
+    } catch (e) {
+      if (editorClosed) return
+      // Validation happens before anything is handed back, so a rejected file
+      // leaves the current mix untouched rather than half-replaced.
+      showError(`Could not load mix: ${e.message || e}`)
+    }
+  }
+
+  // Same two-layer chain as confirmReplaceMix: the list stays open underneath
+  // so Cancel returns to it instead of dropping the user out of loading
+  // altogether. See that function for why closeActivePopup is swapped.
+  function confirmDiscardMix(onContinue) {
+    const prevClose = closeActivePopup
+    const { box: cbox, close } = overlayShell(360, () => { closeActivePopup = prevClose })
+    closeActivePopup = () => { close(); prevClose?.() }
+
+    const title = document.createElement("div")
+    title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
+    title.textContent = "Discard current mix?"
+    cbox.appendChild(title)
+    const body = document.createElement("div")
+    body.style.cssText = "padding:10px 14px; line-height:1.45;"
+    body.textContent = "Loading replaces everything set up here: the sounds with their "
+      + "crops and fades, every block on the timeline, and the reference movie. "
+      + "Anything not already saved is lost."
+    cbox.appendChild(body)
+    const foot = document.createElement("div")
+    foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
+    foot.appendChild(mkBtn("Cancel", { onClick: close }))
+    foot.appendChild(mkBtn("Continue", {
+      danger: true,
+      onClick: () => {
+        close()
+        prevClose?.() // the list has done its job too
+        onContinue()
+      },
+    }))
+    cbox.appendChild(foot)
+  }
+
+  function openLoadMixPopup() {
+    // An fps box or an Add popup can still be open behind this one.
+    closeActivePopup?.()
+    const { box: pbox, close } = overlayShell(420, () => { closeActivePopup = null })
+    closeActivePopup = close
+
+    const title = document.createElement("div")
+    title.style.cssText = "padding:10px 14px; border-bottom:1px solid #3a3a3a; font-weight:600;"
+    title.textContent = "Load Mix"
+    pbox.appendChild(title)
+
+    // Always exactly MIX_LIST_VISIBLE rows tall, however many mixes there
+    // are: a fixed height, not a cap, so the box does not grow as it fills.
+    // Rows are fixed-height too, so the row after the last visible one is
+    // what brings the scrollbar in rather than a height that halves one.
+    const listEl = document.createElement("div")
+    const listH = MIX_LIST_VISIBLE * MIX_LIST_ROW_H + (MIX_LIST_VISIBLE - 1) * MIX_LIST_ROW_GAP
+    listEl.style.cssText = `
+      display:flex; flex-direction:column; gap:${MIX_LIST_ROW_GAP}px;
+      margin:10px 14px; padding:6px; background:#1a1a1a;
+      border:1px solid #444; border-radius:4px;
+      height:${listH}px; overflow-y:auto;
+    `
+    pbox.appendChild(listEl)
+
+    const foot = document.createElement("div")
+    foot.style.cssText = "display:flex; justify-content:flex-end; gap:8px; padding:10px 14px; border-top:1px solid #3a3a3a;"
+    foot.appendChild(mkBtn("Cancel", { onClick: close }))
+    pbox.appendChild(foot)
+
+    // The editor's own error strip is behind this overlay, so anything the
+    // list has to say has to be said inside it.
+    function note(text, color = "#888") {
+      listEl.textContent = ""
+      const el = document.createElement("div")
+      el.style.cssText = `padding:6px; font-size:12px; color:${color};`
+      el.textContent = text
+      listEl.appendChild(el)
+    }
+    note("Reading saved mixes…")
+
+    // Only worth asking about discarding when there is something to lose.
+    function hasContent() {
+      return Object.keys(state.sources).length > 0
+        || state.blocks.length > 0
+        || !!state.movie_filename
+    }
+
+    listMixFiles().then((items) => {
+      if (!pbox.isConnected) return
+      if (!items.length) {
+        note(`No saved mixes in .dx_mgr/${MIX_ROOT_FOLDER}/ yet.`)
+        return
+      }
+      listEl.textContent = ""
+      for (const entry of items) {
+        const row = document.createElement("div")
+        row.textContent = mixListLabel(entry)
+        row.title = mixDisplayPath(entry.folder, `${entry.name}.json`)
+        // line-height rather than flex centring: ellipsis needs the text in a
+        // block box, and as a flex container the row would clip mid-character.
+        row.style.cssText = `
+          flex:0 0 ${MIX_LIST_ROW_H}px; line-height:${MIX_LIST_ROW_H}px;
+          box-sizing:border-box; padding:0 8px; border-radius:3px;
+          cursor:pointer; color:#ddd; font-size:12px;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        `
+        row.addEventListener("mouseenter", () => { row.style.background = "#333" })
+        row.addEventListener("mouseleave", () => { row.style.background = "" })
+        row.addEventListener("click", () => {
+          if (!hasContent()) {
+            close()
+            doLoadMix(entry)
+            return
+          }
+          confirmDiscardMix(() => doLoadMix(entry)) // Continue closes this list too
+        })
+        listEl.appendChild(row)
+      }
+    }).catch((e) => {
+      if (!pbox.isConnected) return
+      note(`Could not list mixes: ${e.message || e}`, "#ff8080")
+    })
+  }
+
   function renderRuler() {
     const dur = currentDuration()
     const ppS = pxPerSec()
@@ -1786,6 +2377,7 @@ function openMixEditor(node) {
     buttonRow.appendChild(registerPlayButton("mix", mixBtn, `${PLAY_GLYPH} Play Mix`, `${STOP_GLYPH} Stop Mix`))
     buttonRow.appendChild(mkBtn("Add", { onClick: openAddPopup }))
     buttonRow.appendChild(mkBtn("Add All", { onClick: addAllSources }))
+    buttonRow.appendChild(mkBtn("Save Mix", { onClick: openSaveMixPopup }))
     buttonRow.appendChild(sep())
 
     const selBlock = state.blocks.find((b) => b.id === selectedBlockId)
@@ -1914,6 +2506,9 @@ function openMixEditor(node) {
       // detached tree, downloading the whole movie with nothing left to
       // pause it — closeVideoPanel and stopAll have already run.
       if (editorClosed) return
+      // Loading another mix while the probe was in flight leaves this talking
+      // about a movie that is no longer the one the editor holds.
+      if (state.movie_filename !== filename) return
       // The blocks on the timeline were placed against the overridden rate,
       // so it comes back with the movie.
       openVideoPanel(filename, info, state.movie_fps)
@@ -1921,6 +2516,9 @@ function openMixEditor(node) {
       // Nothing to tell the user once the editor is gone; leave the filename
       // in place so the next open re-probes and reports the failure properly.
       if (editorClosed) return
+      // Same for a mix loaded over this one: forgetting the filename here
+      // would wipe the movie belonging to the mix now on screen.
+      if (state.movie_filename !== filename) return
       // The upload lives in ComfyUI's input directory and can be cleared out
       // from under a saved workflow, so a failure here just forgets it
       // rather than leaving a movie that can never load.
