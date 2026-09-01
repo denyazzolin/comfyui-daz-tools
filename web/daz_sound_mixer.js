@@ -371,9 +371,10 @@ function mixKey(node, folder, name) {
 function mixDisplayPath(folder, file) {
   return [MIX_ROOT_FOLDER, folder, file].filter(Boolean).join("/")
 }
-// How a saved mix reads in the Load Mix list: "folder\name", or just the
-// name for one sitting directly in sound_mixes/. The mix root is left off
-// here — every entry is under it, so repeating it on 12 rows says nothing.
+// How a saved mix reads in the Load Mix list and in the editor's own title:
+// "folder\name", or just the name for one sitting directly in
+// sound_mixes/. The mix root is left off — everything is under it, so naming
+// it on all 12 rows, or in a header already short on room, says nothing.
 function mixListLabel(entry) {
   const folder = String(entry.folder || "").replace(/\//g, "\\")
   return folder ? `${folder}\\${entry.name}` : entry.name
@@ -648,7 +649,24 @@ function openMixEditor(node) {
   // Header ---------------------------------------------------------------
   const header = document.createElement("div")
   header.style.cssText = "display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid #3a3a3a;"
-  header.innerHTML = `<div style="font-weight:600; flex:1;">Sound Mixer</div>`
+  const titleEl = document.createElement("div")
+  titleEl.style.cssText = "font-weight:600; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+  header.appendChild(titleEl)
+
+  // Once a mix has been saved or loaded, the node knows which file it is and
+  // the header says so. It reads off state rather than off the save dialog,
+  // so it comes back with the workflow and follows a save under a new name.
+  function refreshTitle() {
+    const label = state.save_name
+      ? mixListLabel({ folder: state.save_folder, name: state.save_name })
+      : ""
+    titleEl.textContent = label ? `Sound Mixer - ${label}` : "Sound Mixer"
+    // The header drops the mix root to stay short; the tooltip is where the
+    // full location, extension and all, is available.
+    titleEl.title = label ? mixDisplayPath(state.save_folder, `${state.save_name}.json`) : ""
+  }
+  refreshTitle()
+
   const movieFileInput = document.createElement("input")
   movieFileInput.type = "file"
   movieFileInput.accept = "video/*"
@@ -1914,6 +1932,7 @@ function openMixEditor(node) {
         state.save_folder = res.folder
         state.save_name = res.name
         persist()
+        refreshTitle()
         // Both spellings: the sanitised one is what the dialog will offer
         // next time, but the user may retype the original (say "my mix!" for
         // "my mix_"), and that must not re-raise a question already answered.
@@ -2043,6 +2062,7 @@ function openMixEditor(node) {
     // typed in by hand that the save dialog's own sanitiser would rewrite.
     state.save_folder = res.save_folder || ""
     state.save_name = res.save_name || res.name || ""
+    refreshTitle()
 
     // Block positions are only meaningful against the duration they were
     // placed under, so the node's own widgets come back with them.
