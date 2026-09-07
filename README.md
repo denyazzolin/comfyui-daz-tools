@@ -82,6 +82,7 @@ All five nodes share a common set of configurable fields:
 | **Audio** | Reference input audio — a filename inside ComfyUI's input folder, or an absolute path. When set, the node outputs the decoded audio on the `audio` output for use downstream |
 | **Width / Height** | Output frame dimensions. On the four video nodes these are the *input* to **Use image / Scale** below, which decides what the `width` and `height` outputs actually report |
 | **Use image / Scale** | On WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 only — governs the reference image and the size outputs together. See [Dimensions and scaling](#dimensions-and-scaling) |
+| **Extended media** | Extra named images, videos and audio the take carries alongside the single Image and Audio slots above. On the four video nodes only — see [Extended media](#extended-media) |
 | **Steps** | Number of denoising steps |
 | **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
 | **Duration (s)** | Editor-only helper on the WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 nodes: type a length in seconds — or hit one of the **5 / 7 / 10 / 15 / 20** quick buttons (no 20 on MiniMax H3) — and **Total frames** is recalculated for you. The quick button matching the current duration stays highlighted; type anything else and none of them are. Editing Total frames or FPS updates Duration back the other way. FPS must be set first; with FPS at zero the field reports *FPS is not defined* and leaves the frame count alone. How the two convert depends on the node — see [Duration and frame counts](#duration-and-frame-counts) |
@@ -195,6 +196,41 @@ The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `h
 **Use image on** — the outputs are the image's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the image and the outputs together. Unavailable when no reference image is selected.
 
 Whenever the size comes from the image the editor fills the boxes in and shows them read-only; what you typed comes back when it stops. The stored Width and Height are never rewritten by a run.
+
+#### Extended media
+
+Beyond the single **Image** and **Audio** slots, a take can carry named extra media for workflows that need more than one reference — REF2VA on MiniMax H3, MSR on LTX2.3 and LTX2.5, first-frame/last-frame and multi-frame setups anywhere. The four video nodes carry the whole lot on one `extended_media` output; the **Image** node has none.
+
+Each take holds three lists, stored under `extended_media` in the config file:
+
+| List | Slots | Per item |
+|---|---|---|
+| `images` | 4 | `name`, `order`, `image_path`, `use_for_dim` |
+| `videos` | 2 | `name`, `order`, `video_path`, `duration`, `fps`, `start_frame`, `cap_frames`, `use_for_dim` |
+| `audios` | 1 | `name`, `order`, `audio_path` |
+
+`order` is a **slot number, not a sort key**: the node loads slot 1 into output 1 whatever position the row sits in, so clearing one row never shifts another, and a list may have holes. Only the slots listed above are loaded — a row with an order outside the range, a second row claiming an order already taken, or a row with no path is skipped. Extra rows are never removed from the file on save, so a hand-edited config keeps whatever you put there; the caps are what the node reads, not what the file may hold. `name` is a label for your own use — it has no control of its own in the editor and the Media Splitter's sockets are named by slot, not by it.
+
+The editor numbers the same media differently, because it counts the take's own **Image** and **Audio** as slot 1 of their kind. Its image slots **2–5** are `images` orders 1–4, its audio slot **2** is the one `audios` row, and its video slots **1–2** are the `videos` orders of the same number — video has no slot at the root to count first.
+
+A video slot loads a window of the clip, not the whole thing:
+
+| Field | Meaning |
+|---|---|
+| `duration` | Seconds to load, `0` for everything to the end of the clip |
+| `fps` | The rate `duration` is counted in. `0` takes the file's own rate; any other value overrides it, and is the only way `duration` works on a file that reports no rate |
+| `start_frame` | First frame to load, 1-based; `0` means the same as `1` |
+| `cap_frames` | Maximum frames to load, `0` for no cap |
+
+With both `duration` and `cap_frames` set, the smaller window wins. Decoded frames are float32 RGB — about 12 bytes a pixel — so a decode also stops at **600 frames** or **4 GB**, whichever comes first, and says in the console which ceiling it hit.
+
+`use_for_dim` marks the one image or video slot the output size is meant to come from — the still's own size, or the size of the video's frames. At most one slot in the whole take may carry it, counting the take's own reference image: that one keeps its flag *inside* its `image_path` (`"image_path": { "path": "…", "use_for_dim": true }`), exactly as an extended row keeps it beside its own path. The editor only ever lets one be set; a hand-edited file with several is cut back to one on its next save, the reference image winning, then images by slot, then videos.
+
+It is stored and passed through to the node today, but nothing reads it yet: extended images are handed on at their stored size, and the **Use image / Scale** rules still apply to the reference image only.
+
+The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Use for dim** in the corner of the preview sets that slot as the size source, clearing whatever image or video slot held it before. A video preview plays and pauses when clicked and loops when it reaches the end, and shows the rate and frame count read off the file — the rate is the slot's `fps`, and editable. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each with its own upload, clear and play.
+
+`duration`, `start_frame` and `cap_frames` have no controls; set them in the file by hand and the editor carries them through untouched.
 
 #### Duration and frame counts
 
@@ -329,6 +365,16 @@ Three buttons above the panel:
 The **prompt editor for stacks** is the same full-screen editor used by the WorkflowConfig nodes' **Prompt Editor**, opened here in a mode that edits a whole sequence's list of prompts at once (add/remove/reorder prompts, each with its own label, Master/Positive/Negative text, and Prompt Type — Smart/Beats/Timecode/Simple, same rules as described under [Managing prompts](#managing-prompts)). Saving there writes the sequence back to the stack file and closes both the editor and the Edit Stack popup. A stack is capped at 10 sequences, and each sequence at 10 prompts, matching the node's fixed 10 outputs.
 
 ![Sample Prompt Stack Editor](content/prompt_editor_stacks.png)
+
+---
+
+### Media Splitter (`utils`)
+
+Unpacks the `extended_media` output of a WorkflowConfig node into one output per slot: `image_2`…`image_5` and `video_1`…`video_2` (IMAGE — a video slot is an image batch of its decoded frames), and `audio_2` (AUDIO). Slots the take left empty output nothing (`None`).
+
+The numbering is the editor's, so there is no `image_1` or `audio_1` here: those are the take's own reference image and audio, and the WorkflowConfig node already puts them on its own **image** and **audio** outputs.
+
+The outputs are fixed and slot-numbered, so `image_3` is always the take's image slot 3 regardless of what the other slots hold. See [Extended media](#extended-media) for what goes into the slots.
 
 ---
 

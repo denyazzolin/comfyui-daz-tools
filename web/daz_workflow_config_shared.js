@@ -10,7 +10,7 @@ import { api } from '../../scripts/api.js'
 //   dimsClearIds, modelsClearIds
 //   unetGgufFields: [{ select, checkbox }] — pairs whose select should swap
 //     between the 'diffusion_models' and 'unet_gguf' folder listings
-//   hideType, hideAudioPath, hideLorasBox
+//   hideType, hideAudioPath, hideLorasBox, hideExtendedMedia
 //   durationModel: { toFrames(secs, fps), toSeconds(frames, fps) } — how the
 //     Duration (s) field maps to Total frames and back. Omit for the usual
 //     "duration * fps plus the first frame"
@@ -34,6 +34,7 @@ export function buildWorkflowConfigExtension(cfg) {
         hideType      = false,
         hideAudioPath = false,
         hideLorasBox  = false,
+        hideExtendedMedia = false,
         renderDetailHtml:   renderDetailHtmlFn,
         updateOutputLabels: updateOutputLabelsFn,
         buildModelsHtml:    buildModelsHtmlFn,
@@ -336,6 +337,68 @@ export function buildWorkflowConfigExtension(cfg) {
       const cb  = 'font-family:monospace;font-size:10px;padding:1px 7px;background:#111;color:#666;' +
                   'border:1px solid #444;border-radius:3px;cursor:pointer'
 
+      // ── Extended media ────────────────────────────────────────────────────
+      // The editor shows one numbered slot list per kind. Slot 1 of Images and
+      // of Audio is the take's own image_path / audio_path — it lives at the
+      // root of the set, not in the arrays — so those two keep the element ids
+      // and handlers they have always had and the rest of the panel goes on
+      // reading them. Every other slot is an extended_media row, numbered from
+      // 1 there: EM_ROOT is the offset, so order = slot - EM_ROOT[kind].
+      const EM_SLOTS    = { images: 5, videos: 2, audios: 2 }
+      const EM_ROOT     = { images: 1, videos: 0, audios: 1 }
+      const EM_PATH_KEY = { images: 'image_path', videos: 'video_path', audios: 'audio_path' }
+      const EM_KINDS    = ['images', 'videos', 'audios']
+
+      // What each picker offers out of the input folder. Narrowing only — drop
+      // a table and that picker is back to listing everything.
+      const EM_EXT = {
+        images: ['.png', '.jpg', '.jpeg', '.jfif', '.webp', '.avif', '.bmp', '.gif',
+                 '.tif', '.tiff', '.tga', '.exr', '.hdr', '.ico', '.ppm', '.pgm', '.psd'],
+        videos: ['.mp4', '.m4v', '.mov', '.mkv', '.webm', '.avi', '.wmv', '.flv', '.ogv',
+                 '.mpg', '.mpeg', '.m2v', '.ts', '.mts', '.m2ts', '.3gp', '.gif'],
+        audios: ['.wav', '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.oga', '.opus',
+                 '.aiff', '.aif', '.aifc', '.wma', '.alac', '.ac3', '.mka'],
+      }
+
+      // The current value is always listed even when its extension is not, so a
+      // take never silently loses the file it points at just because the filter
+      // does not know that extension.
+      function emFilter(kind, files, cur) {
+        const exts = EM_EXT[kind]
+        if (!exts) return files
+        return files.filter(f => f === cur || exts.some(e => f.toLowerCase().endsWith(e)))
+      }
+
+      function selOptMedia(kind, files, cur) {
+        const none = kind === 'videos' ? '\u2014 no video \u2014'
+                   : kind === 'audios' ? '\u2014 no audio \u2014'
+                   : '\u2014 no image \u2014'
+        return `<option value="">${none}</option>` +
+          emFilter(kind, files, cur).map(f =>
+            `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
+      }
+
+      // Styles for the pane tabs and the slot buttons. The active one is set by
+      // the wiring rather than baked into the markup, so both live here.
+      const emTabOn   = 'font-family:monospace;font-size:11px;padding:2px 12px;border-radius:3px;' +
+                        'cursor:pointer;border:1px solid #666;background:#555;color:#eee'
+      const emTabOff  = 'font-family:monospace;font-size:11px;padding:2px 12px;border-radius:3px;' +
+                        'cursor:pointer;border:1px solid #555;background:transparent;color:#aaa'
+      const emSlotOn  = 'font-family:monospace;font-size:10px;padding:1px 7px;border-radius:3px;' +
+                        'cursor:pointer;border:1px solid #2a8050;background:#1a5c35;color:#cde'
+      const emSlotOff = 'font-family:monospace;font-size:10px;padding:1px 7px;border-radius:3px;' +
+                        'cursor:pointer;border:1px solid #444;background:transparent;color:#8a8'
+      const emSel     = 'flex:1;background:#111;color:#ddd;border:1px solid #555;border-radius:4px;' +
+                        'font-size:11px;font-family:monospace;padding:1px 3px;min-width:0'
+      const emUpload  = 'font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;' +
+                        'border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0'
+      const emBoxS    = 'position:relative;width:100%;height:170px;background:#2a2a2a;' +
+                        'border:1px solid #444;border-radius:3px;overflow:hidden'
+      const emLayer   = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center'
+      // Sits above the preview layers, and marked so the video pane's
+      // click-to-play knows a click here is not a click on the video.
+      const emCtl     = 'position:absolute;z-index:2'
+
       function box(title, html) {
         return `<fieldset style="border:1px solid #444;border-radius:4px;padding:7px 8px;margin:0;min-width:0;box-sizing:border-box;overflow:hidden">
           <legend style="color:#888;font-size:11px;padding:0 5px;font-family:monospace">${title}</legend>
@@ -348,15 +411,8 @@ export function buildWorkflowConfigExtension(cfg) {
           files.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
       }
 
-      function selOptImg(files, cur) {
-        return `<option value="">— no image —</option>` +
-          files.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
-      }
-
-      function selOptAudio(files, cur) {
-        return `<option value="">— no audio —</option>` +
-          files.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')
-      }
+      function selOptImg(files, cur)   { return selOptMedia('images', files, cur) }
+      function selOptAudio(files, cur) { return selOptMedia('audios', files, cur) }
 
       function isGgufFilename(name) { return /\.gguf$/i.test(name || '') }
 
@@ -790,7 +846,7 @@ export function buildWorkflowConfigExtension(cfg) {
                         cursor:pointer;margin-bottom:5px">
             <input type="checkbox" id="daz-dim-use-image"${d.use_image ? ' checked' : ''}
               style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
-            Use image
+            Use image 1
             <span id="daz-dim-use-image-hint" style="color:#666;font-size:10px"></span>
           </label>
           <div style="margin-bottom:5px">${box('Scale', `
@@ -962,7 +1018,7 @@ export function buildWorkflowConfigExtension(cfg) {
           if (!hasImage) useEl.checked = false
           useEl.disabled     = !hasImage
           useEl.style.cursor = hasImage ? 'pointer' : 'not-allowed'
-          if (hintEl) hintEl.textContent = hasImage ? '' : '(no reference image)'
+          if (hintEl) hintEl.textContent = hasImage ? `(${imgSel.value})` : '(no reference image)'
           syncModeOptions()
           syncValueField()
           // After syncModeOptions, which can drop an illegal mode back to 'none'.
@@ -1006,6 +1062,405 @@ export function buildWorkflowConfigExtension(cfg) {
         return ctl
       }
 
+      // ── Extended media wiring ─────────────────────────────────────────────
+      // Drives the tabbed media box: which pane is showing, which slot in it is
+      // showing, and the one "use for dim" mark shared by every image and video
+      // slot. Image slot 1 and audio slot 1 are the take's own image_path /
+      // audio_path — their select, preview and handlers are the ones the panel
+      // always had, and this only routes the shared Upload and clear buttons to
+      // whichever slot is on screen and collects the extended rows back out.
+      //
+      // Returns null for a class with no extra media, so its callers fall back
+      // to what they did before.
+      function wireExtendedMedia(panel, data, updatePreview, dimsCtl) {
+        if (!panel.querySelector('#daz-em-tabs')) return null
+
+        const q  = sel => panel.querySelector(sel)
+        const qa = sel => Array.from(panel.querySelectorAll(sel))
+        const selOf  = (kind, n) => q(`[data-em-sel="${kind}:${n}"]`)
+
+        const emData = (data.extended_media && typeof data.extended_media === 'object')
+          ? data.extended_media : {}
+        const rowAt = (kind, order) => {
+          const list = Array.isArray(emData[kind]) ? emData[kind] : []
+          return list.find(r => r && Number(r.order) === order) || {}
+        }
+
+        // The panes are switched, never re-rendered, so the slot that is off
+        // screen still has to remember everything about itself. That includes
+        // the fields with no control of their own: a save replaces an editor
+        // slot whole, so what is not echoed back here is dropped from the file.
+        const store = {}
+        for (const kind of EM_KINDS) {
+          store[kind] = {}
+          for (let n = 1; n <= EM_SLOTS[kind]; n++) {
+            const r = n <= EM_ROOT[kind] ? {} : rowAt(kind, n - EM_ROOT[kind])
+            store[kind][n] = {
+              name:        typeof r.name === 'string' ? r.name : '',
+              duration:    Number(r.duration)    || 0,
+              fps:         Number(r.fps)         || 0,
+              start_frame: Number(r.start_frame) || 0,
+              cap_frames:  Number(r.cap_frames)  || 0,
+              frames:      0,   // read off the file, never stored
+            }
+          }
+        }
+
+        // At most one mark across every image and video slot, held as
+        // "kind:slot". Image slot 1 is the take's own image_path, whose flag
+        // sits inside it just as an extended row's does; the backend enforces
+        // the same rule on save, in the same order.
+        let dimSource = data.image_path?.use_for_dim ? 'images:1' : null
+        for (const kind of ['images', 'videos']) {
+          for (let n = 1 + EM_ROOT[kind]; n <= EM_SLOTS[kind] && !dimSource; n++) {
+            if (rowAt(kind, n - EM_ROOT[kind]).use_for_dim) dimSource = `${kind}:${n}`
+          }
+        }
+
+        const active = { images: 1, videos: 1 }
+
+        // Playback, on the Sound Mixer's terms. Two things there make a preview
+        // smooth rather than stuttery, and both apply here:
+        //
+        //  - exactly one movie is ever streaming. Its panel holds a single
+        //    <video> and tears it down when the movie changes; here there are
+        //    two slots, so the one on screen holds the src and the other holds
+        //    none. preload 'auto' buffers the whole file ahead of the playhead,
+        //    which is what stops playback stalling mid-clip — but only if it is
+        //    not racing a second element pulling a second file down the same
+        //    pipe.
+        //
+        //  - only one asynchronous media operation is outstanding at a time.
+        //    The mixer applies that to seeks while scrubbing; the same hazard
+        //    here is play(), which is also a promise: pausing while it is still
+        //    pending aborts it, throws, and can leave the element neither
+        //    playing nor paused. So the click records what the user wants and
+        //    that is applied once whatever is in flight has settled — the last
+        //    request wins, and nothing is issued on top of a pending one.
+        let wantPlaying = false
+        let playPending = null
+
+        function activeVideo() { return q(`#daz-em-videos-${active.videos}-vid`) }
+
+        function applyPlayState() {
+          const vid = activeVideo()
+          if (!vid || playPending) return
+          if (wantPlaying && vid.getAttribute('src')) {
+            if (!vid.paused) return
+            const p = vid.play()
+            if (!p || !p.then) return
+            playPending = p
+            p.catch(() => { wantPlaying = false })
+             .then(() => { playPending = null; applyPlayState() })
+          } else if (!vid.paused) {
+            try { vid.pause() } catch (e) {}
+          }
+        }
+
+        function pauseVideos() {
+          wantPlaying = false
+          qa('[data-em-prev^="videos:"] video').forEach(v => { try { v.pause() } catch (e) {} })
+        }
+
+        // Only the slot on screen carries a src. Detaching needs the load()
+        // too: without it the element keeps the stream it already had open,
+        // holding buffer and bandwidth the visible slot wants.
+        function mountVideos() {
+          for (let n = 1; n <= EM_SLOTS.videos; n++) {
+            const vid = q(`#daz-em-videos-${n}-vid`)
+            if (!vid) continue
+            const file = n === active.videos ? (selOf('videos', n)?.value || '') : ''
+            const src  = file ? `/view?filename=${encodeURIComponent(file)}&type=input` : ''
+            if ((vid.getAttribute('src') || '') === src) continue
+            try { vid.pause() } catch (e) {}
+            if (src) {
+              vid.src = src
+              vid.style.display = 'block'
+            } else {
+              vid.removeAttribute('src')
+              try { vid.load() } catch (e) {}
+              vid.style.display = 'none'
+            }
+          }
+        }
+
+        // The fps box is shared by both video slots, so what is in it belongs to
+        // the slot on screen and has to be put away before another takes over.
+        // Not before it has been filled once, though: an empty box on the way in
+        // is not the slot saying its rate is zero.
+        let fpsShown = false
+        function stashFps() {
+          const el = q('#daz-em-videos-fps')
+          if (el && fpsShown) store.videos[active.videos].fps = Math.max(0, parseFloat(el.value) || 0)
+        }
+
+        // Everything in a pane that depends on which slot is showing: the mark,
+        // and for video the fps box and the frame count. A slot with no file
+        // cannot be the size source, so its checkbox is dead and any mark it
+        // still carries is dropped.
+        function syncPane(kind) {
+          const key = `${kind}:${active[kind]}`
+          const has = !!selOf(kind, active[kind])?.value
+          if (!has && dimSource === key) dimSource = null
+          const dim = q(`#daz-em-${kind}-dim`)
+          if (dim) {
+            dim.checked      = dimSource === key
+            dim.disabled     = !has
+            dim.style.cursor = has ? 'pointer' : 'not-allowed'
+            dim.parentElement.style.opacity = has ? '' : '0.45'
+          }
+          if (kind !== 'videos') return
+          const st  = store.videos[active.videos]
+          const fps = q('#daz-em-videos-fps')
+          const fr  = q('#daz-em-videos-frames')
+          if (fps) { fps.value = st.fps ? String(st.fps) : ''; fpsShown = true }
+          if (fr)  fr.textContent = st.frames ? `${st.frames} frames` : '\u2014'
+        }
+
+        function showTab(kind) {
+          if (kind !== 'videos') pauseVideos()
+          qa('[data-em-tab]').forEach(b =>
+            b.setAttribute('style', b.dataset.emTab === kind ? emTabOn : emTabOff))
+          qa('[data-em-pane]').forEach(p => {
+            p.style.display = p.dataset.emPane === kind ? '' : 'none'
+          })
+        }
+
+        function showSlot(kind, n) {
+          if (kind === 'videos') { pauseVideos(); stashFps() }
+          active[kind] = n
+          qa(`[data-em-slot^="${kind}:"]`).forEach(b =>
+            b.setAttribute('style', b.dataset.emSlot === `${kind}:${n}` ? emSlotOn : emSlotOff))
+          for (let i = 1; i <= EM_SLOTS[kind]; i++) {
+            const sel  = selOf(kind, i)
+            const prev = q(`[data-em-prev="${kind}:${i}"]`)
+            if (sel)  sel.style.display  = i === n ? '' : 'none'
+            // 'flex' rather than '': the layer centres what is in it.
+            if (prev) prev.style.display = i === n ? 'flex' : 'none'
+          }
+          if (kind === 'videos') mountVideos()
+          syncPane(kind)
+        }
+
+        function showImage(n, filename) {
+          // Slot 1 is the reference image; its preview is the panel's own.
+          if (n === 1) { updatePreview(filename); return }
+          const img = q(`#daz-em-images-${n}-img`)
+          const ph  = q(`#daz-em-images-${n}-ph`)
+          if (img) {
+            img.src = filename ? `/view?filename=${encodeURIComponent(filename)}&type=input` : ''
+            img.style.display = filename ? 'block' : 'none'
+          }
+          if (ph) ph.style.display = filename ? 'none' : ''
+        }
+
+        // The rate and the frame count come off the file itself — the browser
+        // reports neither reliably — so this asks the same endpoint the Sound
+        // Mixer uses. keepFps is for the first paint, where the file already has
+        // a rate saved and only the frame count is missing.
+        async function probeVideo(n, filename, keepFps) {
+          const st = store.videos[n]
+          st.frames = 0
+          if (!keepFps || !filename) st.fps = 0
+          if (filename) {
+            try {
+              const r = await fetch(
+                `/daz/sound-mixer/video-info?filename=${encodeURIComponent(filename)}`)
+              if (!r.ok) throw new Error(r.statusText)
+              const info = await r.json()
+              st.frames = Math.max(0, Math.round(Number(info.frame_count) || 0))
+              if (!keepFps || !st.fps) st.fps = Math.max(0, Number(info.fps) || 0)
+            } catch (err) {
+              console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not read '${filename}'`, err)
+            }
+          }
+          if (n === active.videos) syncPane('videos')
+        }
+
+        function showVideo(n, filename, keepFps) {
+          const ph = q(`#daz-em-videos-${n}-ph`)
+          if (ph) ph.style.display = filename ? 'none' : ''
+          // Re-picking the file a slot already had leaves the src untouched, so
+          // the stop has to be asked for rather than left to mountVideos.
+          pauseVideos()
+          mountVideos()
+          probeVideo(n, filename, keepFps)
+        }
+
+        // Programmatic writes go back through the select's own change event, so
+        // the preview, the dimensions controller and the panel's dirty flag all
+        // hear about them exactly as they would from a click.
+        function fire(sel) {
+          sel?.dispatchEvent(new Event('change', { bubbles: true }))
+        }
+
+        async function uploadInput(file, btnSel) {
+          const btn    = q(btnSel)
+          const errDiv = q('#daz-save-error')
+          if (btn) { btn.textContent = 'Uploading\u2026'; btn.disabled = true }
+          if (errDiv) errDiv.textContent = ''
+          let name = ''
+          try {
+            const fd = new FormData()
+            fd.append('image', file)
+            fd.append('type', 'input')
+            const r = await fetch('/upload/image', { method: 'POST', body: fd })
+            if (!r.ok) throw new Error(r.statusText)
+            name = (await r.json()).name
+            delete folderFiles['input']
+          } catch (err) {
+            if (errDiv) errDiv.textContent = `Upload failed: ${esc(err.message)}`
+          }
+          if (btn) { btn.textContent = 'Upload\u2026'; btn.disabled = false }
+          return name
+        }
+
+        // ── listeners ───────────────────────────────────────────────────────
+        qa('[data-em-tab]').forEach(b =>
+          b.addEventListener('click', () => showTab(b.dataset.emTab)))
+        qa('[data-em-slot]').forEach(b => b.addEventListener('click', () => {
+          const [kind, n] = b.dataset.emSlot.split(':')
+          showSlot(kind, Number(n))
+        }))
+
+        for (let n = 1; n <= EM_SLOTS.images; n++) {
+          selOf('images', n)?.addEventListener('change', e => {
+            if (n > 1) showImage(n, e.target.value)
+            syncPane('images')
+          })
+        }
+        for (let n = 1; n <= EM_SLOTS.videos; n++) {
+          selOf('videos', n)?.addEventListener('change', e => {
+            showVideo(n, e.target.value, false)
+            syncPane('videos')
+          })
+        }
+
+        ;['images', 'videos'].forEach(kind => {
+          q(`#daz-em-${kind}-dim`)?.addEventListener('change', e => {
+            const key = `${kind}:${active[kind]}`
+            if (e.target.checked)        dimSource = key
+            else if (dimSource === key)  dimSource = null
+            syncPane('images')
+            syncPane('videos')
+            dimsCtl.refresh()
+          })
+        })
+
+        // Click the preview to play or pause it — but not when the click landed
+        // on one of the controls floating over it.
+        q('#daz-em-videos-box')?.addEventListener('click', e => {
+          if (e.target.closest('[data-em-ctl]')) return
+          if (!activeVideo()?.getAttribute('src')) return
+          wantPlaying = !wantPlaying
+          applyPlayState()
+        })
+
+        // Looped by rewinding on 'ended' rather than with the loop attribute,
+        // as the mixer does: the wrap-around then goes through the same single
+        // in-flight play() as a click, instead of the element restarting itself
+        // underneath one.
+        qa('[data-em-prev^="videos:"] video').forEach(v => {
+          v.addEventListener('ended', () => {
+            if (!wantPlaying || v !== activeVideo()) return
+            v.currentTime = 0
+            applyPlayState()
+          })
+        })
+
+        q('#daz-em-videos-upload-btn')?.addEventListener('click', () =>
+          q('#daz-em-videos-upload-input')?.click())
+        q('#daz-em-videos-upload-input')?.addEventListener('change', async e => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (!file) return
+          const name = await uploadInput(file, '#daz-em-videos-upload-btn')
+          if (!name) return
+          const fresh = await getFolderFiles('input')
+          const sel   = selOf('videos', active.videos)
+          if (sel) sel.innerHTML = selOptMedia('videos', fresh, name)
+          fire(sel)
+        })
+        q('#daz-em-videos-clear')?.addEventListener('click', () => {
+          const sel = selOf('videos', active.videos)
+          if (sel) sel.value = ''
+          store.videos[active.videos].fps = 0
+          fire(sel)
+        })
+
+        // The second audio line, mirroring the first — which is the take's own
+        // audio_path and keeps its original handlers.
+        const a2 = '#daz-em-audios-2'
+        q(`${a2}-upload-btn`)?.addEventListener('click', () => q(`${a2}-upload-input`)?.click())
+        q(`${a2}-upload-input`)?.addEventListener('change', async e => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (!file) return
+          const name = await uploadInput(file, `${a2}-upload-btn`)
+          if (!name) return
+          const fresh = await getFolderFiles('input')
+          const sel   = selOf('audios', 2)
+          if (sel) sel.innerHTML = selOptMedia('audios', fresh, name)
+          fire(sel)
+        })
+        q(`${a2}-clear`)?.addEventListener('click', () => {
+          const sel = selOf('audios', 2)
+          if (sel) sel.value = ''
+          fire(sel)
+        })
+        q(`${a2}-play-btn`)?.addEventListener('click', () => {
+          const f = selOf('audios', 2)?.value
+          if (f) playAudio(f)
+        })
+
+        // ── first paint ─────────────────────────────────────────────────────
+        showTab('images')
+        showSlot('images', 1)
+        showSlot('videos', 1)
+        for (let n = 1; n <= EM_SLOTS.videos; n++) showVideo(n, selOf('videos', n)?.value || '', true)
+        dimsCtl.refresh()
+
+        return {
+          // Both shared buttons live in the images pane and were wired for the
+          // reference image alone; these put them on whichever slot is showing.
+          putImage(files, name) {
+            const sel = selOf('images', active.images)
+            if (sel) sel.innerHTML = selOptMedia('images', files, name)
+            fire(sel)
+            return true
+          },
+          clearImage() {
+            const sel = selOf('images', active.images)
+            if (sel) sel.value = ''
+            fire(sel)
+            return true
+          },
+          // The half of the payload the per-class builders know nothing about.
+          // An empty slot is left out entirely rather than saved as a blank row.
+          collect() {
+            stashFps()
+            const out = { images: [], videos: [], audios: [] }
+            for (const kind of EM_KINDS) {
+              for (let n = 1 + EM_ROOT[kind]; n <= EM_SLOTS[kind]; n++) {
+                const file = selOf(kind, n)?.value || ''
+                if (!file) continue
+                const st  = store[kind][n]
+                const row = { name: st.name, order: n - EM_ROOT[kind], [EM_PATH_KEY[kind]]: file }
+                if (kind === 'videos') {
+                  row.duration    = st.duration
+                  row.fps         = st.fps
+                  row.start_frame = st.start_frame
+                  row.cap_frames  = st.cap_frames
+                }
+                if (kind !== 'audios') row.use_for_dim = dimSource === `${kind}:${n}`
+                out[kind].push(row)
+              }
+            }
+            return { imageUseForDim: dimSource === 'images:1', extended_media: out }
+          },
+        }
+      }
+
       // Helpers object passed to per-class config functions
       const h = {
         esc, fName, fValue, fText, fPath, fFile, fType, fRandomize,
@@ -1021,7 +1476,20 @@ export function buildWorkflowConfigExtension(cfg) {
       function updateOutputLabels(node, data) { return updateOutputLabelsFn(node, data, h) }
       function buildModelsHtml(folderMap, data) { return buildModelsHtmlFn(folderMap, data, h) }
       function buildDimsHtml(data) { return buildDimsHtmlFn(data, h) }
-      function buildPayload(wrap) { return buildPayloadFn(wrap) }
+      // The media box owns fields no per-class builder knows about, so its
+      // controller — stashed on the panel — adds them on the way out. Image slot
+      // 1's dim flag is one of them, and belongs inside the image_path the
+      // builder already put together.
+      function buildPayload(wrap) {
+        const base = buildPayloadFn(wrap)
+        const em   = wrap?._dazEmCtl?.collect()
+        if (!em) return base
+        const { imageUseForDim, ...rest } = em
+        return {
+          ...base, ...rest,
+          image_path: { ...(base.image_path || {}), use_for_dim: imageUseForDim },
+        }
+      }
 
       // Shared lora rows builder — uses normalized daz-lora-N IDs (hyphen)
       function buildLorasHtml(loraFiles, data) {
@@ -1320,6 +1788,174 @@ export function buildWorkflowConfigExtension(cfg) {
             style="${cb};opacity:${disabled ? 0.4 : 1};cursor:${disabled ? 'default' : 'pointer'}">default</button>`
         }
 
+        // ── Reference media box ───────────────────────────────────────────
+        // Three panes behind three tabs, one visible slot per pane. Image slot
+        // 1 and audio slot 1 are the take's own image_path / audio_path and so
+        // keep their original ids; the rest are extended_media rows. The Image
+        // class carries no extra media and gets the plain single-image box it
+        // always had.
+        const emData = (data.extended_media && typeof data.extended_media === 'object')
+          ? data.extended_media : {}
+
+        function emRow(kind, order) {
+          const list = Array.isArray(emData[kind]) ? emData[kind] : []
+          return list.find(r => r && Number(r.order) === order) || {}
+        }
+
+        // The file a slot points at, for the root slots and the extended ones
+        // alike. Only the basename: the pickers list the input folder.
+        function emSlotFile(kind, slot) {
+          if (slot <= EM_ROOT[kind]) return kind === 'images' ? imageName : audioName
+          const raw = emRow(kind, slot - EM_ROOT[kind])[EM_PATH_KEY[kind]]
+          const str = (raw && typeof raw === 'object') ? (raw.path || '') : (raw || '')
+          return String(str).split(/[\\/]/).pop()
+        }
+
+        function emSlotBtns(kind) {
+          let out = ''
+          for (let n = 1; n <= EM_SLOTS[kind]; n++) {
+            out += `<button type="button" data-em-slot="${kind}:${n}" style="${emSlotOff}">${n}</button>`
+          }
+          return out
+        }
+
+        // One picker per slot, all in the DOM, only the active one shown — so
+        // slot 1's select stays the same element under the same id whatever the
+        // pane is showing.
+        function emPickers(kind) {
+          let out = ''
+          for (let n = 1; n <= EM_SLOTS[kind]; n++) {
+            const id  = (kind === 'images' && n === 1) ? 'daz-image-path' : `daz-em-${kind}-${n}`
+            const cur = emSlotFile(kind, n)
+            out += `<select id="${id}" data-em-sel="${kind}:${n}"
+              style="${emSel}${n === 1 ? '' : ';display:none'}">${selOptMedia(kind, inputFiles, cur)}</select>`
+          }
+          return out
+        }
+
+        function emImageLayers() {
+          let out = ''
+          for (let n = 1; n <= EM_SLOTS.images; n++) {
+            const file = emSlotFile('images', n)
+            const imgId = n === 1 ? 'daz-img-preview-el' : `daz-em-images-${n}-img`
+            const phId  = n === 1 ? 'daz-img-preview-ph' : `daz-em-images-${n}-ph`
+            out += `<div data-em-prev="images:${n}" style="${emLayer}${n === 1 ? '' : ';display:none'}">
+              <img id="${imgId}" style="${file ? '' : 'display:none;'}width:100%;height:100%;object-fit:contain">
+              <span id="${phId}" style="color:#555;font-size:11px${file ? ';display:none' : ''}">Image preview here</span>
+            </div>`
+          }
+          return out
+        }
+
+        function emVideoLayers() {
+          let out = ''
+          for (let n = 1; n <= EM_SLOTS.videos; n++) {
+            const file = emSlotFile('videos', n)
+            out += `<div data-em-prev="videos:${n}" style="${emLayer}${n === 1 ? '' : ';display:none'}">
+              <video id="daz-em-videos-${n}-vid" preload="auto" playsinline
+                style="${file ? '' : 'display:none;'}max-width:100%;max-height:100%;object-fit:contain"></video>
+              <span id="daz-em-videos-${n}-ph"
+                style="color:#555;font-size:11px${file ? ';display:none' : ''}">Video preview here</span>
+            </div>`
+          }
+          return out
+        }
+
+        // The audio pane stacks its slots instead of swapping them: an audio
+        // line is one row, so both fit and there is nothing to preview.
+        function emAudioLine(n) {
+          const id     = n === 1 ? 'daz-audio-path'        : `daz-em-audios-${n}`
+          const upBtn  = n === 1 ? 'daz-audio-upload-btn'  : `daz-em-audios-${n}-upload-btn`
+          const upIn   = n === 1 ? 'daz-audio-upload-input': `daz-em-audios-${n}-upload-input`
+          const clr    = n === 1 ? 'daz-audio-clear'       : `daz-em-audios-${n}-clear`
+          const play   = n === 1 ? 'daz-audio-play-btn'    : `daz-em-audios-${n}-play-btn`
+          const cur    = emSlotFile('audios', n)
+          return `<div style="display:flex;gap:4px;align-items:center;margin-bottom:5px">
+            <span style="color:#888;font-size:10px;font-family:monospace;flex-shrink:0">${n}</span>
+            <select id="${id}" data-em-sel="audios:${n}" style="${emSel}">${selOptMedia('audios', inputFiles, cur)}</select>
+            <button id="${upBtn}" style="${emUpload}">Upload\u2026</button>
+            <input id="${upIn}" type="file" accept="audio/*" style="display:none">
+            <button id="${clr}" style="${cb}">clear</button>
+            <button id="${play}" style="${emUpload}">play</button>
+          </div>`
+        }
+
+        // The legacy box: no tabs, no extra slots — what the Image class shows.
+        function refMediaPlainHtml() {
+          return `
+            <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+              <select id="daz-image-path" style="${emSel}">${selOptImg(inputFiles, imageName)}</select>
+              <button id="daz-upload-btn" style="${emUpload}">Upload\u2026</button>
+              <input id="daz-upload-input" type="file" accept="image/*" style="display:none">
+              <button id="daz-img-clear" style="${cb}">clear</button>
+            </div>
+            <div id="daz-img-preview-box"
+              style="width:100%;height:170px;background:#2a2a2a;border:1px solid #444;border-radius:3px;
+                     display:flex;align-items:center;justify-content:center;overflow:hidden">
+              <img id="daz-img-preview-el"
+                style="${imageName ? '' : 'display:none;'}width:100%;height:100%;object-fit:contain">
+              <span id="daz-img-preview-ph"
+                style="color:#555;font-size:11px${imageName ? ';display:none' : ''}">Image preview here</span>
+            </div>`
+        }
+
+        function refMediaHtml() {
+          if (hideExtendedMedia) return refMediaPlainHtml()
+          return `
+            <div id="daz-em-tabs" style="display:flex;gap:4px;margin-bottom:7px">
+              <button type="button" data-em-tab="images" style="${emTabOff}">Images</button>
+              ${hideAudioPath ? '' : `<button type="button" data-em-tab="audios" style="${emTabOff}">Audio</button>`}
+              <button type="button" data-em-tab="videos" style="${emTabOff}">Video</button>
+            </div>
+
+            <div data-em-pane="images">
+              <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+                <div style="display:flex;gap:2px;flex-shrink:0">${emSlotBtns('images')}</div>
+                ${emPickers('images')}
+                <button id="daz-upload-btn" style="${emUpload}">Upload\u2026</button>
+                <input id="daz-upload-input" type="file" accept="image/*" style="display:none">
+              </div>
+              <div id="daz-img-preview-box" style="${emBoxS}">
+                ${emImageLayers()}
+                <label data-em-ctl="1" style="${emCtl};left:6px;bottom:6px;display:flex;align-items:center;
+                       gap:5px;color:#ccc;font-size:11px;cursor:pointer">
+                  <input type="checkbox" id="daz-em-images-dim"
+                    style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Use for dim
+                </label>
+                <button id="daz-img-clear" data-em-ctl="1" style="${emCtl};right:6px;bottom:6px;${cb}">clear</button>
+              </div>
+            </div>
+
+            <div data-em-pane="videos" style="display:none">
+              <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+                <div style="display:flex;gap:2px;flex-shrink:0">${emSlotBtns('videos')}</div>
+                ${emPickers('videos')}
+                <button id="daz-em-videos-upload-btn" style="${emUpload}">Upload\u2026</button>
+                <input id="daz-em-videos-upload-input" type="file" accept="video/*" style="display:none">
+              </div>
+              <div id="daz-em-videos-box" title="Click to play/stop" style="${emBoxS};cursor:pointer">
+                ${emVideoLayers()}
+                <input id="daz-em-videos-fps" data-em-ctl="1" type="number" min="0" step="0.01"
+                  title="Frames per second \u2014 the rate a duration is counted in. Read from the file when one is picked"
+                  style="${emCtl};left:6px;top:6px;width:66px;background:#111;color:#ddd;border:1px solid #555;
+                         border-radius:3px;font-size:11px;font-family:monospace;padding:1px 3px">
+                <span id="daz-em-videos-frames" data-em-ctl="1"
+                  style="${emCtl};right:6px;top:6px;color:#999;font-size:11px;font-family:monospace">\u2014</span>
+                <label data-em-ctl="1" style="${emCtl};left:6px;bottom:6px;display:flex;align-items:center;
+                       gap:5px;color:#ccc;font-size:11px;cursor:pointer">
+                  <input type="checkbox" id="daz-em-videos-dim"
+                    style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Use for dim
+                </label>
+                <button id="daz-em-videos-clear" data-em-ctl="1"
+                  style="${emCtl};right:6px;bottom:6px;${cb}">clear</button>
+              </div>
+            </div>
+
+            ${hideAudioPath ? '' : `<div data-em-pane="audios" style="display:none">
+              ${emAudioLine(1)}${emAudioLine(2)}
+            </div>`}`
+        }
+
         // DOM skeleton
         const overlay = document.createElement('div')
         overlay.style.cssText =
@@ -1389,41 +2025,7 @@ export function buildWorkflowConfigExtension(cfg) {
               <button id="daz-name-clear" style="${cb}">clear</button>
             </div>
           `)}
-          ${box('Reference Image and Audio', `
-            <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
-              <select id="daz-image-path" style="flex:1;background:#111;color:#ddd;border:1px solid #555;
-                border-radius:4px;font-size:11px;font-family:monospace;padding:1px 3px;min-width:0">
-                ${selOptImg(inputFiles, imageName)}
-              </select>
-              <button id="daz-upload-btn"
-                style="font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;
-                       border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
-              <input id="daz-upload-input" type="file" accept="image/*" style="display:none">
-              <button id="daz-img-clear" style="${cb}">clear</button>
-            </div>
-            <div id="daz-img-preview-box"
-              style="width:100%;height:170px;background:#2a2a2a;border:1px solid #444;border-radius:3px;
-                     display:flex;align-items:center;justify-content:center;overflow:hidden">
-              <img id="daz-img-preview-el"
-                style="${imageName ? '' : 'display:none;'}width:100%;height:100%;object-fit:contain">
-              <span id="daz-img-preview-ph"
-                style="color:#555;font-size:11px${imageName ? ';display:none' : ''}">Image preview here</span>
-            </div>
-            ${hideAudioPath ? '' : `<div style="display:flex;gap:4px;align-items:center;margin-top:6px">
-              <select id="daz-audio-path" style="flex:1;background:#111;color:#ddd;border:1px solid #555;
-                border-radius:4px;font-size:11px;font-family:monospace;padding:1px 3px;min-width:0">
-                ${selOptAudio(inputFiles, audioName)}
-              </select>
-              <button id="daz-audio-upload-btn"
-                style="font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;
-                       border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">Upload…</button>
-              <input id="daz-audio-upload-input" type="file" accept="audio/*" style="display:none">
-              <button id="daz-audio-clear" style="${cb}">clear</button>
-              <button id="daz-audio-play-btn"
-                style="font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;
-                       border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0">play</button>
-            </div>`}
-          `)}
+          ${box('Reference Image and Audio', refMediaHtml())}
           ${box('Dimensions and More', buildDimsHtml(data))}
         `
 
@@ -1682,6 +2284,11 @@ export function buildWorkflowConfigExtension(cfg) {
         // because the image clear and upload handlers need the controller.
         const dimsCtl = wireDimensions(panel)
 
+        // The tabbed media box, for the classes that have one. Null for the
+        // rest, and every caller below falls back to the plain single image.
+        const emCtl = wireExtendedMedia(panel, data, updatePreview, dimsCtl)
+        panel._dazEmCtl = emCtl
+
         // Sizing
         panel.querySelector('#daz-sizing-btn')?.addEventListener('click', () => openSizingModal(panel))
 
@@ -1707,9 +2314,11 @@ export function buildWorkflowConfigExtension(cfg) {
             const result = await r.json()
             delete folderFiles['input']
             const fresh = await getFolderFiles('input')
-            const sel = panel.querySelector('#daz-image-path')
-            if (sel) sel.innerHTML = selOptImg(fresh, result.name)
-            updatePreview(result.name)
+            if (!emCtl?.putImage(fresh, result.name)) {
+              const sel = panel.querySelector('#daz-image-path')
+              if (sel) sel.innerHTML = selOptImg(fresh, result.name)
+              updatePreview(result.name)
+            }
             dimsCtl.refresh()
           } catch (err) {
             if (errDiv) errDiv.textContent = `Upload failed: ${esc(err.message)}`
@@ -1796,9 +2405,11 @@ export function buildWorkflowConfigExtension(cfg) {
           updateDefaultButtonsState(panel)
         })
         panel.querySelector('#daz-img-clear')?.addEventListener('click', () => {
-          const sel = panel.querySelector('#daz-image-path')
-          if (sel) sel.value = ''
-          updatePreview('')
+          if (!emCtl?.clearImage()) {
+            const sel = panel.querySelector('#daz-image-path')
+            if (sel) sel.value = ''
+            updatePreview('')
+          }
           dimsCtl.refresh()
         })
         const _cfgWarnEl = panel.querySelector('#daz-neg-cfg-warn')

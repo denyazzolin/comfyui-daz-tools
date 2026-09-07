@@ -62,7 +62,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 11
+CURRENT_SCHEMA = 12
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -88,6 +88,22 @@ _DEFAULT_DIMENSIONS: dict = {"use_image": False, "scale": {"mode": "none", "valu
 # The classes that take a reference image, and so are the ones a dimensions block
 # is backfilled onto.
 _DIM_CLASSES = ("Wan2.2", "ltx2.3", "ltx2.5", "m_h3")
+
+# ── Extended media block ──────────────────────────────────────────────────────
+# Named media a take carries in addition to the single image_path/audio_path
+# slots: {"images": [...], "videos": [...], "audios": [...]}. Every class has one.
+# The default is three empty lists rather than one blank row per list — a row
+# with an empty path is indistinguishable from no row at all, and would have to
+# be filtered out again by every reader.
+_EXTENDED_MEDIA_KEYS = ("images", "videos", "audios")
+
+# An item's "order" is a slot number, not a sort key: the editor offers this many
+# slots per list and the nodes load only those, so a list may have holes and a
+# slot keeps its name when a neighbour is cleared. Rows past the range are the
+# user's own — a hand-edited file keeps them, they are just never loaded.
+_EXTENDED_MEDIA_SLOTS = {"images": 4, "videos": 2, "audios": 1}
+
+_MEDIA_PATH_KEYS = {"images": "image_path", "videos": "video_path", "audios": "audio_path"}
 
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
 
@@ -145,6 +161,8 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
     backfilled  = _backfill_master_position(configs)
     backfilled |= _backfill_trail_prompt(configs)
     backfilled |= _backfill_dimensions(configs)
+    backfilled |= _backfill_extended_media(configs)
+    backfilled |= _backfill_dim_source(configs)
 
     if migrated or backfilled:
         try:
@@ -413,6 +431,110 @@ def _get_dimensions(set_obj: dict) -> dict:
     return _coerce_dimensions(set_obj.get("dimensions"))
 
 
+def _coerce_media_item(kind: str, val) -> dict:
+    """Normalise one extended_media row. Unknown keys are dropped, so what lands
+    in the file after a save is exactly the documented shape."""
+    src      = val if isinstance(val, dict) else {}
+    path_key = _MEDIA_PATH_KEYS[kind]
+    item = {
+        "name":   str(src.get("name") or ""),
+        "order":  _get_int(src.get("order"), 0),
+        path_key: str(src.get(path_key) or ""),
+    }
+    if kind == "videos":
+        # duration caps the load in seconds and cap_frames in frames, 0 meaning
+        # "no cap" for either; start_frame is 1-based, with 0 meaning the same
+        # as 1 so that both ways of saying "from the top" work.
+        item["duration"]    = max(0.0, _get_float(src.get("duration"), 0.0))
+        # fps is what duration is counted in. 0 means "whatever the file says";
+        # a value overrides it, which is also the only way duration works at all
+        # for a container that reports no rate of its own.
+        item["fps"]         = max(0.0, _get_float(src.get("fps"), 0.0))
+        item["start_frame"] = max(0, _get_int(src.get("start_frame"), 0))
+        item["cap_frames"]  = max(0, _get_int(src.get("cap_frames"), 0))
+    if kind != "audios":
+        # Marks the slot the output size is meant to come from: the still's own
+        # size, or the size of the video's frames. Stored and carried on the
+        # resolved entry, but nothing acts on it yet - extended media has no
+        # size rule of its own, so this is what a later one will read.
+        item["use_for_dim"] = bool(src.get("use_for_dim", False))
+    return item
+
+
+def _enforce_single_dim_source(target: dict) -> None:
+    """Keep at most one media slot marked as the size source.
+
+    The reference image — the use_for_dim inside the set's own image_path, the
+    editor's image slot 1 — wins, then extended images by slot, then videos;
+    every flag after the first is cleared. The editor only ever lets one be set,
+    so this is what a hand-edited file is put through on its next save. Rows the
+    editor never sees (out of range, or a second row at an order already taken)
+    are left alone.
+    """
+    block = target.get("extended_media")
+    if not isinstance(block, dict):
+        return
+    img = target.get("image_path")
+    taken = bool(img.get("use_for_dim", False)) if isinstance(img, dict) else False
+    for kind in ("images", "videos"):
+        rows = block.get(kind)
+        if not isinstance(rows, list):
+            continue
+        limit = _EXTENDED_MEDIA_SLOTS[kind]
+        seen: set = set()
+        for row in sorted((r for r in rows if isinstance(r, dict)),
+                          key=lambda r: _get_int(r.get("order"), 0)):
+            order = _get_int(row.get("order"), 0)
+            if not (1 <= order <= limit) or order in seen:
+                continue
+            seen.add(order)
+            if not row.get("use_for_dim"):
+                continue
+            if taken:
+                row["use_for_dim"] = False
+            else:
+                taken = True
+
+
+def _coerce_extended_media(val) -> dict:
+    """Normalise the whole block. Never truncates — the slot counts govern what
+    the editor shows and what the nodes load, not what the file may hold."""
+    src = val if isinstance(val, dict) else {}
+    out: dict = {}
+    for kind in _EXTENDED_MEDIA_KEYS:
+        raw = src.get(kind)
+        out[kind] = [_coerce_media_item(kind, item) for item in raw] if isinstance(raw, list) else []
+    return out
+
+
+def _merge_extended_media(stored, incoming) -> dict:
+    """Overlay the editor's slots onto what the file already holds.
+
+    The editor only ever sees slots 1..N of each list, so everything else — rows
+    with an out-of-range order, and duplicates past the first at a given order —
+    rides through untouched instead of being dropped by a save that never
+    included them. An in-range slot the editor sent nothing for was cleared on
+    purpose, so it does not come back.
+    """
+    stored_src     = stored if isinstance(stored, dict) else {}
+    incoming_block = _coerce_extended_media(incoming)
+    merged: dict = {}
+    for kind in _EXTENDED_MEDIA_KEYS:
+        limit    = _EXTENDED_MEDIA_SLOTS[kind]
+        replaced = set()
+        kept     = []
+        raw_list = stored_src.get(kind)
+        for raw in raw_list if isinstance(raw_list, list) else []:
+            order = _get_int(raw.get("order"), 0) if isinstance(raw, dict) else 0
+            if 1 <= order <= limit and order not in replaced:
+                replaced.add(order)   # the editor is authoritative for this slot
+                continue
+            # carried through exactly as stored, unknown keys and all
+            kept.append(raw)
+        merged[kind] = incoming_block[kind] + kept
+    return merged
+
+
 def _round_dim(v: float) -> int:
     """Round a computed pixel size, never below 1 — a zero-sized output would
     make the resize itself throw rather than just look wrong."""
@@ -528,6 +650,88 @@ def resolve_dimensions(active_set: dict, image, node_name: str):
     return image, width, height
 
 
+def _resolve_media_path(path: str, error_prefix: str) -> str:
+    """Absolute path for an extended_media row, relative ones resolving against
+    ComfyUI's input directory the same way the reference image slot does."""
+    if os.path.isabs(path):
+        full = path
+    elif _fp is not None:
+        full = os.path.join(_fp.get_input_directory(), path)
+    else:
+        full = os.path.abspath(path)
+    if not os.path.exists(full):
+        raise ValueError(f"[DAZ TOOLS] {error_prefix}: file not found at '{full}'")
+    return full
+
+
+def _load_media_image(full_path: str):
+    """Read a still into a single-image IMAGE batch. Pillow, numpy and torch are
+    imported here so the module keeps loading outside a running ComfyUI."""
+    from PIL import Image
+    import numpy as np
+    import torch
+    img = Image.open(full_path).convert("RGB")
+    arr = np.array(img).astype(np.float32) / 255.0
+    return torch.from_numpy(arr)[None,]
+
+
+def _apply_media_resize(image, active_set: dict, node_name: str):
+    """The one seam where extended media would be scaled.
+
+    The dimensions block governs the reference image only, so today this hands
+    the image straight back. Every extended image passes through it — stills and
+    decoded video frames alike — so that giving extended media a size rule later
+    is a change to this function rather than to each of its callers.
+    """
+    return image
+
+
+def resolve_extended_media(active_set: dict, node_name: str) -> dict:
+    """Load a take's extended_media into decoded, slot-numbered lists.
+
+    Only the editor's slots are read. A row with an out-of-range order, an order
+    already taken (first wins) or an empty path is skipped, so a slot with
+    nothing in it is simply absent from the result and the Media Splitter leaves
+    that output empty.
+    """
+    block  = _coerce_extended_media(active_set.get("extended_media"))
+    result: dict = {kind: [] for kind in _EXTENDED_MEDIA_KEYS}
+    for kind in _EXTENDED_MEDIA_KEYS:
+        limit = _EXTENDED_MEDIA_SLOTS[kind]
+        taken = set()
+        for item in block[kind]:
+            order = item["order"]
+            path  = item[_MEDIA_PATH_KEYS[kind]]
+            if not (1 <= order <= limit) or order in taken or not path:
+                continue
+            taken.add(order)
+            prefix = f"{node_name}: {kind[:-1]} slot {order}"
+            full   = _resolve_media_path(path, prefix)
+            entry  = {"slot": order, "name": item["name"], "path": full}
+            if kind != "audios":
+                entry["use_for_dim"] = item["use_for_dim"]
+            if kind == "images":
+                entry["image"] = _apply_media_resize(_load_media_image(full), active_set, node_name)
+            elif kind == "videos":
+                from .media_utils import decode_video_frames
+                frames, fps, count = decode_video_frames(
+                    full, prefix,
+                    start_frame=item["start_frame"],
+                    duration=item["duration"],
+                    cap_frames=item["cap_frames"],
+                    fps=item["fps"],
+                )
+                entry["frames"]      = _apply_media_resize(frames, active_set, node_name)
+                entry["fps"]         = fps
+                entry["frame_count"] = count
+            else:
+                from .audio_utils import decode_audio_file
+                entry["audio"] = decode_audio_file(full, prefix)
+            result[kind].append(entry)
+        result[kind].sort(key=lambda e: e["slot"])
+    return result
+
+
 def _get_loras(set_obj: dict) -> dict:
     """Return the loras mapping from a set object."""
     loras_obj = set_obj.get("loras")
@@ -554,6 +758,19 @@ def _coerce_lora(value, existing=None) -> dict:
 
 
 # ── Set field helpers ─────────────────────────────────────────────────────────
+
+def _find_set(entry: dict, version) -> Optional[dict]:
+    """The set a save is acting on: the one matching the posted version, else the
+    last one. Mirrors how the in-place branch picks its target."""
+    sets = entry.get("sets")
+    if not isinstance(sets, list) or not sets:
+        return None
+    if version:
+        for s in sets:
+            if str(s.get("version", "")) == str(version):
+                return s
+    return sets[-1]
+
 
 def _apply_set_fields(target: dict, data: dict) -> None:
     """Apply typed-object field updates from request data onto a set dict in place."""
@@ -649,13 +866,27 @@ def _apply_set_fields(target: dict, data: dict) -> None:
     if "dimensions" in data:
         target["dimensions"] = _coerce_dimensions(data["dimensions"])
 
+    if "extended_media" in data:
+        target["extended_media"] = _merge_extended_media(
+            target.get("extended_media"), data["extended_media"])
+
+    # image_path carries the reference image's own use_for_dim, so a change to
+    # either end of the pair can be what makes two slots claim the size.
+    if "image_path" in data or "extended_media" in data:
+        _enforce_single_dim_source(target)
+
     if "note" in data:
         v = data["note"]
         target["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
 
 
-def _build_set_from_data(data: dict, version: str, now: str) -> dict:
-    """Build a new set object from request data."""
+def _build_set_from_data(data: dict, version: str, now: str,
+                         source_set: Optional[dict] = None) -> dict:
+    """Build a new set object from request data.
+
+    source_set is the take a "save as new version" was branched off; it is there
+    so the new take inherits the extended media rows the editor never saw.
+    """
     s: dict = {"version": version, "label": str(data.get("version_label") or ""), "created_at": now, "updated_at": now}
     s["type"] = data.get("type", "")
     s["clip_type"] = str(data.get("clip_type") or "stable_diffusion")
@@ -717,6 +948,9 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
     }
     if "dimensions" in data:
         s["dimensions"] = _coerce_dimensions(data["dimensions"])
+    s["extended_media"] = _merge_extended_media(
+        (source_set or {}).get("extended_media"), data.get("extended_media"))
+    _enforce_single_dim_source(s)
     v = data.get("note")
     s["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
     return s
@@ -745,6 +979,9 @@ def _normalize_set(set_obj: dict) -> dict:
     # reference image and no IMAGE output, and an inert block there is just noise.
     if "dimensions" in result:
         result["dimensions"] = _coerce_dimensions(result["dimensions"])
+
+    if "extended_media" in result:
+        result["extended_media"] = _coerce_extended_media(result["extended_media"])
 
     v = result.get("group")
     if not isinstance(v, dict):
@@ -1371,6 +1608,46 @@ def _backfill_dimensions(configs: dict) -> bool:
     return changed
 
 
+def _backfill_extended_media(configs: dict) -> bool:
+    """Ensure every set has an extended_media block with all three lists.
+    Additive and idempotent, mirroring _backfill_dimensions — but for every
+    class, since named media is not tied to the reference-image slot."""
+    changed = False
+    for entry in configs.values():
+        for s in entry.get("sets", []):
+            block = s.get("extended_media")
+            if not isinstance(block, dict):
+                s["extended_media"] = {k: [] for k in _EXTENDED_MEDIA_KEYS}
+                changed = True
+                continue
+            for key in _EXTENDED_MEDIA_KEYS:
+                if not isinstance(block.get(key), list):
+                    block[key] = []
+                    changed = True
+    return changed
+
+
+def _backfill_dim_source(configs: dict) -> bool:
+    """Move a set-root use_for_dim into its image_path, where it now lives.
+
+    Only sets written by an earlier build of this feature have one; everything
+    else passes through untouched, so this is idempotent like the rest."""
+    changed = False
+    for entry in configs.values():
+        for s in entry.get("sets", []):
+            if "use_for_dim" not in s:
+                continue
+            flag = bool(s.pop("use_for_dim"))
+            img = s.get("image_path")
+            if not isinstance(img, dict):
+                img = {"path": str(img or "")}
+                s["image_path"] = img
+            if flag:
+                img["use_for_dim"] = True
+            changed = True
+    return changed
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def parse_movie_file(movie: str) -> str | None:
@@ -1629,7 +1906,7 @@ try:
 
         if save_mode == "new_version":
             new_ver = _next_version(entry)
-            new_set = _build_set_from_data(data, new_ver, now)
+            new_set = _build_set_from_data(data, new_ver, now, _find_set(entry, version))
             if not isinstance(entry.get("sets"), list):
                 entry["sets"] = []
             entry["sets"].append(new_set)

@@ -5,7 +5,7 @@ import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
     all_versions_for_class, parse_movie_file, load_unet_gguf, load_latent_upscale_model,
-    resolve_dimensions,
+    resolve_dimensions, resolve_extended_media,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -177,6 +177,7 @@ class WorkflowConfigLtx25:
         "STRING", "STRING",
         "LORA", "LORA",
         "LATENT_UPSCALE_MODEL",
+        "DX_EXTENDED_MEDIA",
     )
     RETURN_NAMES = (
         "transformer_only",
@@ -198,6 +199,7 @@ class WorkflowConfigLtx25:
         "custom_1", "custom_2",
         "lora_7", "lora_8",
         "latent_upscaler",
+        "extended_media",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -228,6 +230,9 @@ class WorkflowConfigLtx25:
                 active_set = _get_active_set(configs[name], take)
                 if _get_seed_randomize(active_set.get("seed", {})):
                     return float("NaN")
+                # A take can be re-saved in place under the same name, so the
+                # scene label alone would keep the previous load cached.
+                return f"{scene}|{active_set.get('version', '')}|{active_set.get('updated_at', '')}"
         except Exception:
             pass
         return scene
@@ -352,4 +357,5 @@ class WorkflowConfigLtx25:
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
             lora_7_sd, lora_8_sd,
             latent_upscaler,
+            resolve_extended_media(active_set, "WorkflowConfigLTX25"),
         )
