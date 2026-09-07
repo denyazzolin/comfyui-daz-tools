@@ -206,10 +206,10 @@ Each take holds three lists, stored under `extended_media` in the config file:
 | List | Slots | Per item |
 |---|---|---|
 | `images` | 4 | `name`, `order`, `image_path`, `use_for_dim` |
-| `videos` | 2 | `name`, `order`, `video_path`, `duration`, `fps`, `start_frame`, `cap_frames`, `use_for_dim` |
+| `videos` | 2 | `name`, `order`, `video_path`, `duration`, `start_frame`, `cap_frames`, `use_for_dim` |
 | `audios` | 1 | `name`, `order`, `audio_path` |
 
-`order` is a **slot number, not a sort key**: the node loads slot 1 into output 1 whatever position the row sits in, so clearing one row never shifts another, and a list may have holes. Only the slots listed above are loaded — a row with an order outside the range, a second row claiming an order already taken, or a row with no path is skipped. Extra rows are never removed from the file on save, so a hand-edited config keeps whatever you put there; the caps are what the node reads, not what the file may hold. `name` is a label for your own use — it has no control of its own in the editor and the Media Splitter's sockets are named by slot, not by it.
+`order` is a **slot number, not a sort key**: the node loads slot 1 into output 1 whatever position the row sits in, so clearing one row never shifts another, and a list may have holes. Only the slots listed above are loaded — a row with an order outside the range, a second row claiming an order already taken, or a row with no path is skipped. Extra rows are never removed from the file on save, so a hand-edited config keeps whatever you put there; the caps are what the node reads, not what the file may hold. `name` is a label for your own use — the box beside each slot's **clear** writes it, and the Media Splitter's sockets are named by slot, not by it.
 
 The editor numbers the same media differently, because it counts the take's own **Image** and **Audio** as slot 1 of their kind. Its image slots **2–5** are `images` orders 1–4, its audio slot **2** is the one `audios` row, and its video slots **1–2** are the `videos` orders of the same number — video has no slot at the root to count first.
 
@@ -220,14 +220,13 @@ Those two first slots are the take's own `image_path` and `audio_path`, and they
 "audio_path": { "name": "vo take 3",  "path": "…" },
 ```
 
-Nothing in the editor writes one yet — set it by hand and a save carries it through, along with anything else you put in either object. It reaches the node the way an extended row's name does.
+The name box on image slot 1 and audio slot 1 writes these, and a save carries through anything else you put in either object. They reach the node the way an extended row's name does.
 
 A video slot loads a window of the clip, not the whole thing:
 
 | Field | Meaning |
 |---|---|
-| `duration` | Seconds to load, `0` for everything to the end of the clip |
-| `fps` | The rate `duration` is counted in. `0` takes the file's own rate; any other value overrides it, and is the only way `duration` works on a file that reports no rate |
+| `duration` | Seconds to load, `0` for everything to the end of the clip. Counted in the file's own rate — a reference clip is read as it was shot, so there is nothing to re-rate it with |
 | `start_frame` | First frame to load, 1-based; `0` means the same as `1` |
 | `cap_frames` | Maximum frames to load, `0` for no cap |
 
@@ -237,7 +236,7 @@ With both `duration` and `cap_frames` set, the smaller window wins. Decoded fram
 
 It is stored and passed through to the node today, but nothing reads it yet: extended images are handed on at their stored size, and the **Use image / Scale** rules still apply to the reference image only.
 
-The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Use for dim** in the corner of the preview sets that slot as the size source, clearing whatever image or video slot held it before. A video preview plays and pauses when clicked and loops when it reaches the end, and shows the rate and frame count read off the file — the rate is the slot's `fps`, and editable. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each with its own upload, clear and play.
+The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Use for dim** in the corner of the preview sets that slot as the size source, clearing whatever image or video slot held it before. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner, and carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding.
 
 `duration`, `start_frame` and `cap_frames` have no controls; set them in the file by hand and the editor carries them through untouched.
 

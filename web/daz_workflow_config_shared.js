@@ -384,14 +384,36 @@ export function buildWorkflowConfigExtension(cfg) {
                         'cursor:pointer;border:1px solid #666;background:#555;color:#eee'
       const emTabOff  = 'font-family:monospace;font-size:11px;padding:2px 12px;border-radius:3px;' +
                         'cursor:pointer;border:1px solid #555;background:transparent;color:#aaa'
-      const emSlotOn  = 'font-family:monospace;font-size:10px;padding:1px 7px;border-radius:3px;' +
-                        'cursor:pointer;border:1px solid #2a8050;background:#1a5c35;color:#cde'
-      const emSlotOff = 'font-family:monospace;font-size:10px;padding:1px 7px;border-radius:3px;' +
-                        'cursor:pointer;border:1px solid #444;background:transparent;color:#8a8'
+      // A slot button says two things at once. The border and background say
+      // whether it is the slot on screen; the number's colour says whether the
+      // slot holds anything, and an empty one is the legend's grey either way —
+      // so a glance along the row says what is filled without clicking through.
+      const emSlotBase = 'font-family:monospace;font-size:10px;padding:1px 7px;border-radius:3px;'
+      const emSlotOn   = emSlotBase + 'cursor:pointer;border:1px solid #2a8050;background:#1a5c35;'
+      const emSlotOff  = emSlotBase + 'cursor:pointer;border:1px solid #444;background:transparent;'
+      function emSlotStyle(selected, has) {
+        return (selected ? emSlotOn : emSlotOff) +
+               (!has ? 'color:#888' : selected ? 'color:#cde' : 'color:#8a8')
+      }
+      // The audio slots are all on screen at once, so their number is a label
+      // and not a button — whether the slot is filled is all it has left to say.
+      function emChipStyle(has) {
+        return emSlotBase + 'cursor:default;border:1px solid #444;background:transparent;' +
+               (has ? 'color:#cde' : 'color:#888')
+      }
       const emSel     = 'flex:1;background:#111;color:#ddd;border:1px solid #555;border-radius:4px;' +
                         'font-size:11px;font-family:monospace;padding:1px 3px;min-width:0'
       const emUpload  = 'font-family:monospace;font-size:11px;padding:2px 6px;background:#111;color:#ccc;' +
                         'border:1px solid #555;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0'
+      // The name box on a preview and on an audio line. Ten characters or so:
+      // it is a label to tell slots apart by, not somewhere to write prose.
+      const emNameS   = 'background:#111;color:#ddd;border:1px solid #555;border-radius:3px;' +
+                        'font-size:11px;font-family:monospace;padding:1px 3px'
+      // The reading in a preview's corner: the rate, the length, the size. The
+      // frame under it can be any colour, so it carries its own dark ground
+      // rather than relying on the empty box behind it.
+      const emReadS   = 'color:#aaa;font-size:11px;font-family:monospace;' +
+                        'background:rgba(0,0,0,0.55);padding:0 4px;border-radius:3px'
       const emBoxS    = 'position:relative;width:100%;height:170px;background:#2a2a2a;' +
                         'border:1px solid #444;border-radius:3px;overflow:hidden'
       const emLayer   = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center'
@@ -1114,6 +1136,14 @@ export function buildWorkflowConfigExtension(cfg) {
           const list = Array.isArray(emData[kind]) ? emData[kind] : []
           return list.find(r => r && Number(r.order) === order) || {}
         }
+        // Image slot 1 and audio slot 1 are the take's own image_path and
+        // audio_path, which carry their name inside themselves rather than in a
+        // row — so that is where slot 1's name box is filled from and saved to.
+        const rootMedia = kind => {
+          const v = kind === 'images' ? data.image_path
+                  : kind === 'audios' ? data.audio_path : null
+          return (v && typeof v === 'object') ? v : {}
+        }
 
         // The panes are switched, never re-rendered, so the slot that is off
         // screen still has to remember everything about itself. That includes
@@ -1123,14 +1153,16 @@ export function buildWorkflowConfigExtension(cfg) {
         for (const kind of EM_KINDS) {
           store[kind] = {}
           for (let n = 1; n <= EM_SLOTS[kind]; n++) {
-            const r = n <= EM_ROOT[kind] ? {} : rowAt(kind, n - EM_ROOT[kind])
+            const r = n <= EM_ROOT[kind] ? rootMedia(kind) : rowAt(kind, n - EM_ROOT[kind])
             store[kind][n] = {
               name:        typeof r.name === 'string' ? r.name : '',
               duration:    Number(r.duration)    || 0,
-              fps:         Number(r.fps)         || 0,
               start_frame: Number(r.start_frame) || 0,
               cap_frames:  Number(r.cap_frames)  || 0,
-              frames:      0,   // read off the file, never stored
+              // Read off the file whenever one is picked and never stored: the
+              // rate, the length and the frame size belong to the clip, and a
+              // reference take has nothing of its own to say about them.
+              fps: 0, frames: 0, width: 0, height: 0,
             }
           }
         }
@@ -1219,24 +1251,48 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
-        // The fps box is shared by both video slots, so what is in it belongs to
-        // the slot on screen and has to be put away before another takes over.
-        // Not before it has been filled once, though: an empty box on the way in
-        // is not the slot saying its rate is zero.
-        let fpsShown = false
-        function stashFps() {
-          const el = q('#daz-em-videos-fps')
-          if (el && fpsShown) store.videos[active.videos].fps = Math.max(0, parseFloat(el.value) || 0)
+        // The name box is shared by the slots in a pane, so what is in it
+        // belongs to the slot on screen and has to be put away before another
+        // takes over. Not before it has been filled once, though: an empty box
+        // on the way in is not the slot saying it has no name. The audio names
+        // need none of this — both of those boxes are on screen together.
+        const nameShown = { images: false, videos: false }
+        function stashName(kind) {
+          const el = q(`#daz-em-${kind}-name`)
+          if (el && nameShown[kind]) store[kind][active[kind]].name = el.value
         }
 
-        // Everything in a pane that depends on which slot is showing: the mark,
-        // and for video the fps box and the frame count. A slot with no file
-        // cannot be the size source, so its checkbox is dead and any mark it
-        // still carries is dropped.
+        // The slot buttons are recoloured from the files rather than from the
+        // clicks, so a pick, an upload and a clear all land the same way.
+        function syncSlots(kind) {
+          qa(`[data-em-slot^="${kind}:"]`).forEach(b => {
+            const n = Number(b.dataset.emSlot.split(':')[1])
+            b.setAttribute('style', emSlotStyle(n === active[kind], !!selOf(kind, n)?.value))
+          })
+        }
+
+        // A still carries its size on the element once it has decoded, so unlike
+        // a video's this needs no probe — only the 'load' that says it is there.
+        function syncImageSize() {
+          const el = q(active.images === 1
+            ? '#daz-img-preview-el' : `#daz-em-images-${active.images}-img`)
+          const sz = q('#daz-em-images-size')
+          if (sz) {
+            sz.textContent = el?.naturalWidth
+              ? `${el.naturalWidth} x ${el.naturalHeight}` : '\u2014'
+          }
+        }
+
+        // Everything in a pane that depends on which slot is showing: the slot
+        // buttons, the mark, the name box, and for video the readings taken off
+        // the file. A slot with no file cannot be the size source, so its
+        // checkbox is dead and any mark it still carries is dropped.
         function syncPane(kind) {
-          const key = `${kind}:${active[kind]}`
-          const has = !!selOf(kind, active[kind])?.value
+          const n   = active[kind]
+          const key = `${kind}:${n}`
+          const has = !!selOf(kind, n)?.value
           if (!has && dimSource === key) dimSource = null
+          syncSlots(kind)
           const dim = q(`#daz-em-${kind}-dim`)
           if (dim) {
             dim.checked      = dimSource === key
@@ -1244,16 +1300,27 @@ export function buildWorkflowConfigExtension(cfg) {
             dim.style.cursor = has ? 'pointer' : 'not-allowed'
             dim.parentElement.style.opacity = has ? '' : '0.45'
           }
+          const nm = q(`#daz-em-${kind}-name`)
+          if (nm) {
+            nm.value    = store[kind][n].name
+            nm.disabled = !has
+            nameShown[kind] = true
+          }
+          if (kind === 'images') { syncImageSize(); return }
           if (kind !== 'videos') return
-          const st  = store.videos[active.videos]
+          const st  = store.videos[n]
           const fps = q('#daz-em-videos-fps')
           const fr  = q('#daz-em-videos-frames')
-          if (fps) { fps.value = st.fps ? String(st.fps) : ''; fpsShown = true }
-          if (fr)  fr.textContent = st.frames ? `${st.frames} frames` : '\u2014'
+          const sz  = q('#daz-em-videos-size')
+          // Trailing zeros off a rate that is whole: 30 fps, not 30.00 fps.
+          if (fps) fps.textContent = st.fps ? `${+st.fps.toFixed(2)} fps` : '\u2014'
+          if (fr)  fr.textContent  = st.frames ? `${st.frames} frames` : '\u2014'
+          if (sz)  sz.textContent  = st.width && st.height ? `${st.width} x ${st.height}` : '\u2014'
         }
 
         function showTab(kind) {
           if (kind !== 'videos') pauseVideos()
+          if (kind !== 'audios') stopAudio()
           qa('[data-em-tab]').forEach(b =>
             b.setAttribute('style', b.dataset.emTab === kind ? emTabOn : emTabOff))
           qa('[data-em-pane]').forEach(p => {
@@ -1262,10 +1329,9 @@ export function buildWorkflowConfigExtension(cfg) {
         }
 
         function showSlot(kind, n) {
-          if (kind === 'videos') { pauseVideos(); stashFps() }
+          if (kind === 'videos') pauseVideos()
+          stashName(kind)
           active[kind] = n
-          qa(`[data-em-slot^="${kind}:"]`).forEach(b =>
-            b.setAttribute('style', b.dataset.emSlot === `${kind}:${n}` ? emSlotOn : emSlotOff))
           for (let i = 1; i <= EM_SLOTS[kind]; i++) {
             const sel  = selOf(kind, i)
             const prev = q(`[data-em-prev="${kind}:${i}"]`)
@@ -1289,22 +1355,24 @@ export function buildWorkflowConfigExtension(cfg) {
           if (ph) ph.style.display = filename ? 'none' : ''
         }
 
-        // The rate and the frame count come off the file itself — the browser
-        // reports neither reliably — so this asks the same endpoint the Sound
-        // Mixer uses. keepFps is for the first paint, where the file already has
-        // a rate saved and only the frame count is missing.
-        async function probeVideo(n, filename, keepFps) {
+        // The rate, the frame count and the frame size all come off the file —
+        // the browser reports none of them reliably, and a slot that is not the
+        // one on screen has no stream to ask anyway — so this asks the same
+        // endpoint the Sound Mixer uses. All three are the file's own, so they
+        // are read again on every pick rather than carried in the take.
+        async function probeVideo(n, filename) {
           const st = store.videos[n]
-          st.frames = 0
-          if (!keepFps || !filename) st.fps = 0
+          st.fps = st.frames = st.width = st.height = 0
           if (filename) {
             try {
               const r = await fetch(
                 `/daz/sound-mixer/video-info?filename=${encodeURIComponent(filename)}`)
               if (!r.ok) throw new Error(r.statusText)
               const info = await r.json()
+              st.fps    = Math.max(0, Number(info.fps) || 0)
               st.frames = Math.max(0, Math.round(Number(info.frame_count) || 0))
-              if (!keepFps || !st.fps) st.fps = Math.max(0, Number(info.fps) || 0)
+              st.width  = Math.max(0, Math.round(Number(info.width)  || 0))
+              st.height = Math.max(0, Math.round(Number(info.height) || 0))
             } catch (err) {
               console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not read '${filename}'`, err)
             }
@@ -1312,14 +1380,68 @@ export function buildWorkflowConfigExtension(cfg) {
           if (n === active.videos) syncPane('videos')
         }
 
-        function showVideo(n, filename, keepFps) {
+        function showVideo(n, filename) {
           const ph = q(`#daz-em-videos-${n}-ph`)
           if (ph) ph.style.display = filename ? 'none' : ''
           // Re-picking the file a slot already had leaves the src untouched, so
           // the stop has to be asked for rather than left to mountVideos.
           pauseVideos()
           mountVideos()
-          probeVideo(n, filename, keepFps)
+          probeVideo(n, filename)
+        }
+
+        // ── audio playback ──────────────────────────────────────────────────
+        // One player for the pane. Each line's glyph is a toggle, and starting
+        // one line stops the other, so the line showing the stop glyph is always
+        // the one being heard.
+        let audioEl = null
+        let audioOn = 0
+
+        function syncAudioBtns() {
+          for (let n = 1; n <= EM_SLOTS.audios; n++) {
+            const b = q(`[data-em-play="${n}"]`)
+            if (!b) continue
+            const on = audioOn === n
+            b.textContent   = on ? '\u25a0' : '\u25b6'
+            b.title         = on ? 'Stop' : 'Play'
+            b.style.opacity = selOf('audios', n)?.value ? '' : '0.45'
+          }
+        }
+
+        function stopAudio() {
+          if (audioEl) { try { audioEl.pause() } catch (e) {} }
+          audioEl = null
+          audioOn = 0
+          syncAudioBtns()
+        }
+
+        function toggleAudio(n) {
+          const playing = audioOn === n
+          stopAudio()
+          const file = selOf('audios', n)?.value
+          if (playing || !file) return
+          audioEl = new Audio(`/view?filename=${encodeURIComponent(file)}&type=input`)
+          audioEl.addEventListener('ended', stopAudio)
+          audioOn = n
+          syncAudioBtns()
+          audioEl.play().catch(err => {
+            console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: audio playback failed`, err)
+            stopAudio()
+          })
+        }
+
+        // The audio lines have no slot to switch, so this is their syncPane: the
+        // number, the name box and the glyph, all read off what is picked.
+        function syncAudio() {
+          for (let n = 1; n <= EM_SLOTS.audios; n++) {
+            const has  = !!selOf('audios', n)?.value
+            const chip = q(`[data-em-chip="audios:${n}"]`)
+            const nm   = q(`#daz-em-audios-${n}-name`)
+            if (chip) chip.setAttribute('style', emChipStyle(has))
+            if (nm)   nm.disabled = !has
+            if (!has && audioOn === n) stopAudio()
+          }
+          syncAudioBtns()
         }
 
         // Programmatic writes go back through the select's own change event, so
@@ -1369,10 +1491,22 @@ export function buildWorkflowConfigExtension(cfg) {
         }
         for (let n = 1; n <= EM_SLOTS.videos; n++) {
           selOf('videos', n)?.addEventListener('change', e => {
-            showVideo(n, e.target.value, false)
+            showVideo(n, e.target.value)
             syncPane('videos')
             dimsCtl.refresh()
           })
+        }
+        // A still's size can only be read once the element has decoded, and the
+        // slot that just loaded may not be the one on screen — syncImageSize
+        // asks the active slot either way.
+        qa('[data-em-prev^="images:"] img').forEach(img =>
+          img.addEventListener('load', syncImageSize))
+        ;['images', 'videos'].forEach(kind => {
+          q(`#daz-em-${kind}-name`)?.addEventListener('input', () => stashName(kind))
+        })
+        for (let n = 1; n <= EM_SLOTS.audios; n++) {
+          selOf('audios', n)?.addEventListener('change', syncAudio)
+          q(`[data-em-play="${n}"]`)?.addEventListener('click', () => toggleAudio(n))
         }
 
         ;['images', 'videos'].forEach(kind => {
@@ -1423,7 +1557,6 @@ export function buildWorkflowConfigExtension(cfg) {
         q('#daz-em-videos-clear')?.addEventListener('click', () => {
           const sel = selOf('videos', active.videos)
           if (sel) sel.value = ''
-          store.videos[active.videos].fps = 0
           fire(sel)
         })
 
@@ -1446,10 +1579,6 @@ export function buildWorkflowConfigExtension(cfg) {
           const sel = selOf('audios', 2)
           if (sel) sel.value = ''
           fire(sel)
-        })
-        q(`${a2}-play-btn`)?.addEventListener('click', () => {
-          const f = selOf('audios', 2)?.value
-          if (f) playAudio(f)
         })
 
         // What the Dimensions box reads to name and measure the marked slot.
@@ -1476,10 +1605,20 @@ export function buildWorkflowConfigExtension(cfg) {
         // Without this the slots behind the buttons come up empty on a reopen
         // even though their picker shows the file.
         for (let n = 1; n <= EM_SLOTS.images; n++) showImage(n, selOf('images', n)?.value || '')
-        for (let n = 1; n <= EM_SLOTS.videos; n++) showVideo(n, selOf('videos', n)?.value || '', true)
+        for (let n = 1; n <= EM_SLOTS.videos; n++) showVideo(n, selOf('videos', n)?.value || '')
+        // Both audio name boxes are on screen at once, so they are filled here
+        // and read straight back out on save rather than stashed on a switch.
+        for (let n = 1; n <= EM_SLOTS.audios; n++) {
+          const nm = q(`#daz-em-audios-${n}-name`)
+          if (nm) nm.value = store.audios[n].name
+        }
+        syncAudio()
         dimsCtl.refresh()
 
         return {
+          // The audio player is an Audio object rather than an element in the
+          // panel, so closing the panel does not silence it — the panel says so.
+          stopAudio,
           // Both shared buttons live in the images pane and were wired for the
           // reference image alone; these put them on whichever slot is showing.
           putImage(files, name) {
@@ -1497,17 +1636,21 @@ export function buildWorkflowConfigExtension(cfg) {
           // The half of the payload the per-class builders know nothing about.
           // An empty slot is left out entirely rather than saved as a blank row.
           collect() {
-            stashFps()
+            stashName('images')
+            stashName('videos')
+            const nameOf = (kind, n) => kind === 'audios'
+              ? (q(`#daz-em-audios-${n}-name`)?.value || '')
+              : store[kind][n].name
             const out = { images: [], videos: [], audios: [] }
             for (const kind of EM_KINDS) {
               for (let n = 1 + EM_ROOT[kind]; n <= EM_SLOTS[kind]; n++) {
                 const file = selOf(kind, n)?.value || ''
                 if (!file) continue
                 const st  = store[kind][n]
-                const row = { name: st.name, order: n - EM_ROOT[kind], [EM_PATH_KEY[kind]]: file }
+                const row = { name: nameOf(kind, n), order: n - EM_ROOT[kind],
+                              [EM_PATH_KEY[kind]]: file }
                 if (kind === 'videos') {
                   row.duration    = st.duration
-                  row.fps         = st.fps
                   row.start_frame = st.start_frame
                   row.cap_frames  = st.cap_frames
                 }
@@ -1515,7 +1658,13 @@ export function buildWorkflowConfigExtension(cfg) {
                 out[kind].push(row)
               }
             }
-            return { imageUseForDim: dimSource === 'images:1', extended_media: out }
+            return {
+              imageUseForDim: dimSource === 'images:1',
+              // Slot 1 of images and of audios is the take's own image_path and
+              // audio_path, so their names go inside those and not into a row.
+              rootNames: { image_path: nameOf('images', 1), audio_path: nameOf('audios', 1) },
+              extended_media: out,
+            }
           },
         }
       }
@@ -1553,11 +1702,17 @@ export function buildWorkflowConfigExtension(cfg) {
         // just assembled.
         const em = wrap?._dazEmCtl?.collect()
         if (!em) return out
-        const { imageUseForDim, ...rest } = em
-        return {
+        const { imageUseForDim, rootNames, ...rest } = em
+        const merged = {
           ...out, ...rest,
-          image_path: { ...(out.image_path || {}), use_for_dim: imageUseForDim },
+          image_path: { ...(out.image_path || {}),
+                        name: rootNames.image_path, use_for_dim: imageUseForDim },
         }
+        // Only where the class has one: a name must not conjure the field.
+        if ('audio_path' in out) {
+          merged.audio_path = { ...out.audio_path, name: rootNames.audio_path }
+        }
+        return merged
       }
 
       // Shared lora rows builder — uses normalized daz-lora-N IDs (hyphen)
@@ -1883,7 +2038,8 @@ export function buildWorkflowConfigExtension(cfg) {
         function emSlotBtns(kind) {
           let out = ''
           for (let n = 1; n <= EM_SLOTS[kind]; n++) {
-            out += `<button type="button" data-em-slot="${kind}:${n}" style="${emSlotOff}">${n}</button>`
+            out += `<button type="button" data-em-slot="${kind}:${n}"
+              style="${emSlotStyle(false, !!emSlotFile(kind, n))}">${n}</button>`
           }
           return out
         }
@@ -1931,7 +2087,8 @@ export function buildWorkflowConfigExtension(cfg) {
         }
 
         // The audio pane stacks its slots instead of swapping them: an audio
-        // line is one row, so both fit and there is nothing to preview.
+        // line has nothing to preview, so both fit at once — each framed as its
+        // own slot, with the number that would have been a button as a label.
         function emAudioLine(n) {
           const id     = n === 1 ? 'daz-audio-path'        : `daz-em-audios-${n}`
           const upBtn  = n === 1 ? 'daz-audio-upload-btn'  : `daz-em-audios-${n}-upload-btn`
@@ -1939,13 +2096,19 @@ export function buildWorkflowConfigExtension(cfg) {
           const clr    = n === 1 ? 'daz-audio-clear'       : `daz-em-audios-${n}-clear`
           const play   = n === 1 ? 'daz-audio-play-btn'    : `daz-em-audios-${n}-play-btn`
           const cur    = emSlotFile('audios', n)
-          return `<div style="display:flex;gap:4px;align-items:center;margin-bottom:5px">
-            <span style="color:#888;font-size:10px;font-family:monospace;flex-shrink:0">${n}</span>
-            <select id="${id}" data-em-sel="audios:${n}" style="${emSel}">${selOptMedia('audios', inputFiles, cur)}</select>
-            <button id="${upBtn}" style="${emUpload}">Upload\u2026</button>
-            <input id="${upIn}" type="file" accept="audio/*" style="display:none">
-            <button id="${clr}" style="${cb}">clear</button>
-            <button id="${play}" style="${emUpload}">play</button>
+          return `<div style="border:1px solid #444;border-radius:3px;padding:6px;margin-bottom:6px">
+            <div style="display:flex;gap:4px;align-items:center;margin-bottom:5px">
+              <span data-em-chip="audios:${n}" style="${emChipStyle(!!cur)}">${n}</span>
+              <select id="${id}" data-em-sel="audios:${n}" style="${emSel}">${selOptMedia('audios', inputFiles, cur)}</select>
+              <button id="${upBtn}" style="${emUpload}">Upload\u2026</button>
+              <input id="${upIn}" type="file" accept="audio/*" style="display:none">
+              <button id="${clr}" style="${cb}">clear</button>
+              <button id="${play}" data-em-play="${n}" title="Play"
+                style="${emUpload};padding:2px 9px">\u25b6</button>
+            </div>
+            <input id="daz-em-audios-${n}-name" type="text" maxlength="40" placeholder="name"
+              title="A label for this slot, carried to the node beside the file"
+              style="width:100%;box-sizing:border-box;${emNameS}">
           </div>`
         }
 
@@ -1986,11 +2149,16 @@ export function buildWorkflowConfigExtension(cfg) {
               </div>
               <div id="daz-img-preview-box" style="${emBoxS}">
                 ${emImageLayers()}
+                <span id="daz-em-images-size" data-em-ctl="1"
+                  style="${emCtlS};right:6px;top:6px;${emReadS}">\u2014</span>
                 <label data-em-ctl="1" style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
                        gap:5px;color:#ccc;font-size:11px;cursor:pointer">
                   <input type="checkbox" id="daz-em-images-dim"
                     style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Use for dim
                 </label>
+                <input id="daz-em-images-name" data-em-ctl="1" type="text" maxlength="40" placeholder="name"
+                  title="A label for this slot, carried to the node beside the file"
+                  style="${emCtlS};right:54px;bottom:6px;width:66px;${emNameS}">
                 <button id="daz-img-clear" data-em-ctl="1" style="${emCtlS};right:6px;bottom:6px;${cb}">clear</button>
               </div>
             </div>
@@ -2004,23 +2172,26 @@ export function buildWorkflowConfigExtension(cfg) {
               </div>
               <div id="daz-em-videos-box" title="Click to play/stop" style="${emBoxS};cursor:pointer">
                 ${emVideoLayers()}
-                <input id="daz-em-videos-fps" data-em-ctl="1" type="number" min="0" step="0.01"
-                  title="Frames per second \u2014 the rate a duration is counted in. Read from the file when one is picked"
-                  style="${emCtlS};left:6px;top:6px;width:66px;background:#111;color:#ddd;border:1px solid #555;
-                         border-radius:3px;font-size:11px;font-family:monospace;padding:1px 3px">
+                <span id="daz-em-videos-fps" data-em-ctl="1" title="The rate the file reports"
+                  style="${emCtlS};left:6px;top:6px;${emReadS}">\u2014</span>
                 <span id="daz-em-videos-frames" data-em-ctl="1"
-                  style="${emCtlS};right:6px;top:6px;color:#999;font-size:11px;font-family:monospace">\u2014</span>
+                  style="${emCtlS};right:6px;top:6px;${emReadS}">\u2014</span>
+                <span id="daz-em-videos-size" data-em-ctl="1"
+                  style="${emCtlS};right:6px;top:24px;${emReadS}">\u2014</span>
                 <label data-em-ctl="1" style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
                        gap:5px;color:#ccc;font-size:11px;cursor:pointer">
                   <input type="checkbox" id="daz-em-videos-dim"
                     style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Use for dim
                 </label>
+                <input id="daz-em-videos-name" data-em-ctl="1" type="text" maxlength="40" placeholder="name"
+                  title="A label for this slot, carried to the node beside the file"
+                  style="${emCtlS};right:54px;bottom:6px;width:66px;${emNameS}">
                 <button id="daz-em-videos-clear" data-em-ctl="1"
                   style="${emCtlS};right:6px;bottom:6px;${cb}">clear</button>
               </div>
             </div>
 
-            ${hideAudioPath ? '' : `<div data-em-pane="audios" style="display:none">
+            ${hideAudioPath ? '' : `<div data-em-pane="audios" style="display:none;min-height:199px">
               ${emAudioLine(1)}${emAudioLine(2)}
             </div>`}`
         }
@@ -2428,21 +2599,24 @@ export function buildWorkflowConfigExtension(cfg) {
             delete folderFiles['input']
             const fresh = await getFolderFiles('input')
             const sel = panel.querySelector('#daz-audio-path')
-            if (sel) sel.innerHTML = selOptAudio(fresh, result.name)
+            if (sel) {
+              sel.innerHTML = selOptAudio(fresh, result.name)
+              sel.dispatchEvent(new Event('change', { bubbles: true }))
+            }
           } catch (err) {
             if (errDiv) errDiv.textContent = `Upload failed: ${esc(err.message)}`
           }
           btn.textContent = 'Upload…'
           btn.disabled    = false
         })
+        // The change event is what the media box listens for: the slot's number,
+        // its name box and its play glyph all follow the file, not the click. The
+        // play button itself belongs to that box — it is a toggle, not a shot.
         panel.querySelector('#daz-audio-clear')?.addEventListener('click', () => {
           const sel = panel.querySelector('#daz-audio-path')
-          if (sel) sel.value = ''
-        })
-        panel.querySelector('#daz-audio-play-btn')?.addEventListener('click', () => {
-          const sel = panel.querySelector('#daz-audio-path')
-          const filename = sel?.value
-          if (filename) playAudio(filename)
+          if (!sel) return
+          sel.value = ''
+          sel.dispatchEvent(new Event('change', { bubbles: true }))
         })
 
         // Seed randomize (immediate save in edit mode)
@@ -2581,6 +2755,8 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // Close panel helper
         function closePanel() {
+          // The media box's audio outlives the DOM it was started from.
+          panel._dazEmCtl?.stopAudio?.()
           if (node[keys.editOverlay]) {
             node[keys.editOverlay].remove()
             node[keys.editOverlay] = null

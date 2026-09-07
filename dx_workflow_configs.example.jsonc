@@ -30,8 +30,8 @@
         "latent_upscale": { "name": "" },  // NOT USED by WAN node (LTX2.3/LTX2.5 only)
         "shift_high": { "value": 5.0 },       // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
         "shift_low": { "value": 5.0 },        // low-pass unet timestep
-        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; nothing writes it yet.
-        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; nothing writes it yet.
+        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 720 },        // output height in pixels
         "dimensions":{
@@ -52,7 +52,7 @@
           // one slot in the take may set it: the reference image wins, then images by slot, then videos.
           // Stored only for now, nothing reads it yet.
           "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "fps":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip; fps: the rate duration is counted in, 0 = whatever the file reports; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. When duration and cap_frames are both set, the smaller window wins
+          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip, counted in the file's own rate; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. When duration and cap_frames are both set, the smaller window wins
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 30 },          // number of denoising steps
@@ -113,8 +113,8 @@
         "clip_type": "stable_diffusion",   // NOT USED by LTX node
         "shift_high": { "value": 5.0 },       // NOT USED by LTX node
         "shift_low": { "value": 5.0 },        // NOT USED by LTX node
-        "image_path": { "name": "", "path": "", "use_for_dim": false }, // input image path (empty for T2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; nothing writes it yet.
-        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; nothing writes it yet.
+        "image_path": { "name": "", "path": "", "use_for_dim": false }, // input image path (empty for T2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 768 },         // output width in pixels
         "height": { "value": 512 },        // output height in pixels
         "dimensions":{
@@ -135,7 +135,7 @@
           // one slot in the take may set it: the reference image wins, then images by slot, then videos.
           // Stored only for now, nothing reads it yet.
           "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "fps":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip; fps: the rate duration is counted in, 0 = whatever the file reports; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. When duration and cap_frames are both set, the smaller window wins
+          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip, counted in the file's own rate; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. When duration and cap_frames are both set, the smaller window wins
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 8 },           // number of denoising steps
@@ -263,8 +263,8 @@
         "clip_type": "stable_diffusion",   // NOT USED by LTX2.5 node
         "shift_high": { "value": 0.0 },       // NOT USED by LTX2.5 node
         "shift_low": { "value": 0.0 },        // NOT USED by LTX2.5 node
-        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; nothing writes it yet.
-        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; nothing writes it yet.
+        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 704 },        // output height in pixels
         "dimensions":{
@@ -285,7 +285,7 @@
           // one slot in the take may set it: the reference image wins, then images by slot, then videos.
           // Stored only for now, nothing reads it yet.
           "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "fps":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip; fps: the rate duration is counted in, 0 = whatever the file reports; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. When duration and cap_frames are both set, the smaller window wins
+          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip, counted in the file's own rate; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. When duration and cap_frames are both set, the smaller window wins
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 20 },          // number of denoising steps
@@ -346,8 +346,8 @@
         "clip_type": "stable_diffusion",   // NOT USED by MiniMax H3 node
         "shift_high": { "value": 0.0 },       // NOT USED by MiniMax H3 node
         "shift_low": { "value": 0.0 },        // NOT USED by MiniMax H3 node
-        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": true }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; nothing writes it yet.
-        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; nothing writes it yet.
+        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": true }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 720 },        // output height in pixels
         "dimensions":{
@@ -368,7 +368,7 @@
           // one slot in the take may set it: the reference image wins, then images by slot, then videos.
           // Stored only for now, nothing reads it yet.
           "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "fps":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip; fps: the rate duration is counted in, 0 = whatever the file reports; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. When duration and cap_frames are both set, the smaller window wins
+          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip, counted in the file's own rate; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. When duration and cap_frames are both set, the smaller window wins
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 30 },          // number of denoising steps
