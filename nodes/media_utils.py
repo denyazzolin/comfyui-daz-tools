@@ -17,16 +17,14 @@ MAX_VIDEO_DECODED_BYTES = 4 * 1024 ** 3
 
 
 def decode_video_frames(full_path: str, error_prefix: str, start_frame: int = 0,
-                        duration: float = 0.0, cap_frames: int = 0, fps: float = 0.0):
+                        cap_frames: int = 0):
     """Decode a window of a video into (IMAGE batch, fps, frame count).
 
-    start_frame is 1-based and 0 means the same as 1; duration caps the window in
-    seconds and cap_frames in frames, both with 0 meaning "no cap". When both are
-    set the smaller window wins. fps is the rate duration is counted in: 0 takes
-    the container own rate, anything else overrides it — which is also what makes
-    duration usable on a file that reports no rate. The fps returned is the one
-    actually used. The frames are an [N, H, W, 3] float32 tensor in 0..1, the
-    same layout every other image output in the plugin uses.
+    start_frame is 1-based and 0 means the same as 1, and cap_frames is how many
+    to take from there, with 0 meaning "to the end of the clip" — the pair the
+    handles under the editor's video preview set. The fps returned is the file's
+    own. The frames are an [N, H, W, 3] float32 tensor in 0..1, the same layout
+    every other image output in the plugin uses.
     """
     try:
         import av
@@ -50,21 +48,11 @@ def decode_video_frames(full_path: str, error_prefix: str, start_frame: int = 0,
             raise ValueError(f"[DAZ TOOLS] {error_prefix}: '{full_path}' has no video stream")
         stream = container.streams.video[0]
         stream.thread_type = "AUTO"
-        source_fps = float(stream.average_rate) if stream.average_rate else 0.0
-        fps        = float(fps) if fps and fps > 0 else source_fps
+        fps = float(stream.average_rate) if stream.average_rate else 0.0
 
-        # The requested window, in frames. Seconds need an fps to become frames,
-        # so with neither an override nor a rate in the file, duration cannot be
-        # honoured and only the frame cap applies.
-        wanted = 0
-        if duration and duration > 0 and fps > 0:
-            wanted = max(1, int(round(float(duration) * fps)))
-        elif duration and duration > 0:
-            print(f"[DAZ TOOLS] {error_prefix}: the file reports no frame rate and the slot "
-                  f"sets none, so the {duration}s duration cannot be applied to "
-                  f"'{full_path}'")
-        if cap_frames and cap_frames > 0:
-            wanted = int(cap_frames) if wanted == 0 else min(wanted, int(cap_frames))
+        # The requested window, in frames, 0 standing for "to the end of the
+        # clip" — the ceilings below are what bounds the window then.
+        wanted = max(0, int(cap_frames or 0))
 
         frames, limit, capped_by = [], None, ""
         for index, frame in enumerate(container.decode(stream)):

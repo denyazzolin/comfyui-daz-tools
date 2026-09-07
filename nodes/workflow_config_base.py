@@ -449,12 +449,9 @@ def _coerce_media_item(kind: str, val) -> dict:
         path_key: str(src.get(path_key) or ""),
     }
     if kind == "videos":
-        # duration caps the load in seconds and cap_frames in frames, 0 meaning
-        # "no cap" for either; start_frame is 1-based, with 0 meaning the same
-        # as 1 so that both ways of saying "from the top" work. duration is
-        # counted in the file's own rate: a reference clip is played as it was
-        # shot, so there is nothing here to re-rate it with.
-        item["duration"]    = max(0.0, _get_float(src.get("duration"), 0.0))
+        # The window the editor's handles set: start_frame is 1-based, with 0
+        # meaning the same as 1 so that both ways of saying "from the top"
+        # work, and cap_frames counts on from there with 0 meaning "to the end".
         item["start_frame"] = max(0, _get_int(src.get("start_frame"), 0))
         item["cap_frames"]  = max(0, _get_int(src.get("cap_frames"), 0))
     if kind != "audios":
@@ -755,7 +752,6 @@ def resolve_extended_media(active_set: dict, node_name: str,
                 frames, fps, count = decode_video_frames(
                     full, prefix,
                     start_frame=item["start_frame"],
-                    duration=item["duration"],
                     cap_frames=item["cap_frames"],
                 )
                 entry["frames"]      = _apply_media_resize(frames, active_set, node_name)

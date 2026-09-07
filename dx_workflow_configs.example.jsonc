@@ -52,7 +52,7 @@
           // one slot in the take may set it: the reference image wins, then images by slot, then videos.
           // Stored only for now, nothing reads it yet.
           "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip, counted in the file's own rate; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. The two handles under the editor's video preview write this pair. When duration and cap_frames are both set, the smaller window wins
+          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 30 },          // number of denoising steps
@@ -135,7 +135,7 @@
           // one slot in the take may set it: the reference image wins, then images by slot, then videos.
           // Stored only for now, nothing reads it yet.
           "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip, counted in the file's own rate; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. The two handles under the editor's video preview write this pair. When duration and cap_frames are both set, the smaller window wins
+          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 8 },           // number of denoising steps
@@ -285,7 +285,7 @@
           // one slot in the take may set it: the reference image wins, then images by slot, then videos.
           // Stored only for now, nothing reads it yet.
           "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip, counted in the file's own rate; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. The two handles under the editor's video preview write this pair. When duration and cap_frames are both set, the smaller window wins
+          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 20 },          // number of denoising steps
@@ -368,7 +368,7 @@
           // one slot in the take may set it: the reference image wins, then images by slot, then videos.
           // Stored only for now, nothing reads it yet.
           "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "duration":0, "start_frame":0, "cap_frames":0, "use_for_dim":false}], // duration: seconds to load, 0 = to the end of the clip, counted in the file's own rate; start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: max frames to load, 0 = no cap. The two handles under the editor's video preview write this pair. When duration and cap_frames are both set, the smaller window wins
+          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 30 },          // number of denoising steps

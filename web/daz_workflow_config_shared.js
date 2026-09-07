@@ -1174,7 +1174,6 @@ export function buildWorkflowConfigExtension(cfg) {
             const r = n <= EM_ROOT[kind] ? rootMedia(kind) : rowAt(kind, n - EM_ROOT[kind])
             store[kind][n] = {
               name:        typeof r.name === 'string' ? r.name : '',
-              duration:    Number(r.duration)    || 0,
               start_frame: Number(r.start_frame) || 0,
               cap_frames:  Number(r.cap_frames)  || 0,
               // Read off the file whenever one is picked and never stored: the
@@ -1708,6 +1707,11 @@ export function buildWorkflowConfigExtension(cfg) {
           // gets swallowed when it does.
           e.preventDefault()
           if (store.videos[active.videos].frames < 2) return
+          // Scrubbing frame by frame while the clip runs is two things pulling
+          // at one playhead, and it shows. The press stops playback the way a
+          // click on the preview would, and leaves it stopped.
+          wantPlaying = false
+          applyPlayState()
           const [a, b] = rangeAB(store.videos[active.videos])
           const f = frameAtX(e.clientX)
           dragHandle = e.target?.dataset?.emHandle
@@ -1840,7 +1844,6 @@ export function buildWorkflowConfigExtension(cfg) {
                 const row = { name: nameOf(kind, n), order: n - EM_ROOT[kind],
                               [EM_PATH_KEY[kind]]: file }
                 if (kind === 'videos') {
-                  row.duration    = st.duration
                   row.start_frame = st.start_frame
                   row.cap_frames  = st.cap_frames
                 }
