@@ -422,6 +422,14 @@ export function buildWorkflowConfigExtension(cfg) {
       const emPaneS   = 'min-height:221px'
       const emHandleS = 'position:absolute;top:2px;width:9px;height:13px;margin-left:-4.5px;' +
                         'background:#cfe3d6;border:1px solid #2a8050;border-radius:2px;cursor:ew-resize'
+      // Nothing in the range row may be selected or dragged as content — not
+      // the track and not the label beside it. A press that starts a selection
+      // drag never delivers its pointerup, and the handle it left behind is
+      // stuck to a no-drop cursor until a click somewhere else clears it.
+      const emRangeS  = 'display:flex;gap:8px;align-items:center;margin-top:7px;' +
+                        'user-select:none;-webkit-user-select:none'
+      const emTrackS  = 'position:relative;flex:1;min-width:0;height:17px;' +
+                        'cursor:pointer;touch-action:none'
       const emRailS   = 'position:absolute;top:7px;height:3px;border-radius:2px'
       const emLayer   = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center'
       // Sits above the preview layers, and marked so the video pane's
@@ -1313,20 +1321,37 @@ export function buildWorkflowConfigExtension(cfg) {
           if (lbl) lbl.textContent = `${a}\u2013${b} of ${st.frames}`
         }
 
+        // Which handle a press is moving, and null when none is. Declared up
+        // here because the playback holds below read it: a drag parks the
+        // playhead where its handle is, and nothing else may move it until the
+        // release.
+        let dragHandle = null
+
+        // Park the playhead on a frame. The seek is to where the frame starts,
+        // not where it ends, so it is that frame the preview shows and not the
+        // one after it.
+        function showFrame(n) {
+          const vid = activeVideo()
+          const st  = store.videos[active.videos]
+          if (!vid || !st.fps || !vid.getAttribute('src')) return
+          try { vid.currentTime = (n - 1) / st.fps } catch (e) {}
+        }
+
         // Playback is held inside the range: the preview shows the in-point
         // when the file mounts, and running past the out-point wraps back to it
         // instead of playing on to the end of the file.
         function seekToRangeStart() {
-          const vid = activeVideo()
-          const t   = rangeTimes(store.videos[active.videos])
-          if (!vid || !t || !vid.getAttribute('src')) return
-          try { vid.currentTime = t.start } catch (e) {}
+          const st = store.videos[active.videos]
+          if (st.frames) showFrame(rangeAB(st)[0])
         }
 
         function holdInRange() {
           const vid = activeVideo()
           const t   = rangeTimes(store.videos[active.videos])
-          if (!vid || !t) return
+          // A drag owns the playhead until it lets go, so the hold keeps its
+          // hands off: otherwise pulling a handle back across the playhead
+          // would leave the preview where it was instead of following.
+          if (!vid || !t || dragHandle) return
           if (vid.currentTime >= t.end || vid.currentTime < t.start - 0.05) seekToRangeStart()
         }
 
@@ -1334,7 +1359,6 @@ export function buildWorkflowConfigExtension(cfg) {
         // two when the press was on the rail between them. Measured against the
         // rail rather than the track, which is wider by half a handle at each
         // end so the handles do not overhang it.
-        let dragHandle = null
         function frameAtX(clientX) {
           const rail = q('#daz-em-videos-rail')
           const st   = store.videos[active.videos]
@@ -1353,7 +1377,10 @@ export function buildWorkflowConfigExtension(cfg) {
           else                    b = Math.max(f, a)
           setRange(st, a, b)
           syncRange()
-          holdInRange()
+          // The preview follows the handle under the pointer, whichever way it
+          // is going — the frame on screen is the in- or out-point being
+          // picked, which is the only way to pick it by eye.
+          showFrame(dragHandle === 'a' ? a : b)
         }
 
         // The name box is shared by the slots in a pane, so what is in it
@@ -1676,6 +1703,10 @@ export function buildWorkflowConfigExtension(cfg) {
         // watches to know it has unsaved work, so the track says so itself.
         const track = q('#daz-em-videos-track')
         track?.addEventListener('pointerdown', e => {
+          // Belt to the row's braces: a press that is not defaulted can still
+          // start a drag of the browser's own, and it is the pointerup that
+          // gets swallowed when it does.
+          e.preventDefault()
           if (store.videos[active.videos].frames < 2) return
           const [a, b] = rangeAB(store.videos[active.videos])
           const f = frameAtX(e.clientX)
@@ -1685,10 +1716,16 @@ export function buildWorkflowConfigExtension(cfg) {
           dragRange(e)
         })
         track?.addEventListener('pointermove', dragRange)
-        ;['pointerup', 'pointercancel'].forEach(ev => track?.addEventListener(ev, e => {
+        // lostpointercapture is in the list so a press that somehow loses the
+        // pointer without a pointerup still ends the drag — a dragHandle left
+        // set would hold the playhead hostage for the rest of the session.
+        ;['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => track?.addEventListener(ev, e => {
           if (!dragHandle) return
           dragHandle = null
           try { track.releasePointerCapture(e.pointerId) } catch (err) {}
+          // The drag has let go of the playhead: put it back inside the window
+          // if the range it just set has left it outside.
+          holdInRange()
           track.dispatchEvent(new Event('input', { bubbles: true }))
         }))
 
@@ -2342,9 +2379,8 @@ export function buildWorkflowConfigExtension(cfg) {
                 <button id="daz-em-videos-clear" data-em-ctl="1"
                   style="${emCtlS};right:6px;bottom:6px;${cb}">clear</button>
               </div>
-              <div id="daz-em-videos-range" style="display:flex;gap:8px;align-items:center;margin-top:7px">
-                <div id="daz-em-videos-track"
-                  style="position:relative;flex:1;min-width:0;height:17px;cursor:pointer;touch-action:none">
+              <div id="daz-em-videos-range" style="${emRangeS}">
+                <div id="daz-em-videos-track" style="${emTrackS}">
                   <div id="daz-em-videos-rail" style="position:absolute;left:5px;right:5px;top:0;bottom:0">
                     <div style="${emRailS};left:0;right:0;background:#444"></div>
                     <div id="daz-em-videos-sel" style="${emRailS};background:#54af7b"></div>
