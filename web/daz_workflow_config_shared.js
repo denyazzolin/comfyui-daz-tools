@@ -416,6 +416,13 @@ export function buildWorkflowConfigExtension(cfg) {
                         'background:rgba(0,0,0,0.55);padding:0 4px;border-radius:3px'
       const emBoxS    = 'position:relative;width:100%;height:170px;background:#2a2a2a;' +
                         'border:1px solid #444;border-radius:3px;overflow:hidden'
+      // Every pane holds the height of the tallest, so switching tabs does not
+      // resize the panel under the pointer. Video is the tall one: it carries
+      // the frame range under its preview.
+      const emPaneS   = 'min-height:221px'
+      const emHandleS = 'position:absolute;top:2px;width:9px;height:13px;margin-left:-4.5px;' +
+                        'background:#cfe3d6;border:1px solid #2a8050;border-radius:2px;cursor:ew-resize'
+      const emRailS   = 'position:absolute;top:7px;height:3px;border-radius:2px'
       const emLayer   = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center'
       // Sits above the preview layers, and marked so the video pane's
       // click-to-play knows a click here is not a click on the video.
@@ -1063,7 +1070,10 @@ export function buildWorkflowConfigExtension(cfg) {
           if (lblEl)  lblEl.textContent  = source
             ? `Use ${source.kind === 'videos' ? 'video' : 'image'} ${source.slot}`
             : (boxed ? 'Use image' : 'Use image 1')
-          if (hintEl) hintEl.textContent = source ? `(${source.file})`
+          // The label first where the slot has one — it is what the user
+          // named the slot, and the file is what the label is on.
+          if (hintEl) hintEl.textContent = source
+            ? `(${source.name ? `${source.name} / ` : ''}${source.file})`
             : (boxed ? '(no slot marked for dim)' : '(no reference image)')
           syncModeOptions()
           syncValueField()
@@ -1251,6 +1261,101 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
+        // ── the frame range ─────────────────────────────────────────────
+        // Two handles under the preview say which stretch of the clip the take
+        // uses. They write the pair the node decodes with: start_frame is
+        // 1-based with 0 meaning the first frame, and cap_frames counts from
+        // there with 0 meaning "to the end" — so a range over the whole clip
+        // stores the two zeros a take has always had, and one that was never
+        // touched is left exactly as it was found.
+        function rangeAB(st) {
+          if (!st.frames) return [1, 1]
+          const a = Math.min(st.frames, Math.max(1, st.start_frame || 1))
+          const b = st.cap_frames ? Math.min(st.frames, a + st.cap_frames - 1) : st.frames
+          return [a, Math.max(a, b)]
+        }
+
+        function setRange(st, a, b) {
+          st.start_frame = a <= 1        ? 0 : a
+          st.cap_frames  = b >= st.frames ? 0 : b - a + 1
+        }
+
+        // The window in seconds: where the first frame starts and where the last
+        // one ends. Needs the file's rate, so it is null until the probe lands.
+        function rangeTimes(st) {
+          if (!st.fps || !st.frames) return null
+          const [a, b] = rangeAB(st)
+          return { start: (a - 1) / st.fps, end: b / st.fps }
+        }
+
+        function syncRange() {
+          const st   = store.videos[active.videos]
+          const wrap = q('#daz-em-videos-range')
+          if (!wrap) return
+          const lbl = q('#daz-em-videos-range-lbl')
+          const sel = q('#daz-em-videos-sel')
+          // A clip of one frame, or one the probe could not read, has no range
+          // to pick — the handles go quiet rather than pretending otherwise.
+          const on = st.frames > 1
+          wrap.style.opacity       = on ? '' : '0.4'
+          wrap.style.pointerEvents = on ? '' : 'none'
+          if (!on) {
+            if (lbl) lbl.textContent = '\u2014'
+            return
+          }
+          const [a, b] = rangeAB(st)
+          const pa = (a - 1) / (st.frames - 1) * 100
+          const pb = (b - 1) / (st.frames - 1) * 100
+          qa('[data-em-handle]').forEach(h => {
+            h.style.left = `${h.dataset.emHandle === 'a' ? pa : pb}%`
+          })
+          if (sel) { sel.style.left = `${pa}%`; sel.style.width = `${pb - pa}%` }
+          if (lbl) lbl.textContent = `${a}\u2013${b} of ${st.frames}`
+        }
+
+        // Playback is held inside the range: the preview shows the in-point
+        // when the file mounts, and running past the out-point wraps back to it
+        // instead of playing on to the end of the file.
+        function seekToRangeStart() {
+          const vid = activeVideo()
+          const t   = rangeTimes(store.videos[active.videos])
+          if (!vid || !t || !vid.getAttribute('src')) return
+          try { vid.currentTime = t.start } catch (e) {}
+        }
+
+        function holdInRange() {
+          const vid = activeVideo()
+          const t   = rangeTimes(store.videos[active.videos])
+          if (!vid || !t) return
+          if (vid.currentTime >= t.end || vid.currentTime < t.start - 0.05) seekToRangeStart()
+        }
+
+        // Which handle a press moves: the one it landed on, or the nearer of the
+        // two when the press was on the rail between them. Measured against the
+        // rail rather than the track, which is wider by half a handle at each
+        // end so the handles do not overhang it.
+        let dragHandle = null
+        function frameAtX(clientX) {
+          const rail = q('#daz-em-videos-rail')
+          const st   = store.videos[active.videos]
+          const r    = rail?.getBoundingClientRect()
+          if (!r || r.width <= 0 || st.frames < 2) return 1
+          const t = (clientX - r.left) / r.width
+          return Math.min(st.frames, Math.max(1, Math.round(t * (st.frames - 1)) + 1))
+        }
+
+        function dragRange(e) {
+          if (!dragHandle) return
+          const st = store.videos[active.videos]
+          let [a, b] = rangeAB(st)
+          const f = frameAtX(e.clientX)
+          if (dragHandle === 'a') a = Math.min(f, b)
+          else                    b = Math.max(f, a)
+          setRange(st, a, b)
+          syncRange()
+          holdInRange()
+        }
+
         // The name box is shared by the slots in a pane, so what is in it
         // belongs to the slot on screen and has to be put away before another
         // takes over. Not before it has been filled once, though: an empty box
@@ -1316,6 +1421,7 @@ export function buildWorkflowConfigExtension(cfg) {
           if (fps) fps.textContent = st.fps ? `${+st.fps.toFixed(2)} fps` : '\u2014'
           if (fr)  fr.textContent  = st.frames ? `${st.frames} frames` : '\u2014'
           if (sz)  sz.textContent  = st.width && st.height ? `${st.width} x ${st.height}` : '\u2014'
+          syncRange()
         }
 
         function showTab(kind) {
@@ -1377,7 +1483,13 @@ export function buildWorkflowConfigExtension(cfg) {
               console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not read '${filename}'`, err)
             }
           }
-          if (n === active.videos) syncPane('videos')
+          if (n === active.videos) {
+            syncPane('videos')
+            // The rate only arrives here, and the in-point cannot be worked out
+            // without it — so the seek the mount asked for is made now, whether
+            // or not the element's own metadata beat this to it.
+            seekToRangeStart()
+          }
         }
 
         function showVideo(n, filename) {
@@ -1491,6 +1603,11 @@ export function buildWorkflowConfigExtension(cfg) {
         }
         for (let n = 1; n <= EM_SLOTS.videos; n++) {
           selOf('videos', n)?.addEventListener('change', e => {
+            // A window measured against one clip means nothing on another, so
+            // picking, uploading or clearing hands the handles back the
+            // whole of whatever is now in the slot.
+            store.videos[n].start_frame = 0
+            store.videos[n].cap_frames  = 0
             showVideo(n, e.target.value)
             syncPane('videos')
             dimsCtl.refresh()
@@ -1502,7 +1619,10 @@ export function buildWorkflowConfigExtension(cfg) {
         qa('[data-em-prev^="images:"] img').forEach(img =>
           img.addEventListener('load', syncImageSize))
         ;['images', 'videos'].forEach(kind => {
-          q(`#daz-em-${kind}-name`)?.addEventListener('input', () => stashName(kind))
+          q(`#daz-em-${kind}-name`)?.addEventListener('input', () => {
+            stashName(kind)
+            dimsCtl.refresh()
+          })
         })
         for (let n = 1; n <= EM_SLOTS.audios; n++) {
           selOf('audios', n)?.addEventListener('change', syncAudio)
@@ -1526,6 +1646,7 @@ export function buildWorkflowConfigExtension(cfg) {
           if (e.target.closest('[data-em-ctl]')) return
           if (!activeVideo()?.getAttribute('src')) return
           wantPlaying = !wantPlaying
+          if (wantPlaying) holdInRange()
           applyPlayState()
         })
 
@@ -1536,10 +1657,40 @@ export function buildWorkflowConfigExtension(cfg) {
         qa('[data-em-prev^="videos:"] video').forEach(v => {
           v.addEventListener('ended', () => {
             if (!wantPlaying || v !== activeVideo()) return
-            v.currentTime = 0
+            seekToRangeStart()
             applyPlayState()
           })
+          // The out-point is nearly always short of the end of the file, so the
+          // wrap is a seek at the boundary rather than the 'ended' above.
+          v.addEventListener('timeupdate', () => {
+            if (v === activeVideo()) holdInRange()
+          })
+          // A file that has only just mounted has no duration to seek within
+          // until this, and the range is what the preview should be showing.
+          v.addEventListener('loadedmetadata', () => {
+            if (v === activeVideo()) seekToRangeStart()
+          })
         })
+
+        // A drag fires neither input nor change, which is what the panel
+        // watches to know it has unsaved work, so the track says so itself.
+        const track = q('#daz-em-videos-track')
+        track?.addEventListener('pointerdown', e => {
+          if (store.videos[active.videos].frames < 2) return
+          const [a, b] = rangeAB(store.videos[active.videos])
+          const f = frameAtX(e.clientX)
+          dragHandle = e.target?.dataset?.emHandle
+            || (Math.abs(f - a) <= Math.abs(f - b) ? 'a' : 'b')
+          try { track.setPointerCapture(e.pointerId) } catch (err) {}
+          dragRange(e)
+        })
+        track?.addEventListener('pointermove', dragRange)
+        ;['pointerup', 'pointercancel'].forEach(ev => track?.addEventListener(ev, e => {
+          if (!dragHandle) return
+          dragHandle = null
+          try { track.releasePointerCapture(e.pointerId) } catch (err) {}
+          track.dispatchEvent(new Event('input', { bubbles: true }))
+        }))
 
         q('#daz-em-videos-upload-btn')?.addEventListener('click', () =>
           q('#daz-em-videos-upload-input')?.click())
@@ -1593,7 +1744,9 @@ export function buildWorkflowConfigExtension(cfg) {
           const el = kind === 'videos' ? q(`#daz-em-videos-${n}-vid`)
                    : n === 1          ? q('#daz-img-preview-el')
                    :                    q(`#daz-em-images-${n}-img`)
-          return { kind, slot: n, file, el }
+          // Straight off the store, which the name box writes on every
+          // keystroke, so the hint follows what is being typed.
+          return { kind, slot: n, file, el, name: store[kind][n].name }
         }
 
         // ── first paint ─────────────────────────────────────────────────────
@@ -2140,7 +2293,7 @@ export function buildWorkflowConfigExtension(cfg) {
               <button type="button" data-em-tab="videos" style="${emTabOff}">Video</button>
             </div>
 
-            <div data-em-pane="images">
+            <div data-em-pane="images" style="${emPaneS}">
               <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
                 <div style="display:flex;gap:2px;flex-shrink:0">${emSlotBtns('images')}</div>
                 ${emPickers('images')}
@@ -2163,7 +2316,7 @@ export function buildWorkflowConfigExtension(cfg) {
               </div>
             </div>
 
-            <div data-em-pane="videos" style="display:none">
+            <div data-em-pane="videos" style="display:none;${emPaneS}">
               <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
                 <div style="display:flex;gap:2px;flex-shrink:0">${emSlotBtns('videos')}</div>
                 ${emPickers('videos')}
@@ -2189,9 +2342,22 @@ export function buildWorkflowConfigExtension(cfg) {
                 <button id="daz-em-videos-clear" data-em-ctl="1"
                   style="${emCtlS};right:6px;bottom:6px;${cb}">clear</button>
               </div>
+              <div id="daz-em-videos-range" style="display:flex;gap:8px;align-items:center;margin-top:7px">
+                <div id="daz-em-videos-track"
+                  style="position:relative;flex:1;min-width:0;height:17px;cursor:pointer;touch-action:none">
+                  <div id="daz-em-videos-rail" style="position:absolute;left:5px;right:5px;top:0;bottom:0">
+                    <div style="${emRailS};left:0;right:0;background:#444"></div>
+                    <div id="daz-em-videos-sel" style="${emRailS};background:#54af7b"></div>
+                    <div data-em-handle="a" title="First frame" style="${emHandleS}"></div>
+                    <div data-em-handle="b" title="Last frame"  style="${emHandleS}"></div>
+                  </div>
+                </div>
+                <span id="daz-em-videos-range-lbl"
+                  style="color:#aaa;font-size:11px;font-family:monospace;flex-shrink:0">\u2014</span>
+              </div>
             </div>
 
-            ${hideAudioPath ? '' : `<div data-em-pane="audios" style="display:none;min-height:199px">
+            ${hideAudioPath ? '' : `<div data-em-pane="audios" style="display:none;${emPaneS}">
               ${emAudioLine(1)}${emAudioLine(2)}
             </div>`}`
         }
