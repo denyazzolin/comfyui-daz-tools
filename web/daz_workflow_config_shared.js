@@ -397,7 +397,7 @@ export function buildWorkflowConfigExtension(cfg) {
       const emLayer   = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center'
       // Sits above the preview layers, and marked so the video pane's
       // click-to-play knows a click here is not a click on the video.
-      const emCtl     = 'position:absolute;z-index:2'
+      const emCtlS    = 'position:absolute;z-index:2'
 
       function box(title, html) {
         return `<fieldset style="border:1px solid #444;border-radius:4px;padding:7px 8px;margin:0;min-width:0;box-sizing:border-box;overflow:hidden">
@@ -1917,12 +1917,12 @@ export function buildWorkflowConfigExtension(cfg) {
               </div>
               <div id="daz-img-preview-box" style="${emBoxS}">
                 ${emImageLayers()}
-                <label data-em-ctl="1" style="${emCtl};left:6px;bottom:6px;display:flex;align-items:center;
+                <label data-em-ctl="1" style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
                        gap:5px;color:#ccc;font-size:11px;cursor:pointer">
                   <input type="checkbox" id="daz-em-images-dim"
                     style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Use for dim
                 </label>
-                <button id="daz-img-clear" data-em-ctl="1" style="${emCtl};right:6px;bottom:6px;${cb}">clear</button>
+                <button id="daz-img-clear" data-em-ctl="1" style="${emCtlS};right:6px;bottom:6px;${cb}">clear</button>
               </div>
             </div>
 
@@ -1937,17 +1937,17 @@ export function buildWorkflowConfigExtension(cfg) {
                 ${emVideoLayers()}
                 <input id="daz-em-videos-fps" data-em-ctl="1" type="number" min="0" step="0.01"
                   title="Frames per second \u2014 the rate a duration is counted in. Read from the file when one is picked"
-                  style="${emCtl};left:6px;top:6px;width:66px;background:#111;color:#ddd;border:1px solid #555;
+                  style="${emCtlS};left:6px;top:6px;width:66px;background:#111;color:#ddd;border:1px solid #555;
                          border-radius:3px;font-size:11px;font-family:monospace;padding:1px 3px">
                 <span id="daz-em-videos-frames" data-em-ctl="1"
-                  style="${emCtl};right:6px;top:6px;color:#999;font-size:11px;font-family:monospace">\u2014</span>
-                <label data-em-ctl="1" style="${emCtl};left:6px;bottom:6px;display:flex;align-items:center;
+                  style="${emCtlS};right:6px;top:6px;color:#999;font-size:11px;font-family:monospace">\u2014</span>
+                <label data-em-ctl="1" style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
                        gap:5px;color:#ccc;font-size:11px;cursor:pointer">
                   <input type="checkbox" id="daz-em-videos-dim"
                     style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Use for dim
                 </label>
                 <button id="daz-em-videos-clear" data-em-ctl="1"
-                  style="${emCtl};right:6px;bottom:6px;${cb}">clear</button>
+                  style="${emCtlS};right:6px;bottom:6px;${cb}">clear</button>
               </div>
             </div>
 
