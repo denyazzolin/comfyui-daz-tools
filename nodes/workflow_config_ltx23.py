@@ -341,6 +341,9 @@ class WorkflowConfigLtx23:
 
         ref_image, out_width, out_height = resolve_dimensions(
             active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigLTX23")
+        # Held rather than loaded inline in the tuple: extended_media carries
+        # this same audio as its slot 0, and it is loaded once for both.
+        ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
         return (
             ckpt_model,
@@ -351,7 +354,7 @@ class WorkflowConfigLtx23:
             audio_vae,
             _load_dual_clip(_get_name(active_set.get("clip_2")), _get_name(active_set.get("clip"))),
             ref_image,
-            _load_audio(_get_path(active_set.get("audio_path"))),
+            ref_audio,
             out_width,
             out_height,
             _get_int(active_set.get("steps")),
@@ -375,5 +378,5 @@ class WorkflowConfigLtx23:
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
             lora_7_sd, lora_8_sd,
             latent_upscaler,
-            resolve_extended_media(active_set, "WorkflowConfigLTX23"),
+            resolve_extended_media(active_set, "WorkflowConfigLTX23", ref_image, ref_audio),
         )

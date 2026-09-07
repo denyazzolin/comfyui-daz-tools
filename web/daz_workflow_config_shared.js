@@ -1476,18 +1476,28 @@ export function buildWorkflowConfigExtension(cfg) {
       function updateOutputLabels(node, data) { return updateOutputLabelsFn(node, data, h) }
       function buildModelsHtml(folderMap, data) { return buildModelsHtmlFn(folderMap, data, h) }
       function buildDimsHtml(data) { return buildDimsHtmlFn(data, h) }
-      // The media box owns fields no per-class builder knows about, so its
-      // controller — stashed on the panel — adds them on the way out. Image slot
-      // 1's dim flag is one of them, and belongs inside the image_path the
-      // builder already put together.
+      // A save replaces image_path and audio_path whole, and a class builder puts
+      // only the picker's path in each. Every other field they hold — the name,
+      // and whatever a hand-edited file adds beside it — would go with the
+      // replacement, so what was loaded is laid down first and the builder's path
+      // over the top.
       function buildPayload(wrap) {
         const base = buildPayloadFn(wrap)
-        const em   = wrap?._dazEmCtl?.collect()
-        if (!em) return base
+        const root = wrap?._dazRootMedia || {}
+        const out  = { ...base }
+        for (const key of ['image_path', 'audio_path']) {
+          if (key in base) out[key] = { ...(root[key] || {}), ...base[key] }
+        }
+        // The media box owns fields no per-class builder knows about either, so
+        // its controller — stashed on the panel — adds them on the way out. Image
+        // slot 1's dim flag is one of them, and belongs inside the image_path
+        // just assembled.
+        const em = wrap?._dazEmCtl?.collect()
+        if (!em) return out
         const { imageUseForDim, ...rest } = em
         return {
-          ...base, ...rest,
-          image_path: { ...(base.image_path || {}), use_for_dim: imageUseForDim },
+          ...out, ...rest,
+          image_path: { ...(out.image_path || {}), use_for_dim: imageUseForDim },
         }
       }
 
@@ -2288,6 +2298,15 @@ export function buildWorkflowConfigExtension(cfg) {
         // rest, and every caller below falls back to the plain single image.
         const emCtl = wireExtendedMedia(panel, data, updatePreview, dimsCtl)
         panel._dazEmCtl = emCtl
+
+        // The objects the two pickers were filled from, kept so a save can hand
+        // back the fields they hold that the editor has no control for — the name
+        // today. Read by buildPayload; a panel is built fresh per edit, so these
+        // are always this take's.
+        panel._dazRootMedia = {
+          image_path: data.image_path && typeof data.image_path === 'object' ? data.image_path : null,
+          audio_path: data.audio_path && typeof data.audio_path === 'object' ? data.audio_path : null,
+        }
 
         // Sizing
         panel.querySelector('#daz-sizing-btn')?.addEventListener('click', () => openSizingModal(panel))

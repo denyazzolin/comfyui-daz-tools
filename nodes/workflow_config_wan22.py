@@ -324,6 +324,9 @@ class WorkflowConfigWan22:
 
         ref_image, out_width, out_height = resolve_dimensions(
             active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigWan22")
+        # Held rather than loaded inline in the tuple: extended_media carries
+        # this same audio as its slot 0, and it is loaded once for both.
+        ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
         return (
             unet_high,
@@ -331,7 +334,7 @@ class WorkflowConfigWan22:
             _load_vae( _get_name(active_set.get("vae"))),
             _load_clip(_get_name(active_set.get("clip"))),
             ref_image,
-            _load_audio(_get_path(active_set.get("audio_path"))),
+            ref_audio,
             out_width,
             out_height,
             _get_int(active_set.get("steps")),
@@ -360,5 +363,5 @@ class WorkflowConfigWan22:
             _get_flag_value(active_set.get("flags", {}).get("flag_3")),
             _get_custom_value(active_set.get("custom", {}).get("param_1")),
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
-            resolve_extended_media(active_set, "WorkflowConfigWan22"),
+            resolve_extended_media(active_set, "WorkflowConfigWan22", ref_image, ref_audio),
         )

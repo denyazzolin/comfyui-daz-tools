@@ -1,10 +1,17 @@
-from .workflow_config_base import _EXTENDED_MEDIA_SLOTS
+from .workflow_config_base import _EXTENDED_MEDIA_SLOTS, _MEDIA_ROOT_SLOTS
 
-# The editor numbers its media slots from 1, and its first image and audio slot
-# is the take's own image_path / audio_path — which the config node already puts
-# on its own image and audio outputs. So the extended rows this node fans out
-# start at 2 there, and at 1 for video, where there is no root slot to skip.
-_LABEL_OFFSET = {"images": 1, "videos": 0, "audios": 1}
+_KINDS = ("images", "videos", "audios")
+
+
+def _slots(kind):
+    """The slot numbers this node fans a kind out into, in output order.
+
+    An extended_media row numbers itself from 1, and the take's own image_path
+    and audio_path sit in front of those as slot 0. Video has no such root
+    field, so it starts at 1. Adding the root count back turns a slot into the
+    number the editor shows: image slot 0 is the editor's image 1.
+    """
+    return range(1 - _MEDIA_ROOT_SLOTS[kind], _EXTENDED_MEDIA_SLOTS[kind] + 1)
 
 
 class MediaSplitter:
@@ -26,13 +33,12 @@ class MediaSplitter:
 
     # Derived from the same slot counts the editor and the loader use, so the
     # three stay in step.
-    RETURN_TYPES = (("IMAGE",) * _EXTENDED_MEDIA_SLOTS["images"]
-                    + ("IMAGE",) * _EXTENDED_MEDIA_SLOTS["videos"]
-                    + ("AUDIO",) * _EXTENDED_MEDIA_SLOTS["audios"])
+    RETURN_TYPES = (("IMAGE",) * len(_slots("images"))
+                    + ("IMAGE",) * len(_slots("videos"))
+                    + ("AUDIO",) * len(_slots("audios")))
     RETURN_NAMES = tuple(
-        f"{kind[:-1]}_{i + 1 + _LABEL_OFFSET[kind]}"
-        for kind in ("images", "videos", "audios")
-        for i in range(_EXTENDED_MEDIA_SLOTS[kind]))
+        f"{kind[:-1]}_{s + _MEDIA_ROOT_SLOTS[kind]}"
+        for kind in _KINDS for s in _slots(kind))
     FUNCTION     = "split"
     CATEGORY     = "utils"
     OUTPUT_NODE  = False
@@ -44,9 +50,9 @@ class MediaSplitter:
     def split(self, extended_media=None):
         block = extended_media if isinstance(extended_media, dict) else {}
         out = []
-        for kind in ("images", "videos", "audios"):
+        for kind in _KINDS:
             key     = self._PAYLOAD_KEYS[kind]
             by_slot = {e.get("slot"): e.get(key)
                        for e in block.get(kind, []) if isinstance(e, dict)}
-            out.extend(by_slot.get(i + 1) for i in range(_EXTENDED_MEDIA_SLOTS[kind]))
+            out.extend(by_slot.get(s) for s in _slots(kind))
         return tuple(out)

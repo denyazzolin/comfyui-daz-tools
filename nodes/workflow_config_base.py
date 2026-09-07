@@ -103,6 +103,13 @@ _EXTENDED_MEDIA_KEYS = ("images", "videos", "audios")
 # user's own — a hand-edited file keeps them, they are just never loaded.
 _EXTENDED_MEDIA_SLOTS = {"images": 4, "videos": 2, "audios": 1}
 
+# How many of the editor's slots for a kind are the take's own fields rather
+# than extended_media rows: image slot 1 is image_path and audio slot 1 is
+# audio_path, which is why the editor numbers a kind one higher than the file
+# does. Those two ride along as slot 0 so everything the editor shows can be
+# taken off one link. Mirrors EM_ROOT in daz_workflow_config_shared.js.
+_MEDIA_ROOT_SLOTS = {"images": 1, "videos": 0, "audios": 1}
+
 _MEDIA_PATH_KEYS = {"images": "image_path", "videos": "video_path", "audios": "audio_path"}
 
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
@@ -686,16 +693,49 @@ def _apply_media_resize(image, active_set: dict, node_name: str):
     return image
 
 
-def resolve_extended_media(active_set: dict, node_name: str) -> dict:
+def _get_media_name(value) -> str:
+    """The name beside a take's own image_path / audio_path, or "" for none.
+
+    Its own reader rather than _get_name, which is for the model-and-strength
+    objects and would read a plain path string as a name."""
+    return str(value.get("name", "") or "") if isinstance(value, dict) else ""
+
+
+def resolve_extended_media(active_set: dict, node_name: str,
+                           root_image=None, root_audio=None) -> dict:
     """Load a take's extended_media into decoded, slot-numbered lists.
 
     Only the editor's slots are read. A row with an out-of-range order, an order
     already taken (first wins) or an empty path is skipped, so a slot with
     nothing in it is simply absent from the result and the Media Splitter leaves
     that output empty.
+
+    root_image and root_audio are the take's own image_path and audio_path,
+    already decoded by the caller for its own image and audio outputs. They go
+    in as slot 0 so a workflow can take every slot the editor shows off the
+    splitter, instead of reaching back to the config node for the first of
+    each. Passing them in rather than loading them here is what keeps that
+    free: the splitter hands on the very tensor the node already output.
     """
     block  = _coerce_extended_media(active_set.get("extended_media"))
     result: dict = {kind: [] for kind in _EXTENDED_MEDIA_KEYS}
+
+    # These two carry a name of their own, beside their path, the way an
+    # extended row does. Nothing in the editor writes it yet, so it is empty
+    # unless the file was edited by hand.
+    if root_image is not None:
+        img = active_set.get("image_path")
+        result["images"].append({
+            "slot": 0, "name": _get_media_name(img), "path": _get_path(img),
+            "image": root_image,
+            "use_for_dim": bool(img.get("use_for_dim", False)) if isinstance(img, dict) else False,
+        })
+    if root_audio is not None:
+        aud = active_set.get("audio_path")
+        result["audios"].append({
+            "slot": 0, "name": _get_media_name(aud), "path": _get_path(aud),
+            "audio": root_audio,
+        })
     for kind in _EXTENDED_MEDIA_KEYS:
         limit = _EXTENDED_MEDIA_SLOTS[kind]
         taken = set()

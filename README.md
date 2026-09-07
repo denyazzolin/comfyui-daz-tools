@@ -213,6 +213,15 @@ Each take holds three lists, stored under `extended_media` in the config file:
 
 The editor numbers the same media differently, because it counts the take's own **Image** and **Audio** as slot 1 of their kind. Its image slots **2–5** are `images` orders 1–4, its audio slot **2** is the one `audios` row, and its video slots **1–2** are the `videos` orders of the same number — video has no slot at the root to count first.
 
+Those two first slots are the take's own `image_path` and `audio_path`, and they take the same `name` an extended row does, beside their path:
+
+```jsonc
+"image_path": { "name": "hero still", "path": "…", "use_for_dim": false },
+"audio_path": { "name": "vo take 3",  "path": "…" },
+```
+
+Nothing in the editor writes one yet — set it by hand and a save carries it through, along with anything else you put in either object. It reaches the node the way an extended row's name does.
+
 A video slot loads a window of the clip, not the whole thing:
 
 | Field | Meaning |
@@ -370,9 +379,9 @@ The **prompt editor for stacks** is the same full-screen editor used by the Work
 
 ### Media Splitter (`utils`)
 
-Unpacks the `extended_media` output of a WorkflowConfig node into one output per slot: `image_2`…`image_5` and `video_1`…`video_2` (IMAGE — a video slot is an image batch of its decoded frames), and `audio_2` (AUDIO). Slots the take left empty output nothing (`None`).
+Unpacks the `extended_media` output of a WorkflowConfig node into one output per slot: `image_1`…`image_5` and `video_1`…`video_2` (IMAGE — a video slot is an image batch of its decoded frames), and `audio_1`…`audio_2` (AUDIO). Slots the take left empty output nothing (`None`).
 
-The numbering is the editor's, so there is no `image_1` or `audio_1` here: those are the take's own reference image and audio, and the WorkflowConfig node already puts them on its own **image** and **audio** outputs.
+The numbering is the editor's, so `image_1` and `audio_1` are the take's own reference image and audio — the same ones the WorkflowConfig node puts on its **image** and **audio** outputs, ridden along here so a workflow can take every slot off this node instead of reaching back for the first of each. They are handed on, not loaded again, so wiring both costs nothing. A take with no reference image or audio leaves those outputs empty like any other unfilled slot.
 
 The outputs are fixed and slot-numbered, so `image_3` is always the take's image slot 3 regardless of what the other slots hold. See [Extended media](#extended-media) for what goes into the slots.
 
