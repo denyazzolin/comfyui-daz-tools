@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 12,                  // internal schema version; do not change
+    "schema_version": 13,                  // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -30,12 +30,13 @@
         "latent_upscale": { "name": "" },  // NOT USED by WAN node (LTX2.3/LTX2.5 only)
         "shift_high": { "value": 5.0 },       // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
         "shift_low": { "value": 5.0 },        // low-pass unet timestep
-        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 720 },        // output height in pixels
         "dimensions":{
-             "use_image":false,            // "false" uses the width, height and scale attributes. "true" use the image's width and height
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" uses the reference media's width and height
+             "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
               "mode":"factor",             // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
               "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
@@ -47,12 +48,12 @@
           // image_path / audio_path above. Holes are allowed, a slot keeps its name when a
           // neighbour is cleared, and rows outside that range (or a second row at an order already taken) stay
           // in the file untouched - they are simply not loaded. "name" is the label the Media Splitter shows.
-          // "use_for_dim" marks the image or video the output size is meant to come from - the still's own size,
-          // or the size of the video's frames. It is the same flag image_path carries above, and at most
-          // one slot in the take may set it: the reference image wins, then images by slot, then videos.
-          // Stored only for now, nothing reads it yet.
-          "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
+          // "use_for_dim" means the take's scale rule resizes this one, each slot against its own size - see
+          // "dimensions" above. It is the same flag image_path carries, and any number of images and videos
+          // may set it. "id" is what "dimensions"."dim_reference" names to pick the one the rule measures;
+          // the editor mints it when a slot gains a file and drops it when the slot is cleared.
+          "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
+          "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 30 },          // number of denoising steps
@@ -113,12 +114,13 @@
         "clip_type": "stable_diffusion",   // NOT USED by LTX node
         "shift_high": { "value": 5.0 },       // NOT USED by LTX node
         "shift_low": { "value": 5.0 },        // NOT USED by LTX node
-        "image_path": { "name": "", "path": "", "use_for_dim": false }, // input image path (empty for T2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "", "use_for_dim": false }, // input image path (empty for T2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 768 },         // output width in pixels
         "height": { "value": 512 },        // output height in pixels
         "dimensions":{
-             "use_image":false,            // "false" uses the width, height and scale attributes. "true" use the image's width and height
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" uses the reference media's width and height
+             "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
               "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
               "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
@@ -130,12 +132,12 @@
           // image_path / audio_path above. Holes are allowed, a slot keeps its name when a
           // neighbour is cleared, and rows outside that range (or a second row at an order already taken) stay
           // in the file untouched - they are simply not loaded. "name" is the label the Media Splitter shows.
-          // "use_for_dim" marks the image or video the output size is meant to come from - the still's own size,
-          // or the size of the video's frames. It is the same flag image_path carries above, and at most
-          // one slot in the take may set it: the reference image wins, then images by slot, then videos.
-          // Stored only for now, nothing reads it yet.
-          "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
+          // "use_for_dim" means the take's scale rule resizes this one, each slot against its own size - see
+          // "dimensions" above. It is the same flag image_path carries, and any number of images and videos
+          // may set it. "id" is what "dimensions"."dim_reference" names to pick the one the rule measures;
+          // the editor mints it when a slot gains a file and drops it when the slot is cleared.
+          "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
+          "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 8 },           // number of denoising steps
@@ -263,12 +265,13 @@
         "clip_type": "stable_diffusion",   // NOT USED by LTX2.5 node
         "shift_high": { "value": 0.0 },       // NOT USED by LTX2.5 node
         "shift_low": { "value": 0.0 },        // NOT USED by LTX2.5 node
-        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 704 },        // output height in pixels
         "dimensions":{
-             "use_image":false,            // "false" uses the width, height and scale attributes. "true" use the image's width and height
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" uses the reference media's width and height
+             "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
               "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
               "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
@@ -280,12 +283,12 @@
           // image_path / audio_path above. Holes are allowed, a slot keeps its name when a
           // neighbour is cleared, and rows outside that range (or a second row at an order already taken) stay
           // in the file untouched - they are simply not loaded. "name" is the label the Media Splitter shows.
-          // "use_for_dim" marks the image or video the output size is meant to come from - the still's own size,
-          // or the size of the video's frames. It is the same flag image_path carries above, and at most
-          // one slot in the take may set it: the reference image wins, then images by slot, then videos.
-          // Stored only for now, nothing reads it yet.
-          "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
+          // "use_for_dim" means the take's scale rule resizes this one, each slot against its own size - see
+          // "dimensions" above. It is the same flag image_path carries, and any number of images and videos
+          // may set it. "id" is what "dimensions"."dim_reference" names to pick the one the rule measures;
+          // the editor mints it when a slot gains a file and drops it when the slot is cleared.
+          "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
+          "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 20 },          // number of denoising steps
@@ -346,12 +349,13 @@
         "clip_type": "stable_diffusion",   // NOT USED by MiniMax H3 node
         "shift_high": { "value": 0.0 },       // NOT USED by MiniMax H3 node
         "shift_low": { "value": 0.0 },        // NOT USED by MiniMax H3 node
-        "image_path": { "name": "", "path": "C:/path/to/input_image.png", "use_for_dim": true }, // absolute path to input image (for I2V). "use_for_dim" takes the output size from this image - the editor's image slot 1. Only one slot in the whole take may set it, here or in extended_media. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": true }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 720 },        // output height in pixels
         "dimensions":{
-             "use_image":false,            // "false" uses the width, height and scale attributes. "true" use the image's width and height
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" uses the reference media's width and height
+             "dim_reference":"a91c4e07b2f5",  // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
               "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
               "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
@@ -363,12 +367,12 @@
           // image_path / audio_path above. Holes are allowed, a slot keeps its name when a
           // neighbour is cleared, and rows outside that range (or a second row at an order already taken) stay
           // in the file untouched - they are simply not loaded. "name" is the label the Media Splitter shows.
-          // "use_for_dim" marks the image or video the output size is meant to come from - the still's own size,
-          // or the size of the video's frames. It is the same flag image_path carries above, and at most
-          // one slot in the take may set it: the reference image wins, then images by slot, then videos.
-          // Stored only for now, nothing reads it yet.
-          "images":[{"name":"first_frame", "order":1, "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
-          "videos":[{"name":"drive_clip", "order":1, "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
+          // "use_for_dim" means the take's scale rule resizes this one, each slot against its own size - see
+          // "dimensions" above. It is the same flag image_path carries, and any number of images and videos
+          // may set it. "id" is what "dimensions"."dim_reference" names to pick the one the rule measures;
+          // the editor mints it when a slot gains a file and drops it when the slot is cleared.
+          "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
+          "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
           "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 30 },          // number of denoising steps

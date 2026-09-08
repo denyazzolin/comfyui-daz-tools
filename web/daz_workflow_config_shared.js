@@ -854,10 +854,10 @@ export function buildWorkflowConfigExtension(cfg) {
         return () => { setErr(''); syncButtons() }
       }
 
-      // ── Dimensions: "Use image" + the Scale box ────────────────────────────
+      // ── Dimensions: "Use media size" + the Scale box ───────────────────────
       // Offered in the order the dropdown shows them. 'longest' and 'fit' both
-      // need a size that does not come from the image, so they are withheld
-      // while "Use image" is on — the same pair the server accepts there.
+      // need a size that does not come from the reference, so they are withheld
+      // while "Use media size" is on — the same pair the server accepts there.
       const DIM_SCALE_MODES = [
         ['none',    'None'],
         ['factor',  'Factor'],
@@ -871,7 +871,59 @@ export function buildWorkflowConfigExtension(cfg) {
         const scale = (src.scale && typeof src.scale === 'object') ? src.scale : {}
         const mode  = DIM_SCALE_MODES.some(([m]) => m === scale.mode) ? scale.mode : 'none'
         const value = parseFloat(scale.value)
-        return { use_image: src.use_image === true, mode, value: isFinite(value) ? value : 1 }
+        return { use_image: src.use_image === true, mode, value: isFinite(value) ? value : 1,
+                 dim_reference: typeof src.dim_reference === 'string' ? src.dim_reference : '' }
+      }
+
+      // One option's worth of the reference dropdown: "type - label / file (w x h)".
+      // measure is a text width function and maxPx the room the box has, both
+      // null-able — with nothing to measure against the full label is used and
+      // the box does whatever it would have done anyway. What gives way first is
+      // the file name, shortened from the end, and then dropped entirely; the
+      // type, the label and the size are what identify the slot, so they stay.
+      function dimOptLabel(m, maxPx, measure) {
+        const type = m.kind === 'videos' ? 'video' : 'image'
+        const head = m.name ? `${type} - ${m.name}` : `${type} ${m.slot}`
+        const file = String(m.file || '').split(/[\\/]/).pop()
+        const size = (m.w && m.h) ? ` (${m.w} x ${m.h})` : ''
+        const full = file ? `${head} / ${file}${size}` : `${head}${size}`
+        if (!measure || !(maxPx > 0) || measure(full) <= maxPx) return full
+        for (let cut = file.length - 1; cut > 0; cut--) {
+          const s = `${head} / ${file.slice(0, cut)}\u2026${size}`
+          if (measure(s) <= maxPx) return s
+        }
+        return `${head}${size}`
+      }
+
+      // <option> text cannot be measured in the DOM, so it is measured off the
+      // select's own font on a canvas instead. One context for the whole panel.
+      let dimMeasureCtx = null
+      function textMeasurer(el) {
+        try {
+          const font = getComputedStyle(el).font
+          if (!font) return null
+          dimMeasureCtx = dimMeasureCtx || document.createElement('canvas').getContext('2d')
+          if (!dimMeasureCtx) return null
+          dimMeasureCtx.font = font
+          return s => dimMeasureCtx.measureText(s).width
+        } catch (e) { return null }
+      }
+
+      // What each scale mode does to the slots marked Resize, said in the panel
+      // rather than left to the README. What the note is for is more than one
+      // slot marked, where the three modes differ in what they promise: 'factor'
+      // guarantees nothing about the result — each slot lands wherever its own
+      // size times the value falls — while 'longest' pins one side of every slot
+      // and 'fit' pins both, at the cost of a crop. 'none' resizes nothing, so
+      // it has nothing to say.
+      const DIM_MODE_NOTES = {
+        factor:  '(!) Each slot marked Resize is scaled by this factor against its own size, ' +
+                 'so slots that start at different resolutions end at different ones.',
+        longest: '(!) Every slot marked Resize ends with its longest side at this value, aspect ' +
+                 'ratio kept — so only the short side differs between slots of different shapes.',
+        fit:     '(!) Each slot marked Resize is scaled to cover Width x Height and cropped at ' +
+                 'the centre — whatever falls outside the box is lost. One smaller on both ' +
+                 'axes is stretched to fill it instead.',
       }
 
       // Rendered at the top of the Dimensions box by the classes that take a
@@ -880,12 +932,16 @@ export function buildWorkflowConfigExtension(cfg) {
         const d = fDimensions(data.dimensions)
         return `
           <label style="display:flex;align-items:center;gap:5px;color:#ccc;font-size:11px;
-                        cursor:pointer;margin-bottom:5px">
+                        cursor:pointer;margin-bottom:5px"
+                 title="Take the width and height from the media picked below">
             <input type="checkbox" id="daz-dim-use-image"${d.use_image ? ' checked' : ''}
               style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
-            <span id="daz-dim-use-image-label">Use image 1</span>
-            <span id="daz-dim-use-image-hint" style="color:#666;font-size:10px"></span>
+            <span>Use media size</span>
           </label>
+          <div style="${rw}"><label style="${lbl}">Reference media</label>
+            <select id="daz-dim-reference" title="The image or video the size is measured on"
+              data-initial="${esc(d.dim_reference)}" style="${fs}"></select>
+          </div>
           <div style="margin-bottom:5px">${box('Scale', `
             <div style="${rw}"><label style="${lbl}">Scale mode</label>
               <select id="daz-dim-scale-mode" style="${fs}">
@@ -897,6 +953,8 @@ export function buildWorkflowConfigExtension(cfg) {
               <input id="daz-dim-scale-value" type="number" step="0.01" min="0"
                 value="${d.value}" style="${fs}">
             </div>
+            <div id="daz-dim-mode-note" style="color:#d8b13a;font-size:10px;line-height:1.35;
+                 margin-top:5px;display:none"></div>
           `)}</div>`
       }
 
@@ -929,41 +987,46 @@ export function buildWorkflowConfigExtension(cfg) {
       }
 
       // Keeps the dimensions controls consistent with each other and with the
-      // reference image: "Use image" is only offered when there is an image to
-      // take a size from, and it narrows the mode list to the two modes that
-      // still mean something. Whenever the node computes the size from the image
-      // rather than reading what was typed — "Use image", or 'longest' with an
-      // image loaded — the width and height show that computed size, read-only,
-      // and the typed values are put back when it stops being computed.
+      // reference media: "Use media size" is only offered when a reference is
+      // picked, and it narrows the mode list to the two modes that still mean
+      // something. Whenever the node computes the size from the reference rather
+      // than reading what was typed — "Use media size", or 'longest' with a
+      // reference picked — the width and height show that computed size,
+      // read-only, and the typed values are put back when it stops.
       //
       // Returns { reset, refresh }: reset for the Dimensions "clear" button,
-      // refresh for the places that change the image or the controls without
-      // firing an event this can hear (clearing the image, applying a preset).
+      // refresh for the places that change the media or the controls without
+      // firing an event this can hear (clearing a slot, applying a preset).
       // Classes with no dimensions rows get inert stubs.
       function wireDimensions(panel) {
         const useEl    = panel.querySelector('#daz-dim-use-image')
         const modeEl   = panel.querySelector('#daz-dim-scale-mode')
         const valEl    = panel.querySelector('#daz-dim-scale-value')
         const valLbl   = panel.querySelector('#daz-dim-scale-value-label')
-        const hintEl   = panel.querySelector('#daz-dim-use-image-hint')
-        const lblEl    = panel.querySelector('#daz-dim-use-image-label')
+        const refEl    = panel.querySelector('#daz-dim-reference')
+        const noteEl   = panel.querySelector('#daz-dim-mode-note')
         const widthEl  = panel.querySelector('#daz-width')
         const heightEl = panel.querySelector('#daz-height')
         const imgSel   = panel.querySelector('#daz-image-path')
-        const prevEl   = panel.querySelector('#daz-img-preview-el')
         if (!useEl || !modeEl || !valEl) {
           return { reset: () => {}, refresh: () => {}, adopt: () => {} }
         }
 
-        // The slot the size is taken from — which one it is, the file in it and
-        // the element to measure. The media box owns the "use for dim" mark and
-        // installs the reader; a class without a box has only ever had the one
-        // reference image, so that stands in for it. Asked on every sync rather
-        // than held, so ticking another slot's box moves it.
-        function dimSource() {
-          if (panel._dazDimSource) return panel._dazDimSource()
-          const file = imgSel?.value || ''
-          return file ? { kind: 'images', slot: 1, file, el: prevEl } : null
+        // Every filled image and video slot, in the order the dropdown offers
+        // them, each with the id it is picked by and the size it was measured
+        // at. The media box owns the slots and installs the reader; until it
+        // has, there is nothing to offer and the id loaded from the take is
+        // held rather than pruned — see syncRefOptions.
+        function dimList() { return panel._dazDimList ? panel._dazDimList() : [] }
+
+        // Which media the size is measured on. Held rather than read off the
+        // select, so it survives the rebuilds below and the moment before the
+        // media box has wired.
+        let refId  = refEl?.dataset.initial || ''
+        let refSig = null
+
+        function refMedia() {
+          return refId ? (dimList().find(m => m.id === refId) || null) : null
         }
 
         // What the user last typed, so the fields come back as they left them
@@ -1005,28 +1068,28 @@ export function buildWorkflowConfigExtension(cfg) {
         }
 
         // Whether the width/height are the node's to compute rather than the
-        // user's to type. "Use image" takes the size from the marked slot; so
-        // does 'longest', which ignores what is typed whenever there is a slot
-        // to measure. With none marked 'longest' falls back to scaling the typed
+        // user's to type. "Use media size" takes them from the reference; so
+        // does 'longest', which ignores what is typed whenever there is one to
+        // measure. With no reference 'longest' falls back to scaling the typed
         // size, so that stays the user's input and is left alone.
         function derivedFrom() {
-          if (!dimSource()) return null
+          if (!refMedia()) return null
           if (useEl.checked)               return 'use_image'
           if (modeEl.value === 'longest')  return 'longest'
           return null
         }
 
-        // The marked slot's own preview is the only place the panel knows its
-        // size — naturalWidth for a still, videoWidth for a video. Before the
-        // element has the file both read 0, and the listeners below run this
-        // again. Mirrors resolve_dimensions in the backend, so the boxes show
-        // the size the node will actually output.
+        // The reference's own size, as the media box read it — off the element
+        // for a still, off the file's probe for a video. Both are 0 until what
+        // reads them has arrived, and the listeners below run this again when it
+        // does. Mirrors _dim_plan in the backend, so the boxes show the size the
+        // node will actually output.
         function applyImageSize() {
           const src = derivedFrom()
           if (!src) return
-          const el = dimSource()?.el
-          const iw = (el?.naturalWidth  ?? el?.videoWidth)  || 0
-          const ih = (el?.naturalHeight ?? el?.videoHeight) || 0
+          const m  = refMedia()
+          const iw = m?.w || 0
+          const ih = m?.h || 0
           if (!iw || !ih) return
 
           let k
@@ -1042,6 +1105,13 @@ export function buildWorkflowConfigExtension(cfg) {
           if (widthEl)  widthEl.value  = String(Math.max(1, Math.round(iw * k)))
           if (heightEl) heightEl.value = String(Math.max(1, Math.round(ih * k)))
           panel._dazSizeWarn?.()
+        }
+
+        function syncModeNote() {
+          if (!noteEl) return
+          const note = DIM_MODE_NOTES[modeEl.value]
+          noteEl.textContent   = note || ''
+          noteEl.style.display = note ? '' : 'none'
         }
 
         function syncValueField() {
@@ -1064,43 +1134,64 @@ export function buildWorkflowConfigExtension(cfg) {
           if (restrict && !DIM_USE_IMAGE_MODES.includes(modeEl.value)) modeEl.value = 'none'
         }
 
+        // Refills the dropdown from the slots as they stand. Only when what it
+        // would say has actually changed: a rebuild closes an open list, and
+        // this runs on every image that decodes and every clip that finishes
+        // being probed.
+        function syncRefOptions() {
+          if (!refEl) return
+          const list = dimList()
+          // An id that is no longer offered is one whose slot was cleared, so
+          // the pick goes with it. Only once the media box has wired, or the
+          // first sync — which runs before it does — would drop what was loaded.
+          if (panel._dazDimList && refId && !list.some(m => m.id === refId)) refId = ''
+          const maxPx = (refEl.clientWidth || 0) - 28
+          const sig   = JSON.stringify([refId, maxPx,
+            list.map(m => [m.id, m.kind, m.slot, m.file, m.name, m.w, m.h])])
+          if (sig !== refSig) {
+            refSig = sig
+            const measure = textMeasurer(refEl)
+            refEl.innerHTML = `<option value="">\u2014</option>` + list.map(m =>
+              `<option value="${esc(m.id)}">${esc(dimOptLabel(m, maxPx, measure))}</option>`).join('')
+          }
+          refEl.value         = refId
+          refEl.disabled      = !list.length
+          refEl.style.opacity = list.length ? '' : '0.4'
+        }
+
         function syncAll() {
-          // Nothing marked means nothing to take a size from, so the checkbox is
-          // dead and says which slot it would use once one is marked.
-          const source = dimSource()
-          if (!source) useEl.checked = false
+          syncRefOptions()
+          // Nothing picked means nothing to take a size from, so the checkbox is
+          // dead until something is — and dropped rather than left ticked and
+          // dead, so what gets saved says what the panel is actually doing.
+          // Gated like the pruning above: the first sync runs before the media
+          // box has wired, and would untick what the take was loaded with.
+          const source = refMedia()
+          if (!source && panel._dazDimList) useEl.checked = false
           useEl.disabled     = !source
           useEl.style.cursor = source ? 'pointer' : 'not-allowed'
           if (useEl.parentElement) useEl.parentElement.style.opacity = source ? '' : '0.45'
-          // A class with no media box has the one reference image and no marks
-          // to speak of, so with nothing to measure it says so in its own terms.
-          const boxed = !!panel._dazDimSource
-          if (lblEl)  lblEl.textContent  = source
-            ? `Use ${source.kind === 'videos' ? 'video' : 'image'} ${source.slot}`
-            : (boxed ? 'Use image' : 'Use image 1')
-          // The label first where the slot has one — it is what the user
-          // named the slot, and the file is what the label is on.
-          if (hintEl) hintEl.textContent = source
-            ? `(${source.name ? `${source.name} / ` : ''}${source.file})`
-            : (boxed ? '(no slot marked for dim)' : '(no reference image)')
           syncModeOptions()
           syncValueField()
-          // After syncModeOptions, which can drop an illegal mode back to 'none'.
+          // All three after syncModeOptions, which can drop an illegal mode back
+          // to 'none' — and 'none' is the one mode with nothing to warn about.
+          syncModeNote()
           const src = derivedFrom()
           if (src) enterDerived(); else leaveDerived()
           setSizeEditable(!src, src === 'longest'
-            ? "Derived from the image's longest dimension"
-            : 'Taken from the reference image')
+            ? "Derived from the reference media's longest dimension"
+            : 'Taken from the reference media')
           applyImageSize()
         }
 
         useEl.addEventListener('change', syncAll)
         modeEl.addEventListener('change', syncAll)
         valEl.addEventListener('input', applyImageSize)
+        refEl?.addEventListener('change', () => { refId = refEl.value; syncAll() })
         imgSel?.addEventListener('change', syncAll)
         // The naturals only become readable once an element has its file, and
-        // any slot can be the marked one, so every preview is listened to rather
-        // than the reference image's alone.
+        // any slot can be the reference, so every preview is listened to rather
+        // than the take's own image alone.
         panel.querySelectorAll('#daz-img-preview-el, [data-em-prev] img')
           .forEach(el => el.addEventListener('load', syncAll))
         panel.querySelectorAll('[data-em-prev] video')
@@ -1113,6 +1204,7 @@ export function buildWorkflowConfigExtension(cfg) {
             useEl.checked = false
             modeEl.value  = 'none'
             valEl.value   = '1'
+            refId         = ''
             typed.width   = ''
             typed.height  = ''
             typed.saved   = false
@@ -1133,11 +1225,11 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Extended media wiring ─────────────────────────────────────────────
       // Drives the tabbed media box: which pane is showing, which slot in it is
-      // showing, and the one "use for dim" mark shared by every image and video
-      // slot. Image slot 1 and audio slot 1 are the take's own image_path /
-      // audio_path — their select, preview and handlers are the ones the panel
-      // always had, and this only routes the shared Upload and clear buttons to
-      // whichever slot is on screen and collects the extended rows back out.
+      // showing, and each slot's own "resize me" mark. Image slot 1 and audio
+      // slot 1 are the take's own image_path / audio_path — their select,
+      // preview and handlers are the ones the panel always had, and this only
+      // routes the shared Upload and clear buttons to whichever slot is on
+      // screen and collects the extended rows back out.
       //
       // Returns null for a class with no extra media, so its callers fall back
       // to what they did before.
@@ -1174,6 +1266,10 @@ export function buildWorkflowConfigExtension(cfg) {
             const r = n <= EM_ROOT[kind] ? rootMedia(kind) : rowAt(kind, n - EM_ROOT[kind])
             store[kind][n] = {
               name:        typeof r.name === 'string' ? r.name : '',
+              // What the Dimensions box's reference points at, and whether the
+              // rule it holds resizes this slot. Audio has neither.
+              id:          kind === 'audios' ? '' : (typeof r.id === 'string' ? r.id : ''),
+              use_for_dim: kind !== 'audios' && r.use_for_dim === true,
               start_frame: Number(r.start_frame) || 0,
               cap_frames:  Number(r.cap_frames)  || 0,
               // Read off the file whenever one is picked and never stored: the
@@ -1184,21 +1280,29 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
-        // At most one mark across every image and video slot, held as
-        // "kind:slot". Image slot 1 is the take's own image_path, whose flag
-        // sits inside it just as an extended row's does; the backend enforces
-        // the same rule on save, in the same order.
-        let dimSource = data.image_path?.use_for_dim ? 'images:1' : null
-        for (const kind of ['images', 'videos']) {
-          for (let n = 1 + EM_ROOT[kind]; n <= EM_SLOTS[kind] && !dimSource; n++) {
-            if (rowAt(kind, n - EM_ROOT[kind]).use_for_dim) dimSource = `${kind}:${n}`
-          }
+        // The id the Dimensions box's reference is a pick from. Minted when a
+        // slot gains a file and dropped when it loses one, so it names the media
+        // rather than the slot: re-picking a file into the same slot keeps the
+        // reference pointed at it, clearing the slot ends it. Kept short for the
+        // same reason the backend's is — it only has to be unique within a take.
+        const newMediaId = () => {
+          try {
+            const u = crypto?.randomUUID?.()
+            if (u) return u.replace(/-/g, '').slice(0, 12)
+          } catch (e) {}
+          return (Math.random().toString(36).slice(2) +
+                  Date.now().toString(36)).replace(/[^a-z0-9]/g, '').slice(0, 12)
         }
-        // A take saved before the mark existed carries none, but its "Use image"
-        // took the size from the reference image — which is what the mark says
-        // today. Read after the marks above, so it never overrides a real one.
-        if (!dimSource && data.dimensions?.use_image && fPath(data.image_path)) {
-          dimSource = 'images:1'
+
+        function syncIds() {
+          for (const kind of ['images', 'videos']) {
+            for (let n = 1; n <= EM_SLOTS[kind]; n++) {
+              const st  = store[kind][n]
+              const has = !!selOf(kind, n)?.value
+              if (has && !st.id) st.id = newMediaId()
+              else if (!has && st.id) { st.id = ''; st.use_for_dim = false }
+            }
+          }
         }
 
         const active = { images: 1, videos: 1 }
@@ -1415,18 +1519,17 @@ export function buildWorkflowConfigExtension(cfg) {
         }
 
         // Everything in a pane that depends on which slot is showing: the slot
-        // buttons, the mark, the name box, and for video the readings taken off
-        // the file. A slot with no file cannot be the size source, so its
+        // buttons, the resize mark, the name box, and for video the readings
+        // taken off the file. An empty slot has nothing to resize, so its
         // checkbox is dead and any mark it still carries is dropped.
         function syncPane(kind) {
           const n   = active[kind]
-          const key = `${kind}:${n}`
           const has = !!selOf(kind, n)?.value
-          if (!has && dimSource === key) dimSource = null
+          if (!has) store[kind][n].use_for_dim = false
           syncSlots(kind)
           const dim = q(`#daz-em-${kind}-dim`)
           if (dim) {
-            dim.checked      = dimSource === key
+            dim.checked      = store[kind][n].use_for_dim
             dim.disabled     = !has
             dim.style.cursor = has ? 'pointer' : 'not-allowed'
             dim.parentElement.style.opacity = has ? '' : '0.45'
@@ -1509,6 +1612,9 @@ export function buildWorkflowConfigExtension(cfg) {
               console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not read '${filename}'`, err)
             }
           }
+          // The frame size is one of the dropdown's labels, and this is the only
+          // place it arrives — for the slot on screen and the one behind it.
+          dimsCtl.refresh()
           if (n === active.videos) {
             syncPane('videos')
             // The rate only arrives here, and the in-point cannot be worked out
@@ -1655,14 +1761,10 @@ export function buildWorkflowConfigExtension(cfg) {
           q(`[data-em-play="${n}"]`)?.addEventListener('click', () => toggleAudio(n))
         }
 
+        // Each slot's own mark now, so ticking one says nothing about the rest.
         ;['images', 'videos'].forEach(kind => {
           q(`#daz-em-${kind}-dim`)?.addEventListener('change', e => {
-            const key = `${kind}:${active[kind]}`
-            if (e.target.checked)        dimSource = key
-            else if (dimSource === key)  dimSource = null
-            syncPane('images')
-            syncPane('videos')
-            dimsCtl.refresh()
+            store[kind][active[kind]].use_for_dim = e.target.checked
           })
         })
 
@@ -1773,21 +1875,34 @@ export function buildWorkflowConfigExtension(cfg) {
           fire(sel)
         })
 
-        // What the Dimensions box reads to name and measure the marked slot.
-        // In place before the first refresh below, and called on every sync of
-        // that box rather than held, so a later tick moves it.
-        panel._dazDimSource = () => {
-          if (!dimSource) return null
-          const [kind, s] = dimSource.split(':')
-          const n    = Number(s)
-          const file = selOf(kind, n)?.value || ''
-          if (!file) return null
-          const el = kind === 'videos' ? q(`#daz-em-videos-${n}-vid`)
-                   : n === 1          ? q('#daz-img-preview-el')
-                   :                    q(`#daz-em-images-${n}-img`)
-          // Straight off the store, which the name box writes on every
-          // keystroke, so the hint follows what is being typed.
-          return { kind, slot: n, file, el, name: store[kind][n].name }
+        // What the Dimensions box's reference dropdown is filled from: every
+        // filled image and video slot, with the size the panel has managed to
+        // read for it. A still carries its size on the decoded element; a clip's
+        // came off the probe and is in the store. Either is 0 until it arrives,
+        // and the dropdown simply leaves the size off the label until it does.
+        // In place before the first refresh below, and asked on every sync of
+        // that box rather than held, so picks and clears move it.
+        panel._dazDimList = () => {
+          syncIds()
+          const out = []
+          for (const kind of ['images', 'videos']) {
+            for (let n = 1; n <= EM_SLOTS[kind]; n++) {
+              const file = selOf(kind, n)?.value || ''
+              if (!file) continue
+              const st = store[kind][n]
+              let w = 0, h = 0
+              if (kind === 'videos') {
+                w = st.width; h = st.height
+              } else {
+                const el = n === 1 ? q('#daz-img-preview-el') : q(`#daz-em-images-${n}-img`)
+                w = el?.naturalWidth || 0; h = el?.naturalHeight || 0
+              }
+              // Straight off the store, which the name box writes on every
+              // keystroke, so the label follows what is being typed.
+              out.push({ id: st.id, kind, slot: n, file, name: st.name, w, h })
+            }
+          }
+          return out
         }
 
         // ── first paint ─────────────────────────────────────────────────────
@@ -1832,6 +1947,7 @@ export function buildWorkflowConfigExtension(cfg) {
           collect() {
             stashName('images')
             stashName('videos')
+            syncIds()
             const nameOf = (kind, n) => kind === 'audios'
               ? (q(`#daz-em-audios-${n}-name`)?.value || '')
               : store[kind][n].name
@@ -1847,15 +1963,20 @@ export function buildWorkflowConfigExtension(cfg) {
                   row.start_frame = st.start_frame
                   row.cap_frames  = st.cap_frames
                 }
-                if (kind !== 'audios') row.use_for_dim = dimSource === `${kind}:${n}`
+                if (kind !== 'audios') {
+                  row.id          = st.id
+                  row.use_for_dim = st.use_for_dim
+                }
                 out[kind].push(row)
               }
             }
             return {
-              imageUseForDim: dimSource === 'images:1',
               // Slot 1 of images and of audios is the take's own image_path and
-              // audio_path, so their names go inside those and not into a row.
-              rootNames: { image_path: nameOf('images', 1), audio_path: nameOf('audios', 1) },
+              // audio_path, so what belongs to those goes inside them rather
+              // than into a row.
+              rootImage: { name: nameOf('images', 1), id: store.images[1].id,
+                           use_for_dim: store.images[1].use_for_dim },
+              rootAudioName: nameOf('audios', 1),
               extended_media: out,
             }
           },
@@ -1895,15 +2016,14 @@ export function buildWorkflowConfigExtension(cfg) {
         // just assembled.
         const em = wrap?._dazEmCtl?.collect()
         if (!em) return out
-        const { imageUseForDim, rootNames, ...rest } = em
+        const { rootImage, rootAudioName, ...rest } = em
         const merged = {
           ...out, ...rest,
-          image_path: { ...(out.image_path || {}),
-                        name: rootNames.image_path, use_for_dim: imageUseForDim },
+          image_path: { ...(out.image_path || {}), ...rootImage },
         }
         // Only where the class has one: a name must not conjure the field.
         if ('audio_path' in out) {
-          merged.audio_path = { ...out.audio_path, name: rootNames.audio_path }
+          merged.audio_path = { ...out.audio_path, name: rootAudioName }
         }
         return merged
       }
@@ -2344,10 +2464,11 @@ export function buildWorkflowConfigExtension(cfg) {
                 ${emImageLayers()}
                 <span id="daz-em-images-size" data-em-ctl="1"
                   style="${emCtlS};right:6px;top:6px;${emReadS}">\u2014</span>
-                <label data-em-ctl="1" style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
+                <label data-em-ctl="1" title="Resize this slot with the take's dimensions rule"
+                       style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
                        gap:5px;color:#ccc;font-size:11px;cursor:pointer">
                   <input type="checkbox" id="daz-em-images-dim"
-                    style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Use for dim
+                    style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Resize
                 </label>
                 <input id="daz-em-images-name" data-em-ctl="1" type="text" maxlength="40" placeholder="name"
                   title="A label for this slot, carried to the node beside the file"
@@ -2371,10 +2492,11 @@ export function buildWorkflowConfigExtension(cfg) {
                   style="${emCtlS};right:6px;top:6px;${emReadS}">\u2014</span>
                 <span id="daz-em-videos-size" data-em-ctl="1"
                   style="${emCtlS};right:6px;top:24px;${emReadS}">\u2014</span>
-                <label data-em-ctl="1" style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
+                <label data-em-ctl="1" title="Resize this slot with the take's dimensions rule"
+                       style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
                        gap:5px;color:#ccc;font-size:11px;cursor:pointer">
                   <input type="checkbox" id="daz-em-videos-dim"
-                    style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Use for dim
+                    style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Resize
                 </label>
                 <input id="daz-em-videos-name" data-em-ctl="1" type="text" maxlength="40" placeholder="name"
                   title="A label for this slot, carried to the node beside the file"
@@ -3195,8 +3317,8 @@ export function buildWorkflowConfigExtension(cfg) {
           ?.dispatchEvent(new Event('input', { bubbles: true }))
         // The dimensions controls constrain each other and the width/height, and
         // a preset writes them straight rather than through their handlers — so
-        // re-run the wiring: it drops "Use image" if this panel has no reference
-        // image, narrows the mode list, and re-derives the size from the image.
+        // re-run the wiring: it drops "Use media size" if this panel has no
+        // reference picked, narrows the mode list, and re-derives the size.
         // adopt() first, so the width/height the preset just wrote are taken as
         // the new baseline rather than reverted to what the panel had before.
         panel._dazDimsCtl?.adopt()

@@ -80,8 +80,8 @@ All five nodes share a common set of configurable fields:
 | **Note** | Free-form note (up to 900 characters), shown on the node while in use |
 | **Image** | Reference input image — a filename inside ComfyUI's input folder, or an absolute path |
 | **Audio** | Reference input audio — a filename inside ComfyUI's input folder, or an absolute path. When set, the node outputs the decoded audio on the `audio` output for use downstream |
-| **Width / Height** | Output frame dimensions. On the four video nodes these are the *input* to **Use image / Scale** below, which decides what the `width` and `height` outputs actually report |
-| **Use image / Scale** | On WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 only — governs the reference image and the size outputs together. See [Dimensions and scaling](#dimensions-and-scaling) |
+| **Width / Height** | Output frame dimensions. On the four video nodes these are the *input* to the **Dimensions and More** rule below, which decides what the `width` and `height` outputs actually report |
+| **Use media size / Reference media / Scale** | On WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 only — governs the size outputs and which media get resized. See [Dimensions and scaling](#dimensions-and-scaling) |
 | **Extended media** | Extra named images, videos and audio the take carries alongside the single Image and Audio slots above. On the four video nodes only — see [Extended media](#extended-media) |
 | **Steps** | Number of denoising steps |
 | **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
@@ -182,22 +182,25 @@ Each take can have an optional short **label** shown in the dropdown (e.g. `2 - 
 
 #### Dimensions and scaling
 
-The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `height` outputs and resize the reference image together, from **Use image** and the **Scale** box in the editor's *Dimensions and More* panel. The Image node has neither — its Width and Height are what you type. Resizing always uses **lanczos**.
+The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `height` outputs and resize media together, from **Use media size**, **Reference media** and the **Scale** box in the editor's *Dimensions and More* panel. The Image node has none of them — its Width and Height are what you type. Resizing always uses **lanczos**.
 
-**Use image off** — the Width and Height you typed are the input to the scale mode:
+Two separate choices are involved:
 
-| Scale mode | Width / height outputs | Reference image |
+- **Reference media** picks the one image or video the rule *measures* — any filled slot in the *Reference Image and Audio* box, listed as *type - label / file (w x h)*.
+- **Resize**, in the corner of each image and video preview, marks the slots the rule *applies to*. Any number of them, each scaled against its own size — so a factor of 0.5 halves every marked slot, whatever size each one started at. An unmarked slot is handed to the node untouched.
+
+**Use media size off** — the Width and Height you typed are the input to the scale mode:
+
+| Scale mode | Width / height outputs | Each marked slot |
 |---|---|---|
 | **None** | As typed | Untouched |
 | **Factor** | Both multiplied by **Scale by** | Multiplied by the same factor, on its own aspect ratio |
-| **Longest dimension** | Follow the image's new size, or scale the typed size if there is no image | Its longest side becomes the value, aspect ratio kept |
-| **Fit** | As typed | Scaled to cover the box and cropped at the centre; an image smaller on *both* axes is stretched instead, so nothing needs padding |
+| **Longest dimension** | Follow the reference media's new size, or scale the typed size if there is no reference | Its longest side becomes the value, aspect ratio kept |
+| **Fit** | As typed | Scaled to cover the box and cropped at the centre; media smaller on *both* axes is stretched instead, so nothing needs padding |
 
-The checkbox names the slot it would measure and, beside it, what is in that slot — *(label / file)*, or the file alone where the slot has no label.
+**Use media size on** — the outputs are the reference media's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the outputs and the marked slots together. Unavailable until a reference is picked.
 
-**Use image on** — the outputs are the image's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the image and the outputs together. Unavailable when no reference image is selected.
-
-Whenever the size comes from the image the editor fills the boxes in and shows them read-only; what you typed comes back when it stops. The stored Width and Height are never rewritten by a run.
+Whenever the size comes from the reference the editor fills the boxes in and shows them read-only; what you typed comes back when it stops. The stored Width and Height are never rewritten by a run.
 
 #### Extended media
 
@@ -207,8 +210,8 @@ Each take holds three lists, stored under `extended_media` in the config file:
 
 | List | Slots | Per item |
 |---|---|---|
-| `images` | 4 | `name`, `order`, `image_path`, `use_for_dim` |
-| `videos` | 2 | `name`, `order`, `video_path`, `start_frame`, `cap_frames`, `use_for_dim` |
+| `images` | 4 | `name`, `order`, `id`, `image_path`, `use_for_dim` |
+| `videos` | 2 | `name`, `order`, `id`, `video_path`, `start_frame`, `cap_frames`, `use_for_dim` |
 | `audios` | 1 | `name`, `order`, `audio_path` |
 
 `order` is a **slot number, not a sort key**: the node loads slot 1 into output 1 whatever position the row sits in, so clearing one row never shifts another, and a list may have holes. Only the slots listed above are loaded — a row with an order outside the range, a second row claiming an order already taken, or a row with no path is skipped. Extra rows are never removed from the file on save, so a hand-edited config keeps whatever you put there; the caps are what the node reads, not what the file may hold. `name` is a label for your own use — the box beside each slot's **clear** writes it, and the Media Splitter's sockets are named by slot, not by it.
@@ -218,7 +221,7 @@ The editor numbers the same media differently, because it counts the take's own 
 Those two first slots are the take's own `image_path` and `audio_path`, and they take the same `name` an extended row does, beside their path:
 
 ```jsonc
-"image_path": { "name": "hero still", "path": "…", "use_for_dim": false },
+"image_path": { "name": "hero still", "id": "a91c4e07b2f5", "path": "…", "use_for_dim": false },
 "audio_path": { "name": "vo take 3",  "path": "…" },
 ```
 
@@ -233,11 +236,11 @@ A video slot loads a window of the clip, not the whole thing:
 
 Decoded frames are float32 RGB — about 12 bytes a pixel — so a decode also stops at **600 frames** or **4 GB**, whichever comes first, and says in the console which ceiling it hit.
 
-`use_for_dim` marks the one image or video slot the output size is meant to come from — the still's own size, or the size of the video's frames. At most one slot in the whole take may carry it, counting the take's own reference image: that one keeps its flag *inside* its `image_path` (`"image_path": { "path": "…", "use_for_dim": true }`), exactly as an extended row keeps it beside its own path. The editor only ever lets one be set; a hand-edited file with several is cut back to one on its next save, the reference image winning, then images by slot, then videos.
+`use_for_dim` says the take's scale rule resizes this slot — see [Dimensions and scaling](#dimensions-and-scaling). Any number of image and video slots may carry it, the take's own reference image included: that one keeps its flag *inside* its `image_path` (`"image_path": { "path": "…", "use_for_dim": true }`), exactly as an extended row keeps it beside its own path.
 
-It is stored and passed through to the node today, but nothing reads it yet: extended images are handed on at their stored size, and the **Use image / Scale** rules still apply to the reference image only.
+`id` is what `dimensions.dim_reference` points at to name the slot the rule *measures*. The editor mints one when a slot gains a file and drops it when the slot is cleared, which also clears a reference that named it — so it identifies the media, not the position. Re-picking a file into a slot keeps its id, and so keeps the reference pointed at it.
 
-The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Use for dim** in the corner of the preview sets that slot as the size source, clearing whatever image or video slot held it before. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner, and carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses, writing `start_frame` and `cap_frames`: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding.
+The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Resize** in the corner of the preview marks that slot for the take's scale rule. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner, and carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses, writing `start_frame` and `cap_frames`: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding.
 
 #### Duration and frame counts
 
@@ -325,7 +328,7 @@ For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets also carry the full LoRA set
 
 Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes. Presets carry the Qualifiers (trail) prompt alongside Master/Positive/Negative for every node class.
 
-For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets carry **Total frames** and **FPS** as well — applying one re-derives the editor's **Duration (s)** from them. Those four also carry the **Use image** and **Scale** settings (see [Dimensions and scaling](#dimensions-and-scaling)); applying one re-checks them against the config being edited, so a preset saved with **Use image** on lands with it off if the config has no reference image. LTX2.3 and LTX2.5 presets additionally carry the **Latent upscale** model. The Image node has no frame count, FPS, or reference image, so its presets carry none of these.
+For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets carry **Total frames** and **FPS** as well — applying one re-derives the editor's **Duration (s)** from them. Those four also carry the **Use media size** and **Scale** settings (see [Dimensions and scaling](#dimensions-and-scaling)) — but not **Reference media**, which names one of the take's own slots and so stays as the take had it; applying one re-checks the rest against the config being edited, so a preset saved with **Use media size** on lands with it off if the config has no reference picked. LTX2.3 and LTX2.5 presets additionally carry the **Latent upscale** model. The Image node has no frame count, FPS, or reference image, so its presets carry none of these.
 
 Presets saved before these fields existed simply do not include them, and applying such a preset leaves the corresponding fields in the panel untouched rather than zeroing them.
 
