@@ -57,6 +57,8 @@ All destructive actions ask for confirmation first, and the popup stays open and
 
 **Back** closes the popup without loading anything, reconciling the node's dropdowns to whatever still exists on disk (in case something was deleted while the Manager was open).
 
+![Sample movie manager](content/sample_movie_mgr_v1.png)
+
 #### Filters
 
 Five possible filters at the top of the node let you narrow down which scenes/takes are shown:
