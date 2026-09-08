@@ -1,4 +1,4 @@
-"""Shared PyAV-based video file probing (fps/duration/frame count/size).
+"""Shared PyAV-based video file probing (fps/duration/frame count/size/audio).
 
 Used by the Sound Mixer's movie panel to compute exact per-frame timestamps
 for its scrubber. No frame images are extracted server-side — the browser's
@@ -35,8 +35,13 @@ def probe_video_file(full_path: str, error_prefix: str) -> dict:
         width  = int(getattr(cc, "width",  0) or 0)
         height = int(getattr(cc, "height", 0) or 0)
 
+        # Whether the file has a track an audio slot could be pointed at. Read
+        # here rather than in a probe of its own: the container is already open,
+        # and the stream list costs nothing beyond the look.
+        has_audio = bool(vf.streams.audio)
+
     if fps <= 0 or duration <= 0:
         raise ValueError(f"[DAZ TOOLS] {error_prefix}: could not determine fps/duration for '{full_path}'")
 
     return {"fps": fps, "duration": duration, "frame_count": max(1, int(frame_count)),
-            "width": width, "height": height}
+            "width": width, "height": height, "has_audio": has_audio}
