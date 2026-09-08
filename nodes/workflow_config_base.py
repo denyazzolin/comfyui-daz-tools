@@ -84,11 +84,20 @@ _DIM_SCALE_MODES = ("none", "factor", "longest", "fit")
 # modes that derive a size from somewhere else make no sense and are not offered.
 _DIM_USE_IMAGE_MODES = ("none", "factor")
 
+# Models want sizes divisible by something, so a calculated size is rounded
+# down to a multiple of scale.div. 0 turns that off and leaves the arithmetic
+# to land where it lands; anything outside this set is a malformed file and
+# reads as the default. Only sizes the rule computes are snapped — a size the
+# user typed is theirs, and the editor warns about it instead.
+_DIM_DIVISORS    = (0, 8, 16, 32, 64)
+_DEFAULT_DIM_DIV = 32
+
 # dim_reference is the id of the image or video the size is measured against —
 # the take's own image_path or any extended row. Empty means nothing is named,
 # and then there is nothing for use_image or 'longest' to read a size from.
 _DEFAULT_DIMENSIONS: dict = {"use_image": False, "dim_reference": "",
-                             "scale": {"mode": "none", "value": 1.0}}
+                             "scale": {"mode": "none", "value": 1.0,
+                                       "div": _DEFAULT_DIM_DIV}}
 
 # The classes that take a reference image, and so are the ones a dimensions block
 # is backfilled onto.
@@ -426,7 +435,7 @@ def _coerce_dimensions(val) -> dict:
     """Normalise anything into the canonical dimensions block. Never raises and
     never returns a partial block, so every reader downstream can assume the
     shape {"use_image": bool, "dim_reference": str,
-           "scale": {"mode": str, "value": float}}."""
+           "scale": {"mode": str, "value": float, "div": int}}."""
     src   = val if isinstance(val, dict) else {}
     scale = src.get("scale") if isinstance(src.get("scale"), dict) else {}
 
@@ -439,9 +448,23 @@ def _coerce_dimensions(val) -> dict:
     except (ValueError, TypeError):
         value = 1.0
 
+    # A block written before div existed gets the default; an explicit null or
+    # "" is a deliberate "off", the same as 0, and must not start snapping
+    # sizes that were not being snapped before.
+    raw = scale.get("div", _DEFAULT_DIM_DIV)
+    if raw is None or raw == "":
+        div = 0
+    else:
+        try:
+            div = int(raw)
+        except (ValueError, TypeError):
+            div = _DEFAULT_DIM_DIV
+        if div not in _DIM_DIVISORS:
+            div = _DEFAULT_DIM_DIV
+
     return {"use_image": bool(src.get("use_image", False)),
             "dim_reference": str(src.get("dim_reference") or ""),
-            "scale": {"mode": mode, "value": value}}
+            "scale": {"mode": mode, "value": value, "div": div}}
 
 
 def _get_dimensions(set_obj: dict) -> dict:
@@ -523,6 +546,16 @@ def _round_dim(v: float) -> int:
         return max(1, int(round(float(v))))
     except (ValueError, TypeError, OverflowError):
         return 1
+
+
+def _snap_dim(v: float, div: int) -> int:
+    """A computed pixel size rounded down to a multiple of div, or just rounded
+    when div is 0. Never below one whole step: a size smaller than the divisor
+    has no multiple under it to land on, and 0 px would throw."""
+    n = _round_dim(v)
+    if div <= 0:
+        return n
+    return max(div, (n // div) * div)
 
 
 def _scale_image(image, width: int, height: int, crop: str, node_name: str):
@@ -608,7 +641,7 @@ def _dim_reference_size(active_set: dict, node_name: str) -> tuple:
 
 
 def _dim_plan(active_set: dict, node_name: str) -> tuple:
-    """A set's dimensions block resolved once, as (mode, value, width, height).
+    """A set's dimensions block resolved once, as (mode, value, width, height, div).
 
     width and height are what the node reports. The mode travels with them
     because it is also applied to every slot marked use_for_dim, each against
@@ -633,12 +666,17 @@ def _dim_plan(active_set: dict, node_name: str) -> tuple:
                 box on both axes is stretched to fill it instead, since the point
                 of the mode is to avoid padding.
 
+    Every size the rule computes is then snapped down to a multiple of
+    scale.div. 'fit' computes nothing — its target is the stored width and
+    height as typed — so it is the one mode div does not touch.
+
     The stored width/height are never rewritten from here. They are the input to
     the rule, so scaling them in place would compound on every run.
     """
     dims   = _get_dimensions(active_set)
     mode   = dims["scale"]["mode"]
     value  = dims["scale"]["value"]
+    div    = dims["scale"]["div"]
     width  = _get_int(active_set.get("width"))
     height = _get_int(active_set.get("height"))
     rw, rh = _dim_reference_size(active_set, node_name)
@@ -655,41 +693,43 @@ def _dim_plan(active_set: dict, node_name: str) -> tuple:
         if value <= 0:
             print(f"[DAZ TOOLS] {node_name}: scale factor {value} is not positive — "
                   f"leaving the size and the media alone")
-            return "none", value, width, height
-        return mode, value, _round_dim(width * value), _round_dim(height * value)
+            return "none", value, width, height, div
+        return (mode, value, _snap_dim(width * value, div),
+                _snap_dim(height * value, div), div)
 
     if mode == "longest":
         target = int(value)
         if target <= 0:
             print(f"[DAZ TOOLS] {node_name}: longest dimension {target} is not positive — "
                   f"leaving the size and the media alone")
-            return "none", value, width, height
+            return "none", value, width, height, div
         if rw > 0 and rh > 0:
             factor = target / max(rw, rh)
-            width, height = _round_dim(rw * factor), _round_dim(rh * factor)
+            width, height = _snap_dim(rw * factor, div), _snap_dim(rh * factor, div)
         elif max(width, height) > 0:
             factor = target / max(width, height)
-            width, height = _round_dim(width * factor), _round_dim(height * factor)
-        return mode, value, width, height
+            width, height = (_snap_dim(width * factor, div),
+                             _snap_dim(height * factor, div))
+        return mode, value, width, height, div
 
-    return mode, value, width, height
+    return mode, value, width, height, div
 
 
 def _apply_dim_rule(image, plan: tuple, node_name: str):
     """Resize one media by a resolved plan, against its own size."""
-    mode, value, width, height = plan
+    mode, value, width, height, div = plan
     iw, ih = _tensor_size(image)
     if mode == "none" or not iw or not ih:
         return image
 
     if mode == "factor":
-        return _scale_image(image, _round_dim(iw * value), _round_dim(ih * value),
-                            "disabled", node_name)
+        return _scale_image(image, _snap_dim(iw * value, div),
+                            _snap_dim(ih * value, div), "disabled", node_name)
 
     if mode == "longest":
         factor = int(value) / max(iw, ih)
-        return _scale_image(image, _round_dim(iw * factor), _round_dim(ih * factor),
-                            "disabled", node_name)
+        return _scale_image(image, _snap_dim(iw * factor, div),
+                            _snap_dim(ih * factor, div), "disabled", node_name)
 
     if mode == "fit" and width > 0 and height > 0:
         crop = "disabled" if (iw < width and ih < height) else "center"

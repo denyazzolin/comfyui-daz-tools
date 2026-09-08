@@ -188,7 +188,7 @@ The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `h
 Two separate choices are involved:
 
 - **Reference media** picks the one image or video the rule *measures* — any filled slot in the *Reference Image and Audio* box, listed as *type - label / file (w x h)*.
-- **Resize**, in the corner of each image and video preview, marks the slots the rule *applies to*. Any number of them, each scaled against its own size — so a factor of 0.5 halves every marked slot, whatever size each one started at. An unmarked slot is handed to the node untouched.
+- **Resize**, in the corner of each image and video preview, marks the slots the rule *applies to*. Any number of them, each scaled against its own size — so a factor of 0.5 halves every marked slot, whatever size each one started at. An unmarked slot is handed to the node untouched. A marked slot shows the size it will come out at in yellow, under its own size, as soon as the scale mode is anything but None.
 
 **Use media size off** — the Width and Height you typed are the input to the scale mode:
 
@@ -198,6 +198,8 @@ Two separate choices are involved:
 | **Factor** | Both multiplied by **Scale by** | Multiplied by the same factor, on its own aspect ratio |
 | **Longest dimension** | Follow the reference media's new size, or scale the typed size if there is no reference | Its longest side becomes the value, aspect ratio kept |
 | **Fit** | As typed | Scaled to cover the box and cropped at the centre; media smaller on *both* axes is stretched instead, so nothing needs padding |
+
+Every size in that table that the rule *calculates* — the **Factor** and **Longest dimension** rows, both the outputs and the marked slots — is then rounded **down** to a multiple of the divisor picked beside the **sizing** button. **None** and **Fit** calculate nothing: their sizes are the ones you typed, and those are used exactly as typed. Each axis is rounded on its own, so a snapped size can sit slightly off the aspect ratio it came from, and nothing is ever rounded below one whole step.
 
 **Use media size on** — the outputs are the reference media's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the outputs and the marked slots together. Unavailable until a reference is picked.
 
@@ -241,7 +243,7 @@ Decoded frames are float32 RGB — about 12 bytes a pixel — so a decode also s
 
 `id` is what `dimensions.dim_reference` points at to name the slot the rule *measures*. The editor mints one when a slot gains a file and drops it when the slot is cleared, which also clears a reference that named it — so it identifies the media, not the position. Re-picking a file into a slot keeps its id, and so keeps the reference pointed at it.
 
-The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Resize** in the corner of the preview marks that slot for the take's scale rule. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner, and carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses, writing `start_frame` and `cap_frames`: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding.
+The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Resize** in the corner of the preview marks that slot for the take's scale rule. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner — and, under that in yellow, the size the take's scale rule will resize it to, whenever the slot is marked **Resize** and the mode is not None. Each also carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses, writing `start_frame` and `cap_frames`: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding.
 
 #### Duration and frame counts
 
@@ -258,7 +260,9 @@ You can always type a frame count of your own; the duration follows it. Parsing 
 
 The **sizing** button beside Width and Height opens a picker of known-good resolutions: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must divide by (8, 16, 32, 64), and take one of the five sizes offered. **OK** writes the pair into Width and Height, **Cancel** discards — nothing else closes the dialog. It opens on the current size if that size is in the list, otherwise on 9:16 ÷32, and is disabled while the size is being derived from the image.
 
-A yellow **(!) not /32** flags a Width or Height that is not a multiple of 32. Advisory only — a ÷8 or ÷16 size from the dialog raises it legitimately.
+The **8 / 16 / 32 / 64** buttons beside it are the divisor the scale rule rounds its calculated sizes down to — see *Dimensions and scaling* above. They are toggles: clicking the lit one turns the divisor off, which is the only way to reach 0, so there is no button for it. New takes start on **32**. The Image node has no scale rule and so has no buttons.
+
+A yellow **! not /X** flags a Width or Height that is not a multiple of the divisor, and says nothing while the divisor is off. Advisory only — it fires on sizes the rule does not round, which is exactly the ones you typed yourself.
 
 ![Sizing](content/sizing.png)
 

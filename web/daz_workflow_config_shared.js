@@ -435,6 +435,10 @@ export function buildWorkflowConfigExtension(cfg) {
       // Sits above the preview layers, and marked so the video pane's
       // click-to-play knows a click here is not a click on the video.
       const emCtlS    = 'position:absolute;z-index:2'
+      // Sits under the slot's own size, in the same yellow the panel warns in,
+      // to read as the size the file is on its way to rather than the one it is.
+      // Hidden until there is a resize to report.
+      const emResizeS = 'color:#d8b13a;display:none'
 
       function box(title, html) {
         return `<fieldset style="border:1px solid #444;border-radius:4px;padding:7px 8px;margin:0;min-width:0;box-sizing:border-box;overflow:hidden">
@@ -525,8 +529,11 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // Width and Height for the Dimensions box, shared by every class. The two
       // boxes are only as wide as a four-digit size needs, which leaves the rest
-      // of the row for the Sizing button.
-      function sizeRow(data) {
+      // of the row for the Sizing button, the divisor toggles and the warning.
+      // withDivisor is passed by the classes that have a dimensions block, which
+      // is where the divisor lives; the Image class has none and gets the row it
+      // always had. It cannot be read off the data — a new take arrives as {}.
+      function sizeRow(data, withDivisor) {
         const num = `width:62px;height:20px;box-sizing:border-box;${ns}`
         return `<div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:4px">
           <div style="flex-shrink:0"><label style="${lbl}">Width</label>
@@ -534,9 +541,29 @@ export function buildWorkflowConfigExtension(cfg) {
           <div style="flex-shrink:0"><label style="${lbl}">Height</label>
             <input id="daz-height" type="number" value="${fValue(data.height) || 0}" style="${num}"></div>
           <button type="button" id="daz-sizing-btn" style="${cb};height:20px">sizing</button>
+          ${withDivisor ? divRow(fDimensions(data.dimensions).div) : ''}
           <span id="daz-size-warn" style="color:#d8b13a;font-size:10px;line-height:20px;
-                white-space:nowrap;display:none">(!) not /32</span>
+                white-space:nowrap;display:none">! not /32</span>
         </div>`
+      }
+
+      // One divisor toggle. The sizing dialog's own divisor row is the model for
+      // the colours; these are a size smaller, to fit what is left of the row.
+      const divBtnS = on => `font-family:monospace;font-size:9px;line-height:1;
+        padding:4px 4px;border-radius:3px;cursor:pointer;
+        border:1px solid ${on ? '#54af7b' : '#444'};
+        background:${on ? '#1e3527' : '#111'};color:${on ? '#cde' : '#888'}`
+
+      // The divisor a calculated size is rounded down to. Toggles rather than a
+      // picker: clicking the lit one turns it off, which is the only way to reach
+      // 0, so there is no button for 0. The container carries the current value,
+      // which is what the payload reads and what re-renders the lit state.
+      function divRow(sel) {
+        return `<span id="daz-dim-divs" data-div="${sel}"
+          title="Round a calculated size down to a multiple of this. Click the lit one to turn it off"
+          style="display:flex;gap:2px;flex-shrink:0;height:20px;align-items:center">${
+          DIM_DIV_BUTTONS.map(d => `<button type="button" class="daz-dim-div" data-div="${d}"
+            style="${divBtnS(d === sel)}">${d}</button>`).join('')}</span>`
       }
 
       // ── Sizing dialog ─────────────────────────────────────────────────────
@@ -866,12 +893,25 @@ export function buildWorkflowConfigExtension(cfg) {
       ]
       const DIM_USE_IMAGE_MODES = ['none', 'factor']
 
+      // Models want sizes divisible by something, so a size the rule calculates is
+      // rounded down to a multiple of this. 0 is off, and is not offered as a
+      // button — it is what turning the lit one off leaves behind.
+      const DIM_DIV_BUTTONS = [8, 16, 32, 64]
+      const DIM_DIVISORS    = [0, ...DIM_DIV_BUTTONS]
+      const DIM_DEF_DIV     = 32
+
       function fDimensions(val) {
         const src   = (val && typeof val === 'object') ? val : {}
         const scale = (src.scale && typeof src.scale === 'object') ? src.scale : {}
         const mode  = DIM_SCALE_MODES.some(([m]) => m === scale.mode) ? scale.mode : 'none'
         const value = parseFloat(scale.value)
+        // Absent means a block written before div existed, which takes the
+        // default; an explicit null or '' is a deliberate off, the same as 0.
+        let div = scale.div === undefined ? DIM_DEF_DIV
+                : (scale.div === null || scale.div === '') ? 0 : parseInt(scale.div, 10)
+        if (!DIM_DIVISORS.includes(div)) div = DIM_DEF_DIV
         return { use_image: src.use_image === true, mode, value: isFinite(value) ? value : 1,
+                 div,
                  dim_reference: typeof src.dim_reference === 'string' ? src.dim_reference : '' }
       }
 
@@ -958,23 +998,31 @@ export function buildWorkflowConfigExtension(cfg) {
           `)}</div>`
       }
 
-      // Flags a width or height that is not a multiple of 32, which most models
-      // want. Only a warning — the size is still whatever was typed. Stashed on
-      // the panel so the places that write the fields without firing an event
-      // (the image-derived sizes, applying a preset) can refresh it.
+      // Flags a width or height that is not a multiple of the divisor, which most
+      // models want. Only a warning — the size is still whatever was typed, and
+      // the divisor only rounds sizes the rule calculates. Nothing to say while
+      // the divisor is off. Stashed on the panel so the places that write the
+      // fields without firing an event (the image-derived sizes, applying a
+      // preset, moving the divisor itself) can refresh it.
       function wireSizeWarning(panel) {
         const widthEl  = panel.querySelector('#daz-width')
         const heightEl = panel.querySelector('#daz-height')
         const warnEl   = panel.querySelector('#daz-size-warn')
         if (!warnEl) return () => {}
 
-        const off = el => {
+        const off = (el, div) => {
           const n = parseInt(el?.value, 10)
           // A blank or unparsable box is the field's own problem, not this one.
-          return isFinite(n) && n % 32 !== 0
+          return isFinite(n) && n % div !== 0
         }
         const update = () => {
-          warnEl.style.display = (off(widthEl) || off(heightEl)) ? '' : 'none'
+          // The divisor lives in the dimensions box, which wires after this one
+          // and only for the classes that have one. Until then, and for the class
+          // that never will, the default is what the sizes are judged against.
+          const div = panel._dazDimDiv ? panel._dazDimDiv() : DIM_DEF_DIV
+          warnEl.textContent   = `! not /${div}`
+          warnEl.style.display =
+            (div > 0 && (off(widthEl, div) || off(heightEl, div))) ? '' : 'none'
         }
 
         ;[widthEl, heightEl].forEach(el => {
@@ -1008,8 +1056,10 @@ export function buildWorkflowConfigExtension(cfg) {
         const widthEl  = panel.querySelector('#daz-width')
         const heightEl = panel.querySelector('#daz-height')
         const imgSel   = panel.querySelector('#daz-image-path')
+        const divsEl   = panel.querySelector('#daz-dim-divs')
         if (!useEl || !modeEl || !valEl) {
-          return { reset: () => {}, refresh: () => {}, adopt: () => {} }
+          return { reset: () => {}, refresh: () => {}, adopt: () => {},
+                   resizedSize: () => null, setDiv: () => {} }
         }
 
         // Every filled image and video slot, in the order the dropdown offers
@@ -1024,6 +1074,32 @@ export function buildWorkflowConfigExtension(cfg) {
         // media box has wired.
         let refId  = refEl?.dataset.initial || ''
         let refSig = null
+
+        // Never below 1, as _round_dim in the backend is: a zero-sized output
+        // would make the resize itself throw rather than just look wrong.
+        const roundDim = v => Math.max(1, Math.round(v))
+
+        // The divisor, held here so the buttons stay a rendering of it rather
+        // than the place it is kept. The row wrote the loaded value onto the
+        // container; a class with the box but somehow no row falls back.
+        let div = divsEl ? (parseInt(divsEl.dataset.div, 10) || 0) : DIM_DEF_DIV
+        panel._dazDimDiv = () => div
+
+        // Mirrors _snap_dim in the backend: a calculated size rounded down to a
+        // multiple of the divisor, never below one whole step — a size under the
+        // divisor has no multiple beneath it to land on.
+        const snapDim = v => {
+          const n = roundDim(v)
+          return div > 0 ? Math.max(div, Math.floor(n / div) * div) : n
+        }
+
+        function renderDivBtns() {
+          if (!divsEl) return
+          divsEl.dataset.div = String(div)
+          divsEl.querySelectorAll('.daz-dim-div').forEach(b => {
+            b.setAttribute('style', divBtnS(parseInt(b.dataset.div, 10) === div))
+          })
+        }
 
         function refMedia() {
           return refId ? (dimList().find(m => m.id === refId) || null) : null
@@ -1102,9 +1178,49 @@ export function buildWorkflowConfigExtension(cfg) {
             const f = modeEl.value === 'factor' ? parseFloat(valEl.value) : 1
             k = (isFinite(f) && f > 0) ? f : 1
           }
-          if (widthEl)  widthEl.value  = String(Math.max(1, Math.round(iw * k)))
-          if (heightEl) heightEl.value = String(Math.max(1, Math.round(ih * k)))
+          // Only where the rule actually calculated something. "Use media size"
+          // with mode None puts the media's own size in the boxes, and that is
+          // not the rule's to round — the backend does not round it either.
+          const out = (src === 'longest' || modeEl.value === 'factor')
+            ? snapDim : roundDim
+          if (widthEl)  widthEl.value  = String(out(iw * k))
+          if (heightEl) heightEl.value = String(out(ih * k))
           panel._dazSizeWarn?.()
+        }
+
+        // The size one media comes out at under the rule as it stands, or null
+        // when the rule leaves it alone. Mirrors _dim_plan and _apply_dim_rule in
+        // the backend against the media's own size, which is how a marked slot is
+        // resized there — so what the preview box shows is the size the node will
+        // actually produce for that slot, not the take's output size.
+        function resizedSize(w, h) {
+          if (!w || !h) return null
+          let mode = modeEl.value
+          // "Use media size" narrows the rule the same way the backend does, and
+          // with nothing to measure it drops the rule altogether.
+          if (useEl.checked &&
+              (!refMedia() || !DIM_USE_IMAGE_MODES.includes(mode))) mode = 'none'
+          if (mode === 'factor') {
+            const f = parseFloat(valEl.value)
+            if (!isFinite(f) || f <= 0) return null
+            return { w: snapDim(w * f), h: snapDim(h * f) }
+          }
+          if (mode === 'longest') {
+            // The backend reads the integer part of the value.
+            const target = Math.trunc(parseFloat(valEl.value))
+            if (!isFinite(target) || target <= 0) return null
+            const f = target / Math.max(w, h)
+            return { w: snapDim(w * f), h: snapDim(h * f) }
+          }
+          if (mode === 'fit') {
+            // Every marked media is cover-scaled and cropped to the same box, so
+            // for this one mode the answer is the box itself — the size as typed,
+            // which the divisor does not round because the rule did not compute it.
+            const bw = parseInt(widthEl?.value, 10)
+            const bh = parseInt(heightEl?.value, 10)
+            return (bw > 0 && bh > 0) ? { w: bw, h: bh } : null
+          }
+          return null
         }
 
         function syncModeNote() {
@@ -1182,10 +1298,23 @@ export function buildWorkflowConfigExtension(cfg) {
             ? "Derived from the reference media's longest dimension"
             : 'Taken from the reference media')
           applyImageSize()
+          // applyImageSize refreshes the warning, but only when the size is
+          // derived; the divisor it is measured against can move either way.
+          panel._dazSizeWarn?.()
+          // The rule just moved, so the resized readings in the media box did
+          // too. Absent until that box has wired, which is after this one.
+          panel._dazSyncResized?.()
         }
 
         useEl.addEventListener('change', syncAll)
         modeEl.addEventListener('change', syncAll)
+        divsEl?.addEventListener('click', e => {
+          const b = e.target.closest('.daz-dim-div'); if (!b) return
+          const d = parseInt(b.dataset.div, 10)
+          div = (d === div) ? 0 : d
+          renderDivBtns()
+          syncAll()
+        })
         valEl.addEventListener('input', applyImageSize)
         refEl?.addEventListener('change', () => { refId = refEl.value; syncAll() })
         imgSel?.addEventListener('change', syncAll)
@@ -1208,9 +1337,16 @@ export function buildWorkflowConfigExtension(cfg) {
             typed.width   = ''
             typed.height  = ''
             typed.saved   = false
+            div           = DIM_DEF_DIV
+            renderDivBtns()
             syncAll()
           },
           refresh: syncAll,
+          resizedSize,
+          // Written from outside by a preset, which sets the other controls
+          // itself but cannot reach this one — it is held, not read off the DOM.
+          // The refresh the preset does afterwards is what re-applies the rule.
+          setDiv: d => { div = DIM_DIVISORS.includes(d) ? d : DIM_DEF_DIV; renderDivBtns() },
           // The width/height were just written from outside — by a preset — so
           // whatever size was remembered before is stale. Dropping it stops the
           // next refresh restoring it over what was just written; if the panel
@@ -1506,16 +1642,38 @@ export function buildWorkflowConfigExtension(cfg) {
           })
         }
 
-        // A still carries its size on the element once it has decoded, so unlike
-        // a video's this needs no probe — only the 'load' that says it is there.
-        function syncImageSize() {
-          const el = q(active.images === 1
-            ? '#daz-img-preview-el' : `#daz-em-images-${active.images}-img`)
-          const sz = q('#daz-em-images-size')
-          if (sz) {
-            sz.textContent = el?.naturalWidth
-              ? `${el.naturalWidth} x ${el.naturalHeight}` : '\u2014'
+        // One slot's own frame size. A still carries it on the element once it
+        // has decoded, so unlike a video's it needs no probe — only the 'load'
+        // that says it is there; a clip's came off the probe and is in the store.
+        // Either is [0, 0] until it arrives.
+        function slotSize(kind, n) {
+          if (kind === 'videos') {
+            const st = store.videos[n]
+            return [st.width, st.height]
           }
+          const el = q(n === 1 ? '#daz-img-preview-el' : `#daz-em-images-${n}-img`)
+          return [el?.naturalWidth || 0, el?.naturalHeight || 0]
+        }
+
+        function syncImageSize() {
+          const [w, h] = slotSize('images', active.images)
+          const sz = q('#daz-em-images-size')
+          if (sz) sz.textContent = w ? `${w} x ${h}` : '\u2014'
+        }
+
+        // The size the slot on screen will come out at, under the pane's
+        // dimensions rule, below its own. Only for a slot that asked to be
+        // resized and only once the rule does something to it — an unmarked slot
+        // is passed through whatever the rule says, and so is every slot while
+        // the scale mode is None.
+        function syncResized(kind) {
+          const el = q(`#daz-em-${kind}-resized`)
+          if (!el) return
+          const [w, h] = slotSize(kind, active[kind])
+          const out = store[kind][active[kind]].use_for_dim
+            ? dimsCtl.resizedSize(w, h) : null
+          el.textContent   = out ? `${out.w} x ${out.h}` : ''
+          el.style.display = out ? '' : 'none'
         }
 
         // Everything in a pane that depends on which slot is showing: the slot
@@ -1534,6 +1692,7 @@ export function buildWorkflowConfigExtension(cfg) {
             dim.style.cursor = has ? 'pointer' : 'not-allowed'
             dim.parentElement.style.opacity = has ? '' : '0.45'
           }
+          syncResized(kind)
           const nm = q(`#daz-em-${kind}-name`)
           if (nm) {
             nm.value    = store[kind][n].name
@@ -1765,6 +1924,7 @@ export function buildWorkflowConfigExtension(cfg) {
         ;['images', 'videos'].forEach(kind => {
           q(`#daz-em-${kind}-dim`)?.addEventListener('change', e => {
             store[kind][active[kind]].use_for_dim = e.target.checked
+            syncResized(kind)
           })
         })
 
@@ -1889,14 +2049,8 @@ export function buildWorkflowConfigExtension(cfg) {
             for (let n = 1; n <= EM_SLOTS[kind]; n++) {
               const file = selOf(kind, n)?.value || ''
               if (!file) continue
-              const st = store[kind][n]
-              let w = 0, h = 0
-              if (kind === 'videos') {
-                w = st.width; h = st.height
-              } else {
-                const el = n === 1 ? q('#daz-img-preview-el') : q(`#daz-em-images-${n}-img`)
-                w = el?.naturalWidth || 0; h = el?.naturalHeight || 0
-              }
+              const st     = store[kind][n]
+              const [w, h] = slotSize(kind, n)
               // Straight off the store, which the name box writes on every
               // keystroke, so the label follows what is being typed.
               out.push({ id: st.id, kind, slot: n, file, name: st.name, w, h })
@@ -1904,6 +2058,11 @@ export function buildWorkflowConfigExtension(cfg) {
           }
           return out
         }
+
+        // The dimensions box changes the rule without touching a slot, so it
+        // reaches the readings through here. Both panes: the one off screen is
+        // painted too, so switching tabs shows what is already right.
+        panel._dazSyncResized = () => { syncResized('images'); syncResized('videos') }
 
         // ── first paint ─────────────────────────────────────────────────────
         showTab('images')
@@ -2464,6 +2623,9 @@ export function buildWorkflowConfigExtension(cfg) {
                 ${emImageLayers()}
                 <span id="daz-em-images-size" data-em-ctl="1"
                   style="${emCtlS};right:6px;top:6px;${emReadS}">\u2014</span>
+                <span id="daz-em-images-resized" data-em-ctl="1"
+                  title="The size this slot is resized to by the take's dimensions rule"
+                  style="${emCtlS};right:6px;top:24px;${emReadS};${emResizeS}"></span>
                 <label data-em-ctl="1" title="Resize this slot with the take's dimensions rule"
                        style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
                        gap:5px;color:#ccc;font-size:11px;cursor:pointer">
@@ -2492,6 +2654,9 @@ export function buildWorkflowConfigExtension(cfg) {
                   style="${emCtlS};right:6px;top:6px;${emReadS}">\u2014</span>
                 <span id="daz-em-videos-size" data-em-ctl="1"
                   style="${emCtlS};right:6px;top:24px;${emReadS}">\u2014</span>
+                <span id="daz-em-videos-resized" data-em-ctl="1"
+                  title="The size this slot is resized to by the take's dimensions rule"
+                  style="${emCtlS};right:6px;top:42px;${emReadS};${emResizeS}"></span>
                 <label data-em-ctl="1" title="Resize this slot with the take's dimensions rule"
                        style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
                        gap:5px;color:#ccc;font-size:11px;cursor:pointer">
@@ -3250,6 +3415,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (useEl)  useEl.checked = d.use_image
             if (modeEl) modeEl.value  = d.mode
             if (valEl)  valEl.value   = String(d.value)
+            panel._dazDimsCtl?.setDiv(d.div)
             continue
           }
           if (field === 'loras') {

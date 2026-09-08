@@ -39,7 +39,8 @@
              "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
               "mode":"factor",             // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
-              "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "value":1.0,                 // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "div":32                     // a size the rule CALCULATES is rounded down to a multiple of this - 0, 8, 16, 32 or 64, and 0 (or null) turns it off. Only "factor" and "longest" calculate anything, so "fit" and "none" are unaffected: the width/height you typed are used as typed. Missing means 32. Never rounds below one whole step
              }
         },
         "extended_media":{                 // extra media the take carries, beyond the single image_path/audio_path slots above
@@ -123,7 +124,8 @@
              "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
               "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
-              "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "value":1.0,                 // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "div":32                     // a size the rule CALCULATES is rounded down to a multiple of this - 0, 8, 16, 32 or 64, and 0 (or null) turns it off. Only "factor" and "longest" calculate anything, so "fit" and "none" are unaffected: the width/height you typed are used as typed. Missing means 32. Never rounds below one whole step
              }
         },
         "extended_media":{                 // extra media the take carries, beyond the single image_path/audio_path slots above
@@ -274,7 +276,8 @@
              "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
               "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
-              "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "value":1.0,                 // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "div":32                     // a size the rule CALCULATES is rounded down to a multiple of this - 0, 8, 16, 32 or 64, and 0 (or null) turns it off. Only "factor" and "longest" calculate anything, so "fit" and "none" are unaffected: the width/height you typed are used as typed. Missing means 32. Never rounds below one whole step
              }
         },
         "extended_media":{                 // extra media the take carries, beyond the single image_path/audio_path slots above
@@ -358,7 +361,8 @@
              "dim_reference":"a91c4e07b2f5",  // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
               "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
-              "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "value":1.0,                 // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "div":32                     // a size the rule CALCULATES is rounded down to a multiple of this - 0, 8, 16, 32 or 64, and 0 (or null) turns it off. Only "factor" and "longest" calculate anything, so "fit" and "none" are unaffected: the width/height you typed are used as typed. Missing means 32. Never rounds below one whole step
              }
         },
         "extended_media":{                 // extra media the take carries, beyond the single image_path/audio_path slots above
