@@ -13,6 +13,7 @@ from .workflow_config_image import WorkflowConfigImage
 from .workflow_config_minimaxh3 import WorkflowConfigMiniMaxH3
 from .prompt_stack_manager import PromptStackManager
 from .prompt_stack_splitter import PromptStackSplitter
+from .media_splitter import MediaSplitter
 from .sound_mixer import SoundMixer
 
 NODE_CLASS_MAPPINGS = {
@@ -28,6 +29,7 @@ NODE_CLASS_MAPPINGS = {
     "WorkflowConfigMiniMaxH3": WorkflowConfigMiniMaxH3,
     "PromptStackManager": PromptStackManager,
     "PromptStackSplitter": PromptStackSplitter,
+    "daz_media_splitter": MediaSplitter,
     "daz_sound_mixer": SoundMixer,
 }
 
@@ -44,5 +46,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "WorkflowConfigMiniMaxH3": "Workflow Config MiniMaxH3",
     "PromptStackManager": "Prompt Stack Manager",
     "PromptStackSplitter": "Prompt Stack Splitter",
+    "daz_media_splitter": "Media Splitter",
     "daz_sound_mixer": "Sound Mixer",
 }

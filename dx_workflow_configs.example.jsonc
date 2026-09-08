@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 11,                  // internal schema version; do not change
+    "schema_version": 13,                  // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -30,16 +30,32 @@
         "latent_upscale": { "name": "" },  // NOT USED by WAN node (LTX2.3/LTX2.5 only)
         "shift_high": { "value": 5.0 },       // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
         "shift_low": { "value": 5.0 },        // low-pass unet timestep
-        "image_path": { "path": "C:/path/to/input_image.png" }, // absolute path to input image (for I2V)
-        "audio_path": { "path": "" },      // absolute path to input reference audio file
+        "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 720 },        // output height in pixels
         "dimensions":{
-             "use_image":false,            // "false" uses the width, height and scale attributes. "true" use the image's width and height
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" uses the reference media's width and height
+             "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
-              "mode":"factor",             // "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
-              "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "mode":"factor",             // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
+              "value":1.0,                 // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "div":32                     // a size the rule CALCULATES is rounded down to a multiple of this - 0, 8, 16, 32 or 64, and 0 (or null) turns it off. Only "factor" and "longest" calculate anything, so "fit" and "none" are unaffected: the width/height you typed are used as typed. Missing means 32. Never rounds below one whole step
              }
+        },
+        "extended_media":{                 // extra media the take carries, beyond the single image_path/audio_path slots above
+          // "order" is a slot number, not a sort key: the nodes load only orders 1-4 / 1-2 / 1. In the editor
+          // these are image slots 2-5, video slots 1-2 and audio slot 2 - its first image and audio slot is the
+          // image_path / audio_path above. Holes are allowed, a slot keeps its name when a
+          // neighbour is cleared, and rows outside that range (or a second row at an order already taken) stay
+          // in the file untouched - they are simply not loaded. "name" is the label the Media Splitter shows.
+          // "use_for_dim" means the take's scale rule resizes this one, each slot against its own size - see
+          // "dimensions" above. It is the same flag image_path carries, and any number of images and videos
+          // may set it. "id" is what "dimensions"."dim_reference" names to pick the one the rule measures;
+          // the editor mints it when a slot gains a file and drops it when the slot is cleared.
+          "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
+          "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
+          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 30 },          // number of denoising steps
         "split_step": { "value": 15 },     // step at which high/low-pass unet split occurs
@@ -99,16 +115,32 @@
         "clip_type": "stable_diffusion",   // NOT USED by LTX node
         "shift_high": { "value": 5.0 },       // NOT USED by LTX node
         "shift_low": { "value": 5.0 },        // NOT USED by LTX node
-        "image_path": { "path": "" },      // input image path (empty for T2V)
-        "audio_path": { "path": "" },      // absolute path to input reference audio file
+        "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "", "use_for_dim": false }, // input image path (empty for T2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 768 },         // output width in pixels
         "height": { "value": 512 },        // output height in pixels
         "dimensions":{
-             "use_image":false,            // "false" uses the width, height and scale attributes. "true" use the image's width and height
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" uses the reference media's width and height
+             "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
              "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
-              "mode":"none",               // "none" leaves the image and the width/height alone. See the WAN2.2 config above for the other modes
-              "value":1.0                  // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
+              "value":1.0,                 // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "div":32                     // a size the rule CALCULATES is rounded down to a multiple of this - 0, 8, 16, 32 or 64, and 0 (or null) turns it off. Only "factor" and "longest" calculate anything, so "fit" and "none" are unaffected: the width/height you typed are used as typed. Missing means 32. Never rounds below one whole step
              }
+        },
+        "extended_media":{                 // extra media the take carries, beyond the single image_path/audio_path slots above
+          // "order" is a slot number, not a sort key: the nodes load only orders 1-4 / 1-2 / 1. In the editor
+          // these are image slots 2-5, video slots 1-2 and audio slot 2 - its first image and audio slot is the
+          // image_path / audio_path above. Holes are allowed, a slot keeps its name when a
+          // neighbour is cleared, and rows outside that range (or a second row at an order already taken) stay
+          // in the file untouched - they are simply not loaded. "name" is the label the Media Splitter shows.
+          // "use_for_dim" means the take's scale rule resizes this one, each slot against its own size - see
+          // "dimensions" above. It is the same flag image_path carries, and any number of images and videos
+          // may set it. "id" is what "dimensions"."dim_reference" names to pick the one the rule measures;
+          // the editor mints it when a slot gains a file and drops it when the slot is cleared.
+          "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
+          "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
+          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
         },
         "steps": { "value": 8 },           // number of denoising steps
         "split_step": { "value": 0 },      // NOT USED by LTX node
@@ -168,10 +200,15 @@
         "latent_upscale": { "name": "" },  // NOT USED by Image node (LTX2.3/LTX2.5 only)
         "shift_high": { "value": 0.0 },       // NOT USED by Image node
         "shift_low": { "value": 0.0 },        // NOT USED by Image node
-        "image_path": { "path": "" },      // input image path (for img2img workflows)
-        "audio_path": { "path": "" },      // NOT USED by Image node
+        "image_path": { "name": "", "path": "" },  // input image path (for img2img workflows)
+        "audio_path": { "name": "", "path": "" },  // NOT USED by Image node
         "width": { "value": 1024 },        // output width in pixels
         "height": { "value": 1024 },       // output height in pixels
+        "extended_media":{                 // present on every class so the block has one shape, but NOT USED by the Image node
+          "images":[],                     // NOT USED by Image node (it reads no extended media)
+          "videos":[],                     // NOT USED by Image node
+          "audios":[]                      // NOT USED by Image node
+        },
         "steps": { "value": 20 },          // number of denoising steps
         "split_step": { "value": 0 },      // NOT USED by Image node
         "seed": { "value": 0, "randomize": false }, // seed value; randomize: re-rolls each run
@@ -197,6 +234,176 @@
         "flags": {
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
           "flag_2": { "label": "flag 2", "value": false },  // custom boolean toggle 2
+          "flag_3": { "label": "flag 3", "value": false }  // custom boolean toggle 3
+        },
+        "custom": {
+          "param_1": { "label": "param 1", "value": "" }, // custom string parameter 1; label is the display name
+          "param_2": { "label": "param 2", "value": "" }  // custom string parameter 2
+        }
+      }
+    ]
+  },
+  "My LTX2.5 Config": {                   // config name — shown in the node dropdown
+    "class": "ltx2.5",                    // node class this config targets
+    "created_at": "2026-06-02T00:00:00",   // entry creation timestamp
+    "updated_at": "2026-06-02T00:00:00",   // entry last-modified timestamp
+    "sets": [                              // array of versioned parameter sets
+      {
+        "version": "1",                    // set version number (auto-incremented on save)
+        "label": "My First Version",       // optional user-friendly label for this set version
+        "created_at": "2026-06-02T00:00:00", // set creation timestamp
+        "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
+        "type": "I2V",                     // generation mode (e.g. I2V, T2V, MULTI); used by UI for filtering
+        "group": { "name": "" },           // optional UI grouping label
+        "note": { "value": "" },           // free-text note for this set
+        "checkpoint": { "name": "" },      // NOT USED by LTX2.5 node (it has no checkpoint loader)
+        "unet_high": { "name": "ltx2.5_transformer_fp8.safetensors", "gguf": false }, // transformer (diffusion) model
+        "unet_low": { "name": "", "gguf": false },        // NOT USED by LTX2.5 node
+        "vae": { "name": "ltx2.5_video_vae.safetensors" },       // video VAE, from models/vae
+        "audio_vae": { "name": "ltx2.5_audio_vae.safetensors" }, // audio VAE, also from models/vae
+        "clip": { "name": "gemma4-12b-with-proj.safetensors" },  // single text encoder (LTXV clip type); already carries the projection weights
+        "clip_2": { "name": "" },          // NOT USED by LTX2.5 node (that is the LTX2.3 second encoder slot)
+        "latent_upscale": { "name": "ltxv-latent-upsampler.safetensors" }, // latent upscale model, from models/latent_upscale_models
+        "clip_type": "stable_diffusion",   // NOT USED by LTX2.5 node
+        "shift_high": { "value": 0.0 },       // NOT USED by LTX2.5 node
+        "shift_low": { "value": 0.0 },        // NOT USED by LTX2.5 node
+        "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "width": { "value": 1280 },        // output width in pixels
+        "height": { "value": 704 },        // output height in pixels
+        "dimensions":{
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" uses the reference media's width and height
+             "dim_reference":"",           // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
+             "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
+              "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
+              "value":1.0,                 // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "div":32                     // a size the rule CALCULATES is rounded down to a multiple of this - 0, 8, 16, 32 or 64, and 0 (or null) turns it off. Only "factor" and "longest" calculate anything, so "fit" and "none" are unaffected: the width/height you typed are used as typed. Missing means 32. Never rounds below one whole step
+             }
+        },
+        "extended_media":{                 // extra media the take carries, beyond the single image_path/audio_path slots above
+          // "order" is a slot number, not a sort key: the nodes load only orders 1-4 / 1-2 / 1. In the editor
+          // these are image slots 2-5, video slots 1-2 and audio slot 2 - its first image and audio slot is the
+          // image_path / audio_path above. Holes are allowed, a slot keeps its name when a
+          // neighbour is cleared, and rows outside that range (or a second row at an order already taken) stay
+          // in the file untouched - they are simply not loaded. "name" is the label the Media Splitter shows.
+          // "use_for_dim" means the take's scale rule resizes this one, each slot against its own size - see
+          // "dimensions" above. It is the same flag image_path carries, and any number of images and videos
+          // may set it. "id" is what "dimensions"."dim_reference" names to pick the one the rule measures;
+          // the editor mints it when a slot gains a file and drops it when the slot is cleared.
+          "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
+          "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
+          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
+        },
+        "steps": { "value": 20 },          // number of denoising steps
+        "split_step": { "value": 0 },      // NOT USED by LTX2.5 node
+        "seed": { "value": 0, "randomize": false }, // seed value; randomize: re-rolls each run
+        "cfg_high": { "value": 3.0 },      // guidance scale (single CFG — labeled "CFG" in the UI)
+        "cfg_low": { "value": 0.0 },       // NOT USED by LTX2.5 node
+        "total_frames": { "value": 121 },  // total number of output video frames (duration x fps + 1)
+        "fps": { "value": 24.0 },          // output video frame rate
+        "master_prompt": { "text": "", "position": "before" },   // base prompt; combined with positive when type is not "smart"
+        "positive_prompt": { "text": "A cinematic shot of ...", "type": "smart" }, // type "smart" forwards only this text to the relay node
+        "negative_prompt": { "text": "" }, // negative prompt text
+        "trail_prompt":{ "text": "" },
+        "loras": {
+          "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1 (exposed as "distillation_lora" on the node)
+          "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
+          "lora_3": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 3
+          "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
+          "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5
+          "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
+          "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
+          "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
+        },
+        "filename": { "file": "" },        // output filename (without extension)
+        "flags": {
+          "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
+          "flag_2": { "label": "flag 2", "value": false }, // custom boolean toggle 2
+          "flag_3": { "label": "flag 3", "value": false }  // custom boolean toggle 3
+        },
+        "custom": {
+          "param_1": { "label": "param 1", "value": "" }, // custom string parameter 1; label is the display name
+          "param_2": { "label": "param 2", "value": "" }  // custom string parameter 2
+        }
+      }
+    ]
+  },
+  "My MiniMax H3 Config": {               // config name — shown in the node dropdown
+    "class": "m_h3",                      // node class this config targets
+    "created_at": "2026-06-02T00:00:00",   // entry creation timestamp
+    "updated_at": "2026-06-02T00:00:00",   // entry last-modified timestamp
+    "sets": [                              // array of versioned parameter sets
+      {
+        "version": "1",                    // set version number (auto-incremented on save)
+        "label": "My First Version",       // optional user-friendly label for this set version
+        "created_at": "2026-06-02T00:00:00", // set creation timestamp
+        "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
+        "type": "I2V",                     // generation mode (e.g. I2V, T2V, MULTI); also picks the master prompt default template
+        "group": { "name": "" },           // optional UI grouping label
+        "note": { "value": "" },           // free-text note for this set
+        "checkpoint": { "name": "" },      // NOT USED by MiniMax H3 node
+        "unet_high": { "name": "minimax_h3_fp8.safetensors", "gguf": false }, // unet (diffusion) model — single pass, no high/low split
+        "unet_low": { "name": "", "gguf": false },        // NOT USED by MiniMax H3 node
+        "vae": { "name": "minimax_h3_video_vae.safetensors" },       // video VAE, from models/vae
+        "audio_vae": { "name": "minimax_h3_audio_vae.safetensors" }, // audio VAE, also from models/vae
+        "clip": { "name": "minimax_h3_text_encoder.safetensors" },   // text encoder (MiniMax clip type)
+        "clip_2": { "name": "" },          // NOT USED by MiniMax H3 node
+        "latent_upscale": { "name": "" },  // NOT USED by MiniMax H3 node (LTX2.3/LTX2.5 only)
+        "clip_type": "stable_diffusion",   // NOT USED by MiniMax H3 node
+        "shift_high": { "value": 0.0 },       // flow shift for video, the "shift_video" of ComfyUI's ModelSamplingMiniMaxH3 (12.0 there). Patched into "unet_stack"; 0.0 on both means no patch
+        "shift_low": { "value": 0.0 },        // flow shift for audio, the "shift_audio" of the same node (3.0 there). Set with "shift_high" or not at all
+        "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": true }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "width": { "value": 1280 },        // output width in pixels
+        "height": { "value": 720 },        // output height in pixels
+        "dimensions":{
+             "use_image":false,            // "false" uses the width, height and scale attributes. "true" uses the reference media's width and height
+             "dim_reference":"a91c4e07b2f5",  // id of the image or video the size is measured on, from image_path or extended_media above. Empty means none is picked, and then "true" above has nothing to read
+             "scale":{                     // the "use_image" is false, the scale attributes are used to scale the image given the width and height input
+              "mode":"none",               // "none" does not change the image. "factor" scales the image given the "value" attribute (1.0 keeps teh same, 0.5 halfs the image size, etc). "longest" scales the image so the longest dimension of the image fits an input integer value. "fit" scales teh image to fit the width/height box, cropping at the center
+              "value":1.0,                 // if mode is "factor, the value as a flot is considered. If "longest", integer part of value is considered. IF "fit, value is ignored
+              "div":32                     // a size the rule CALCULATES is rounded down to a multiple of this - 0, 8, 16, 32 or 64, and 0 (or null) turns it off. Only "factor" and "longest" calculate anything, so "fit" and "none" are unaffected: the width/height you typed are used as typed. Missing means 32. Never rounds below one whole step
+             }
+        },
+        "extended_media":{                 // extra media the take carries, beyond the single image_path/audio_path slots above
+          // "order" is a slot number, not a sort key: the nodes load only orders 1-4 / 1-2 / 1. In the editor
+          // these are image slots 2-5, video slots 1-2 and audio slot 2 - its first image and audio slot is the
+          // image_path / audio_path above. Holes are allowed, a slot keeps its name when a
+          // neighbour is cleared, and rows outside that range (or a second row at an order already taken) stay
+          // in the file untouched - they are simply not loaded. "name" is the label the Media Splitter shows.
+          // "use_for_dim" means the take's scale rule resizes this one, each slot against its own size - see
+          // "dimensions" above. It is the same flag image_path carries, and any number of images and videos
+          // may set it. "id" is what "dimensions"."dim_reference" names to pick the one the rule measures;
+          // the editor mints it when a slot gains a file and drops it when the slot is cleared.
+          "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
+          "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
+          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
+        },
+        "steps": { "value": 30 },          // number of denoising steps
+        "split_step": { "value": 0 },      // NOT USED by MiniMax H3 node
+        "seed": { "value": 0, "randomize": false }, // seed value; randomize: re-rolls each run
+        "cfg_high": { "value": 6.0 },      // guidance scale (single CFG — labeled "CFG" in the UI)
+        "cfg_low": { "value": 0.0 },       // NOT USED by MiniMax H3 node
+        "total_frames": { "value": 124 },  // total frames; H3 renders best where (frames - 5) % 17 == 0 — 124 is 5s at 24 fps
+        "fps": { "value": 24.0 },          // output video frame rate
+        "master_prompt": { "text": "", "position": "before" },   // base prompt; combined with positive when type is not "smart"
+        "positive_prompt": { "text": "A cinematic shot of ...", "type": "smart" }, // type "smart" forwards only this text to the relay node
+        "negative_prompt": { "text": "" }, // negative prompt text
+        "trail_prompt":{ "text": "" },
+        "loras": {
+          "lora_1": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 1: filename, weight multiplier, active toggle
+          "lora_2": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 2
+          "lora_3": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 3
+          "lora_4": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 4
+          "lora_5": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 5
+          "lora_6": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 6
+          "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
+          "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
+        },
+        "filename": { "file": "" },        // output filename (without extension)
+        "flags": {
+          "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
+          "flag_2": { "label": "flag 2", "value": false }, // custom boolean toggle 2
           "flag_3": { "label": "flag 3", "value": false }  // custom boolean toggle 3
         },
         "custom": {

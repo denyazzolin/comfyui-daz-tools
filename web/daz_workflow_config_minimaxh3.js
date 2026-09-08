@@ -107,6 +107,7 @@ function renderDetailHtml(data, h, extra = {}) {
     ${row('Video VAE',   disp(fName(data.vae)))}
     ${row('Audio VAE',   disp(fName(data.audio_vae)))}
     ${row('CLIP',        disp(fName(data.clip)))}
+    ${rowPair('Shift Video', data.shift_high != null ? fValue(data.shift_high) : 0, 'Shift Audio', data.shift_low != null ? fValue(data.shift_low) : 0)}
     <tr>
       <td style="color:#999;padding:3px 10px;white-space:nowrap;vertical-align:top">Image</td>
       <td colspan="3" style="color:#ddd;padding:3px 10px">${imageCell}</td>
@@ -230,7 +231,7 @@ function updateOutputLabels(node, data, h) {
 // ── MiniMax H3 — edit panel: Models box ──────────────────────────────────────
 
 function buildModelsHtml(folderMap, data, h) {
-  const { fName, selOpt, unetRow, fs, lbl, rw, cb } = h
+  const { fName, fValue, selOpt, unetRow, fs, ns, lbl, rw, cb } = h
   const unetAllFiles = [...(folderMap.diffusion_models || []), ...(folderMap.unet_gguf || [])].sort((a, b) => a.localeCompare(b))
   const vaeFiles     = folderMap.vae              || []
   const clipFiles    = folderMap.text_encoders    || []
@@ -245,6 +246,13 @@ function buildModelsHtml(folderMap, data, h) {
     <div style="${rw}"><label style="${lbl}">Clip</label>
       <select id="daz-clip" style="${fs}">${selOpt(clipFiles, fName(data.clip))}</select>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px"
+         title="Flow shifts, as ComfyUI's ModelSamplingMiniMaxH3 sets them (12.0 video, 3.0 audio there). Both must be set: leave both at 0 to patch nothing.">
+      <div><label style="${lbl}">Shift Video</label>
+        <input id="daz-shift-high" type="number" step="0.01" min="0" value="${data.shift_high != null ? fValue(data.shift_high) : 0}" style="width:100%;${ns}"></div>
+      <div><label style="${lbl}">Shift Audio</label>
+        <input id="daz-shift-low" type="number" step="0.01" min="0" value="${data.shift_low != null ? fValue(data.shift_low) : 0}" style="width:100%;${ns}"></div>
+    </div>
     <div style="display:flex;justify-content:flex-end">
       <button id="daz-models-clear" style="${cb}">clear</button>
     </div>`
@@ -256,7 +264,7 @@ function buildDimsHtml(data, h) {
   const { fValue, fRandomize, durationRow, dimensionsRows, sizeRow, ns, lbl, cb } = h
   return `
     ${dimensionsRows(data)}
-    ${sizeRow(data)}
+    ${sizeRow(data, true)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
       <div><label style="${lbl}">Steps</label>
         <input id="daz-steps" type="number" value="${fValue(data.steps) || 0}" style="width:100%;${ns}"></div>
@@ -307,6 +315,8 @@ function buildPayload(wrap) {
     vae:             { name:  wrap.querySelector('#daz-vae')?.value              ?? '' },
     audio_vae:       { name:  wrap.querySelector('#daz-audio-vae')?.value        ?? '' },
     clip:            { name:  wrap.querySelector('#daz-clip')?.value             ?? '' },
+    shift_high:      { value: parseFloat(wrap.querySelector('#daz-shift-high')?.value ?? '0') || 0.0 },
+    shift_low:       { value: parseFloat(wrap.querySelector('#daz-shift-low')?.value  ?? '0') || 0.0 },
     image_path:      { path:  wrap.querySelector('#daz-image-path')?.value       ?? '' },
     audio_path:      { path:  wrap.querySelector('#daz-audio-path')?.value       ?? '' },
     loras,
@@ -320,10 +330,12 @@ function buildPayload(wrap) {
     trail_prompt:    { text:  wrap.querySelector('#daz-trail-prompt')?.value    ?? '' },
     filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '' },
     dimensions: {
-      use_image: wrap.querySelector('#daz-dim-use-image')?.checked ?? false,
+      use_image:     wrap.querySelector('#daz-dim-use-image')?.checked ?? false,
+      dim_reference: wrap.querySelector('#daz-dim-reference')?.value ?? '',
       scale: {
         mode:  wrap.querySelector('#daz-dim-scale-mode')?.value ?? 'none',
         value: parseFloat(wrap.querySelector('#daz-dim-scale-value')?.value ?? '1') || 1.0,
+        div:   parseInt(wrap.querySelector('#daz-dim-divs')?.dataset.div ?? '32', 10) || 0,
       },
     },
     width:           { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
@@ -396,7 +408,8 @@ app.registerExtension(buildWorkflowConfigExtension({
   cfgInputIds:    ['#daz-cfg'],
   dimsClearIds:   ['#daz-width','#daz-height','#daz-steps','#daz-seed',
                    '#daz-cfg','#daz-duration','#daz-total-frames','#daz-fps'],
-  modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip'],
+  modelsClearIds: ['#daz-unet-high','#daz-unet-high-gguf','#daz-vae','#daz-audio-vae','#daz-clip',
+                   '#daz-shift-high','#daz-shift-low'],
   unetGgufFields: [
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],

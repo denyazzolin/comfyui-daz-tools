@@ -274,6 +274,9 @@ app.registerExtension(buildWorkflowConfigExtension({
   hideType:      true,
   hideAudioPath: true,
   hideLorasBox:  true,
+  // No extra media: the Image node has one reference image and nothing else,
+  // so its media box stays the plain single picker it has always been.
+  hideExtendedMedia: true,
 
   renderDetailHtml,
   updateOutputLabels,

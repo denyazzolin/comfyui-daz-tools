@@ -139,6 +139,9 @@ class WorkflowConfigImage:
                 active_set = _get_active_set(configs[name], take)
                 if _get_seed_randomize(active_set.get("seed", {})):
                     return float("NaN")
+                # A take can be re-saved in place under the same name, so the
+                # scene label alone would keep the previous load cached.
+                return f"{scene}|{active_set.get('version', '')}|{active_set.get('updated_at', '')}"
         except Exception:
             pass
         return scene

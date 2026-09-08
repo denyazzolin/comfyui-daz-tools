@@ -4,7 +4,7 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions, resolve_extended_media,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -182,6 +182,7 @@ class WorkflowConfigWan22:
         "BOOLEAN",
         "BOOLEAN", "BOOLEAN", "BOOLEAN",
         "STRING", "STRING",
+        "DX_EXTENDED_MEDIA",
     )
     RETURN_NAMES = (
         "unet_high", "unet_low",
@@ -204,6 +205,7 @@ class WorkflowConfigWan22:
         "is_t2v",
         "flag_1", "flag_2", "flag_3",
         "custom_1", "custom_2",
+        "extended_media",
     )
     FUNCTION    = "load_config"
     CATEGORY    = "utils"
@@ -234,6 +236,9 @@ class WorkflowConfigWan22:
                 active_set = _get_active_set(configs[name], take)
                 if _get_seed_randomize(active_set.get("seed", {})):
                     return float("NaN")
+                # A take can be re-saved in place under the same name, so the
+                # scene label alone would keep the previous load cached.
+                return f"{scene}|{active_set.get('version', '')}|{active_set.get('updated_at', '')}"
         except Exception:
             pass
         return scene
@@ -319,6 +324,9 @@ class WorkflowConfigWan22:
 
         ref_image, out_width, out_height = resolve_dimensions(
             active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigWan22")
+        # Held rather than loaded inline in the tuple: extended_media carries
+        # this same audio as its slot 0, and it is loaded once for both.
+        ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
         return (
             unet_high,
@@ -326,7 +334,7 @@ class WorkflowConfigWan22:
             _load_vae( _get_name(active_set.get("vae"))),
             _load_clip(_get_name(active_set.get("clip"))),
             ref_image,
-            _load_audio(_get_path(active_set.get("audio_path"))),
+            ref_audio,
             out_width,
             out_height,
             _get_int(active_set.get("steps")),
@@ -355,4 +363,5 @@ class WorkflowConfigWan22:
             _get_flag_value(active_set.get("flags", {}).get("flag_3")),
             _get_custom_value(active_set.get("custom", {}).get("param_1")),
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
+            resolve_extended_media(active_set, "WorkflowConfigWan22", ref_image, ref_audio),
         )

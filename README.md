@@ -57,6 +57,8 @@ All destructive actions ask for confirmation first, and the popup stays open and
 
 **Back** closes the popup without loading anything, reconciling the node's dropdowns to whatever still exists on disk (in case something was deleted while the Manager was open).
 
+![Sample movie manager](content/sample_movie_mgr_v1.png)
+
 #### Filters
 
 Five possible filters at the top of the node let you narrow down which scenes/takes are shown:
@@ -80,8 +82,9 @@ All five nodes share a common set of configurable fields:
 | **Note** | Free-form note (up to 900 characters), shown on the node while in use |
 | **Image** | Reference input image — a filename inside ComfyUI's input folder, or an absolute path |
 | **Audio** | Reference input audio — a filename inside ComfyUI's input folder, or an absolute path. When set, the node outputs the decoded audio on the `audio` output for use downstream |
-| **Width / Height** | Output frame dimensions. On the four video nodes these are the *input* to **Use image / Scale** below, which decides what the `width` and `height` outputs actually report |
-| **Use image / Scale** | On WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 only — governs the reference image and the size outputs together. See [Dimensions and scaling](#dimensions-and-scaling) |
+| **Width / Height** | Output frame dimensions. On the four video nodes these are the *input* to the **Dimensions and More** rule below, which decides what the `width` and `height` outputs actually report |
+| **Use media size / Reference media / Scale** | On WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 only — governs the size outputs and which media get resized. See [Dimensions and scaling](#dimensions-and-scaling) |
+| **Extended media** | Extra named images, videos and audio the take carries alongside the single Image and Audio slots above. On the four video nodes only — see [Extended media](#extended-media) |
 | **Steps** | Number of denoising steps |
 | **Seed** | Sampler seed. Enable **Randomize** to pick a new seed automatically on every run |
 | **Duration (s)** | Editor-only helper on the WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 nodes: type a length in seconds — or hit one of the **5 / 7 / 10 / 15 / 20** quick buttons (no 20 on MiniMax H3) — and **Total frames** is recalculated for you. The quick button matching the current duration stays highlighted; type anything else and none of them are. Editing Total frames or FPS updates Duration back the other way. FPS must be set first; with FPS at zero the field reports *FPS is not defined* and leaves the frame count alone. How the two convert depends on the node — see [Duration and frame counts](#duration-and-frame-counts) |
@@ -104,7 +107,7 @@ All five nodes share a common set of configurable fields:
 | **CFG High / CFG Low** | CFG scale for each model pass |
 | **Shift High / Shift Low** | Timestep shift applied to the high and low model passes respectively (default 5.0). Equivalent to ComfyUI's **ModelSamplingSD3** node |
 
-LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be applied independently to each model pass. The node outputs a ready-to-use model stack for each pass (`unet_stack_high` and `unet_stack_low`) with all enabled LoRAs applied and the timestep shift already patched in — connect those directly to your sampler. **Shift is applied automatically inside these stacked outputs; it is a WAN2.2-only feature and is not present on the LTX2.3 node.**
+LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be applied independently to each model pass. The node outputs a ready-to-use model stack for each pass (`unet_stack_high` and `unet_stack_low`) with all enabled LoRAs applied and the timestep shift already patched in — connect those directly to your sampler. **Shift is applied automatically inside these stacked outputs.** WAN2.2 and MiniMax H3 are the two nodes that patch a shift into their stacked output — the LTX2.3, LTX2.5 and Image nodes have no shift field at all. What the two patch in differs: WAN2.2 sets a timestep shift per model pass, MiniMax H3 a video/audio flow shift pair on its single model.
 
 **LTX2.3** additionally stores:
 
@@ -153,6 +156,7 @@ You can fill in either the checkpoint path or the standalone model paths — all
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio |
 | **CLIP** | Text encoder (loaded with the MiniMax CLIP type) |
 | **CFG** | CFG scale |
+| **Shift Video / Shift Audio** | Flow shifts patched into `unet_stack` — the pair ComfyUI's **ModelSamplingMiniMaxH3** node takes as `shift_video` and `shift_audio` (12.0 and 3.0 there). Stored as `shift_high` / `shift_low`. The model derives the two together, so they are set together or not at all: leave both at 0 and the model comes out unpatched, which is what a take that has never touched them does. Set just one and neither is applied, with a note in the console |
 
 
 #### GGUF unet loading
@@ -161,7 +165,7 @@ The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Tran
 
 Requires the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) custom node package. Without it installed, `.gguf` files won't be listed, and running a scene configured for GGUF raises a clear error instead of silently falling back.
 
-LoRAs and the timestep-shift model patch (WAN2.2) are fully supported on GGUF-loaded unets, same as regular models.
+LoRAs and the shift model patch (WAN2.2 and MiniMax H3) are fully supported on GGUF-loaded unets, same as regular models.
 
 Presets carry the `gguf` flag along with the model name, so applying a preset with a GGUF model correctly sets the loader to use.
 
@@ -181,20 +185,67 @@ Each take can have an optional short **label** shown in the dropdown (e.g. `2 - 
 
 #### Dimensions and scaling
 
-The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `height` outputs and resize the reference image together, from **Use image** and the **Scale** box in the editor's *Dimensions and More* panel. The Image node has neither — its Width and Height are what you type. Resizing always uses **lanczos**.
+The four video nodes (WAN2.2, LTX2.3, LTX2.5, MiniMaxH3) size their `width` / `height` outputs and resize media together, from **Use media size**, **Reference media** and the **Scale** box in the editor's *Dimensions and More* panel. The Image node has none of them — its Width and Height are what you type. Resizing always uses **lanczos**.
 
-**Use image off** — the Width and Height you typed are the input to the scale mode:
+Two separate choices are involved:
 
-| Scale mode | Width / height outputs | Reference image |
+- **Reference media** picks the one image or video the rule *measures* — any filled slot in the *Reference Image and Audio* box, listed as *type - label / file (w x h)*.
+- **Resize**, in the corner of each image and video preview, marks the slots the rule *applies to*. Any number of them, each scaled against its own size — so a factor of 0.5 halves every marked slot, whatever size each one started at. An unmarked slot is handed to the node untouched. A marked slot shows the size it will come out at in yellow, under its own size, as soon as the rule has a size to give it.
+
+**Use media size off** — the Width and Height you typed are the input to the scale mode:
+
+| Scale mode | Width / height outputs | Each marked slot |
 |---|---|---|
 | **None** | As typed | Untouched |
 | **Factor** | Both multiplied by **Scale by** | Multiplied by the same factor, on its own aspect ratio |
-| **Longest dimension** | Follow the image's new size, or scale the typed size if there is no image | Its longest side becomes the value, aspect ratio kept |
-| **Fit** | As typed | Scaled to cover the box and cropped at the centre; an image smaller on *both* axes is stretched instead, so nothing needs padding |
+| **Longest dimension** | Follow the reference media's new size, or scale the typed size if there is no reference | Its longest side becomes the value, aspect ratio kept |
+| **Fit** | As typed | Scaled to cover the box and cropped at the centre; media smaller on *both* axes is stretched instead, so nothing needs padding |
 
-**Use image on** — the outputs are the image's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the image and the outputs together. Unavailable when no reference image is selected.
+Every size in that table that the rule *calculates* — the **Factor** and **Longest dimension** rows, both the outputs and the marked slots — is then rounded **down** to a multiple of the divisor picked beside the **sizing** button. **None** and **Fit** calculate nothing: their sizes are the ones you typed, and those are used exactly as typed. Each axis is rounded on its own, so a snapped size can sit slightly off the aspect ratio it came from, and nothing is ever rounded below one whole step.
 
-Whenever the size comes from the image the editor fills the boxes in and shows them read-only; what you typed comes back when it stops. The stored Width and Height are never rewritten by a run.
+**Use media size on** — the outputs are the reference media's own size and the typed values are ignored. Only **None** and **Factor** are offered, and a factor scales the outputs and the marked slots together. Unavailable until a reference is picked.
+
+Whenever the size comes from the reference the editor fills the boxes in and shows them read-only; what you typed comes back when it stops. The stored Width and Height are never rewritten by a run.
+
+#### Extended media
+
+Beyond the single **Image** and **Audio** slots, a take can carry named extra media for workflows that need more than one reference — REF2VA on MiniMax H3, MSR on LTX2.3 and LTX2.5, first-frame/last-frame and multi-frame setups anywhere. The four video nodes carry the whole lot on one `extended_media` output; the **Image** node has none.
+
+Each take holds three lists, stored under `extended_media` in the config file:
+
+| List | Slots | Per item |
+|---|---|---|
+| `images` | 4 | `name`, `order`, `id`, `image_path`, `use_for_dim` |
+| `videos` | 2 | `name`, `order`, `id`, `video_path`, `start_frame`, `cap_frames`, `use_for_dim` |
+| `audios` | 1 | `name`, `order`, `audio_path` |
+
+`order` is a **slot number, not a sort key**: the node loads slot 1 into output 1 whatever position the row sits in, so clearing one row never shifts another, and a list may have holes. Only the slots listed above are loaded — a row with an order outside the range, a second row claiming an order already taken, or a row with no path is skipped. Extra rows are never removed from the file on save, so a hand-edited config keeps whatever you put there; the caps are what the node reads, not what the file may hold. `name` is a label for your own use — the box beside each slot's **clear** writes it, and the Media Splitter's sockets are named by slot, not by it.
+
+The editor numbers the same media differently, because it counts the take's own **Image** and **Audio** as slot 1 of their kind. Its image slots **2–5** are `images` orders 1–4, its audio slot **2** is the one `audios` row, and its video slots **1–2** are the `videos` orders of the same number — video has no slot at the root to count first.
+
+Those two first slots are the take's own `image_path` and `audio_path`, and they take the same `name` an extended row does, beside their path:
+
+```jsonc
+"image_path": { "name": "hero still", "id": "a91c4e07b2f5", "path": "…", "use_for_dim": false },
+"audio_path": { "name": "vo take 3",  "path": "…" },
+```
+
+The name box on image slot 1 and audio slot 1 writes these, and a save carries through anything else you put in either object. They reach the node the way an extended row's name does.
+
+A video slot loads a window of the clip, not the whole thing:
+
+| Field | Meaning |
+|---|---|
+| `start_frame` | First frame to load, 1-based; `0` means the same as `1` |
+| `cap_frames` | Maximum frames to load, `0` for no cap |
+
+Decoded frames are float32 RGB — about 12 bytes a pixel — so a decode also stops at **600 frames** or **4 GB**, whichever comes first, and says in the console which ceiling it hit.
+
+`use_for_dim` says the take's scale rule resizes this slot — see [Dimensions and scaling](#dimensions-and-scaling). Any number of image and video slots may carry it, the take's own reference image included: that one keeps its flag *inside* its `image_path` (`"image_path": { "path": "…", "use_for_dim": true }`), exactly as an extended row keeps it beside its own path.
+
+`id` is what `dimensions.dim_reference` points at to name the slot the rule *measures*. The editor mints one when a slot gains a file and drops it when the slot is cleared, which also clears a reference that named it — so it identifies the media, not the position. Re-picking a file into a slot keeps its id, and so keeps the reference pointed at it.
+
+The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Resize** in the corner of the preview marks that slot for the take's scale rule. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner — and, under that in yellow, the size the take's scale rule will resize it to, whenever the slot is marked **Resize** and the rule has a size to give it. Each also carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses, writing `start_frame` and `cap_frames`: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding.
 
 #### Duration and frame counts
 
@@ -211,7 +262,9 @@ You can always type a frame count of your own; the duration follows it. Parsing 
 
 The **sizing** button beside Width and Height opens a picker of known-good resolutions: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must divide by (8, 16, 32, 64), and take one of the five sizes offered. **OK** writes the pair into Width and Height, **Cancel** discards — nothing else closes the dialog. It opens on the current size if that size is in the list, otherwise on 9:16 ÷32, and is disabled while the size is being derived from the image.
 
-A yellow **(!) not /32** flags a Width or Height that is not a multiple of 32. Advisory only — a ÷8 or ÷16 size from the dialog raises it legitimately.
+The **8 / 16 / 32 / 64** buttons beside it are the divisor the scale rule rounds its calculated sizes down to — see *Dimensions and scaling* above. They are toggles: clicking the lit one turns the divisor off, which is the only way to reach 0, so there is no button for it. New takes start on **32**. The Image node has no scale rule and so has no buttons.
+
+A yellow **! not /X** flags a Width or Height that is not a multiple of the divisor, and says nothing while the divisor is off. Advisory only — it fires on sizes the rule does not round, which is exactly the ones you typed yourself.
 
 ![Sizing](content/sizing.png)
 
@@ -224,7 +277,7 @@ Each scene/take stores three prompt fields — **Master**, **Positive**, and **N
 | **Smart** | The positive prompt is split into pipe-separated segments, each covering a frame range (`text [start-end] \| text [start-end] \| …`). A downstream Prompt Relay node handles distribution across frames. Best used with CFG ≈ 1.0. |
 | **Beats** | Segments are aligned to time ranges in seconds (`[start-ends] text`, one per line). Frame counts are derived from FPS automatically. |
 | **Timecode** | Segments are aligned to absolute start times (`[MM:SS] text`, one per line). Each marker is the segment's start time; frame counts are derived from the gap to the next marker (or the end of the video) using FPS. |
-| **H3** | Segments are aligned to absolute start times in decimal seconds (`At X.Ys, text`, one per line; the first segment always starts at `At 0.0s,`). Each segment's text gets a trailing period if it doesn't already have one. Frame counts are derived the same way as Timecode. |
+| **H3** | Segments are aligned to absolute start times in decimal seconds (`At X.Ys, text`, one per line; the first segment always starts at `At 0.0s,`). Each segment's text gets a trailing period if it doesn't already have one. Frame counts are derived the same way as Timecode. Parsing back also reads the `At MM:SS.mmm, text` marks MiniMax's own prompting guide uses, so a prompt pasted from it keeps its segments. The comma after the time is optional in both forms — `At 3.6s a man walks` is read as a mark too — and saving rewrites whatever came in as `At X.Ys,`. |
 | **Simple** | A single flat text string passed as-is. |
 
 For **Simple**, **Beats**, **Timecode**, and **H3** types, the Master prompt is combined with the positive prompt before it reaches the sampler. An **Append** checkbox lets you switch the Master to go after the positive text instead of before (the default). For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
@@ -282,7 +335,7 @@ For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets also carry the full LoRA set
 
 Presets also carry the 3 flag toggles and 2 custom params, labels included, for all node classes. Presets carry the Qualifiers (trail) prompt alongside Master/Positive/Negative for every node class.
 
-For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets carry **Total frames** and **FPS** as well — applying one re-derives the editor's **Duration (s)** from them. Those four also carry the **Use image** and **Scale** settings (see [Dimensions and scaling](#dimensions-and-scaling)); applying one re-checks them against the config being edited, so a preset saved with **Use image** on lands with it off if the config has no reference image. LTX2.3 and LTX2.5 presets additionally carry the **Latent upscale** model. The Image node has no frame count, FPS, or reference image, so its presets carry none of these.
+For WAN2.2, LTX2.3, LTX2.5, and MiniMax H3, presets carry **Total frames** and **FPS** as well — applying one re-derives the editor's **Duration (s)** from them. Those four also carry the **Use media size**, **Scale** and divisor settings (see [Dimensions and scaling](#dimensions-and-scaling)) — but not **Reference media**, which names one of the take's own slots and so stays as the take had it; applying one re-checks the rest against the config being edited, so a preset saved with **Use media size** on lands with it off if the config has no reference picked. LTX2.3 and LTX2.5 presets additionally carry the **Latent upscale** model. The Image node has no frame count, FPS, or reference image, so its presets carry none of these.
 
 Presets saved before these fields existed simply do not include them, and applying such a preset leaves the corresponding fields in the panel untouched rather than zeroing them.
 
@@ -329,6 +382,16 @@ Three buttons above the panel:
 The **prompt editor for stacks** is the same full-screen editor used by the WorkflowConfig nodes' **Prompt Editor**, opened here in a mode that edits a whole sequence's list of prompts at once (add/remove/reorder prompts, each with its own label, Master/Positive/Negative text, and Prompt Type — Smart/Beats/Timecode/Simple, same rules as described under [Managing prompts](#managing-prompts)). Saving there writes the sequence back to the stack file and closes both the editor and the Edit Stack popup. A stack is capped at 10 sequences, and each sequence at 10 prompts, matching the node's fixed 10 outputs.
 
 ![Sample Prompt Stack Editor](content/prompt_editor_stacks.png)
+
+---
+
+### Media Splitter (`utils`)
+
+Unpacks the `extended_media` output of a WorkflowConfig node into one output per slot: `image_1`…`image_5` and `video_1`…`video_2` (IMAGE — a video slot is an image batch of its decoded frames), and `audio_1`…`audio_2` (AUDIO). Slots the take left empty output nothing (`None`).
+
+The numbering is the editor's, so `image_1` and `audio_1` are the take's own reference image and audio — the same ones the WorkflowConfig node puts on its **image** and **audio** outputs, ridden along here so a workflow can take every slot off this node instead of reaching back for the first of each. They are handed on, not loaded again, so wiring both costs nothing. A take with no reference image or audio leaves those outputs empty like any other unfilled slot.
+
+The outputs are fixed and slot-numbered, so `image_3` is always the take's image slot 3 regardless of what the other slots hold. See [Extended media](#extended-media) for what goes into the slots.
 
 ---
 

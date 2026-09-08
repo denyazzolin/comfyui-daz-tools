@@ -6,6 +6,7 @@ Python's module cache guarantees routes are registered exactly once.
 import os
 import re
 import json
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -62,7 +63,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 11
+CURRENT_SCHEMA = 13
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -83,11 +84,47 @@ _DIM_SCALE_MODES = ("none", "factor", "longest", "fit")
 # modes that derive a size from somewhere else make no sense and are not offered.
 _DIM_USE_IMAGE_MODES = ("none", "factor")
 
-_DEFAULT_DIMENSIONS: dict = {"use_image": False, "scale": {"mode": "none", "value": 1.0}}
+# Models want sizes divisible by something, so a calculated size is rounded
+# down to a multiple of scale.div. 0 turns that off and leaves the arithmetic
+# to land where it lands; anything outside this set is a malformed file and
+# reads as the default. Only sizes the rule computes are snapped — a size the
+# user typed is theirs, and the editor warns about it instead.
+_DIM_DIVISORS    = (0, 8, 16, 32, 64)
+_DEFAULT_DIM_DIV = 32
+
+# dim_reference is the id of the image or video the size is measured against —
+# the take's own image_path or any extended row. Empty means nothing is named,
+# and then there is nothing for use_image or 'longest' to read a size from.
+_DEFAULT_DIMENSIONS: dict = {"use_image": False, "dim_reference": "",
+                             "scale": {"mode": "none", "value": 1.0,
+                                       "div": _DEFAULT_DIM_DIV}}
 
 # The classes that take a reference image, and so are the ones a dimensions block
 # is backfilled onto.
 _DIM_CLASSES = ("Wan2.2", "ltx2.3", "ltx2.5", "m_h3")
+
+# ── Extended media block ──────────────────────────────────────────────────────
+# Named media a take carries in addition to the single image_path/audio_path
+# slots: {"images": [...], "videos": [...], "audios": [...]}. Every class has one.
+# The default is three empty lists rather than one blank row per list — a row
+# with an empty path is indistinguishable from no row at all, and would have to
+# be filtered out again by every reader.
+_EXTENDED_MEDIA_KEYS = ("images", "videos", "audios")
+
+# An item's "order" is a slot number, not a sort key: the editor offers this many
+# slots per list and the nodes load only those, so a list may have holes and a
+# slot keeps its name when a neighbour is cleared. Rows past the range are the
+# user's own — a hand-edited file keeps them, they are just never loaded.
+_EXTENDED_MEDIA_SLOTS = {"images": 4, "videos": 2, "audios": 1}
+
+# How many of the editor's slots for a kind are the take's own fields rather
+# than extended_media rows: image slot 1 is image_path and audio slot 1 is
+# audio_path, which is why the editor numbers a kind one higher than the file
+# does. Those two ride along as slot 0 so everything the editor shows can be
+# taken off one link. Mirrors EM_ROOT in daz_workflow_config_shared.js.
+_MEDIA_ROOT_SLOTS = {"images": 1, "videos": 0, "audios": 1}
+
+_MEDIA_PATH_KEYS = {"images": "image_path", "videos": "video_path", "audios": "audio_path"}
 
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
 
@@ -144,6 +181,12 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
 
     backfilled  = _backfill_master_position(configs)
     backfilled |= _backfill_trail_prompt(configs)
+    backfilled |= _backfill_extended_media(configs)
+    backfilled |= _backfill_dim_source(configs)
+    # Reads the use_for_dim that the two above put where it can be found, and
+    # fills the dimensions block that the one below would otherwise leave with
+    # nothing pointed at.
+    backfilled |= _backfill_media_ids(configs)
     backfilled |= _backfill_dimensions(configs)
 
     if migrated or backfilled:
@@ -391,7 +434,8 @@ def _get_prompt_type_int(val, default: int = 1) -> int:
 def _coerce_dimensions(val) -> dict:
     """Normalise anything into the canonical dimensions block. Never raises and
     never returns a partial block, so every reader downstream can assume the
-    shape {"use_image": bool, "scale": {"mode": str, "value": float}}."""
+    shape {"use_image": bool, "dim_reference": str,
+           "scale": {"mode": str, "value": float, "div": int}}."""
     src   = val if isinstance(val, dict) else {}
     scale = src.get("scale") if isinstance(src.get("scale"), dict) else {}
 
@@ -404,13 +448,95 @@ def _coerce_dimensions(val) -> dict:
     except (ValueError, TypeError):
         value = 1.0
 
+    # A block written before div existed gets the default; an explicit null or
+    # "" is a deliberate "off", the same as 0, and must not start snapping
+    # sizes that were not being snapped before.
+    raw = scale.get("div", _DEFAULT_DIM_DIV)
+    if raw is None or raw == "":
+        div = 0
+    else:
+        try:
+            div = int(raw)
+        except (ValueError, TypeError):
+            div = _DEFAULT_DIM_DIV
+        if div not in _DIM_DIVISORS:
+            div = _DEFAULT_DIM_DIV
+
     return {"use_image": bool(src.get("use_image", False)),
-            "scale": {"mode": mode, "value": value}}
+            "dim_reference": str(src.get("dim_reference") or ""),
+            "scale": {"mode": mode, "value": value, "div": div}}
 
 
 def _get_dimensions(set_obj: dict) -> dict:
     """Return a set's dimensions block, coerced. Missing means 'do nothing'."""
     return _coerce_dimensions(set_obj.get("dimensions"))
+
+
+def _coerce_media_item(kind: str, val) -> dict:
+    """Normalise one extended_media row. Unknown keys are dropped, so what lands
+    in the file after a save is exactly the documented shape."""
+    src      = val if isinstance(val, dict) else {}
+    path_key = _MEDIA_PATH_KEYS[kind]
+    item = {
+        "name":   str(src.get("name") or ""),
+        # What dimensions.dim_reference points at. Minted by the editor when a
+        # slot is filled and dropped when it is emptied, so it identifies the
+        # media rather than the slot: a re-pick keeps it, a clear ends it.
+        "id":     str(src.get("id") or ""),
+        "order":  _get_int(src.get("order"), 0),
+        path_key: str(src.get(path_key) or ""),
+    }
+    if kind == "videos":
+        # The window the editor's handles set: start_frame is 1-based, with 0
+        # meaning the same as 1 so that both ways of saying "from the top"
+        # work, and cap_frames counts on from there with 0 meaning "to the end".
+        item["start_frame"] = max(0, _get_int(src.get("start_frame"), 0))
+        item["cap_frames"]  = max(0, _get_int(src.get("cap_frames"), 0))
+    if kind != "audios":
+        # Whether the dimensions rule resizes this one. Any number of slots may
+        # carry it, and each is scaled by its own size — what the rule measures
+        # is dim_reference's business, not this flag's.
+        item["use_for_dim"] = bool(src.get("use_for_dim", False))
+    return item
+
+
+def _coerce_extended_media(val) -> dict:
+    """Normalise the whole block. Never truncates — the slot counts govern what
+    the editor shows and what the nodes load, not what the file may hold."""
+    src = val if isinstance(val, dict) else {}
+    out: dict = {}
+    for kind in _EXTENDED_MEDIA_KEYS:
+        raw = src.get(kind)
+        out[kind] = [_coerce_media_item(kind, item) for item in raw] if isinstance(raw, list) else []
+    return out
+
+
+def _merge_extended_media(stored, incoming) -> dict:
+    """Overlay the editor's slots onto what the file already holds.
+
+    The editor only ever sees slots 1..N of each list, so everything else — rows
+    with an out-of-range order, and duplicates past the first at a given order —
+    rides through untouched instead of being dropped by a save that never
+    included them. An in-range slot the editor sent nothing for was cleared on
+    purpose, so it does not come back.
+    """
+    stored_src     = stored if isinstance(stored, dict) else {}
+    incoming_block = _coerce_extended_media(incoming)
+    merged: dict = {}
+    for kind in _EXTENDED_MEDIA_KEYS:
+        limit    = _EXTENDED_MEDIA_SLOTS[kind]
+        replaced = set()
+        kept     = []
+        raw_list = stored_src.get(kind)
+        for raw in raw_list if isinstance(raw_list, list) else []:
+            order = _get_int(raw.get("order"), 0) if isinstance(raw, dict) else 0
+            if 1 <= order <= limit and order not in replaced:
+                replaced.add(order)   # the editor is authoritative for this slot
+                continue
+            # carried through exactly as stored, unknown keys and all
+            kept.append(raw)
+        merged[kind] = incoming_block[kind] + kept
+    return merged
 
 
 def _round_dim(v: float) -> int:
@@ -420,6 +546,16 @@ def _round_dim(v: float) -> int:
         return max(1, int(round(float(v))))
     except (ValueError, TypeError, OverflowError):
         return 1
+
+
+def _snap_dim(v: float, div: int) -> int:
+    """A computed pixel size rounded down to a multiple of div, or just rounded
+    when div is 0. Never below one whole step: a size smaller than the divisor
+    has no multiple under it to land on, and 0 px would throw."""
+    n = _round_dim(v)
+    if div <= 0:
+        return n
+    return max(div, (n // div) * div)
 
 
 def _scale_image(image, width: int, height: int, crop: str, node_name: str):
@@ -440,92 +576,304 @@ def _scale_image(image, width: int, height: int, crop: str, node_name: str):
     return scaled.movedim(1, -1)
 
 
-def resolve_dimensions(active_set: dict, image, node_name: str):
-    """Apply a set's dimensions block, returning (image, width, height).
+def _tensor_size(image) -> tuple:
+    """(width, height) of an NHWC image batch, (0, 0) for anything unreadable."""
+    if image is None:
+        return 0, 0
+    try:
+        return int(image.shape[2]), int(image.shape[1])
+    except Exception:
+        return 0, 0
 
-    use_image on takes the size from the reference image and ignores the stored
+
+def _media_by_id(active_set: dict, media_id: str):
+    """The media in a set carrying this id, as (kind, path), or None.
+
+    The take's own image_path counts as an image, the same way the editor counts
+    it as image slot 1. Rows the editor never shows are searched too: an id is
+    only ever there because something wrote it, and a hand-edited file naming one
+    of them means it.
+    """
+    img = active_set.get("image_path")
+    if isinstance(img, dict) and str(img.get("id") or "") == media_id:
+        return "images", _get_path(img)
+    block = _coerce_extended_media(active_set.get("extended_media"))
+    for kind in ("images", "videos"):
+        for item in block[kind]:
+            if item["id"] == media_id:
+                return kind, item[_MEDIA_PATH_KEYS[kind]]
+    return None
+
+
+def _dim_reference_size(active_set: dict, node_name: str) -> tuple:
+    """(width, height) of the media the dimensions block measures against.
+
+    Read off the file rather than off any tensor the node happens to be holding:
+    the reference may be a slot this node never loads, and the reference image it
+    does load has already been resized by the time extended media is resolved.
+    Neither read decodes anything — a still is opened lazily and a clip has its
+    header probed. Anything that cannot be measured is (0, 0), which every reader
+    below treats as "no size to work from".
+    """
+    ref = _get_dimensions(active_set)["dim_reference"]
+    if not ref:
+        return 0, 0
+    found = _media_by_id(active_set, ref)
+    if found is None:
+        return 0, 0
+    kind, path = found
+    if not path:
+        return 0, 0
+    prefix = f"{node_name}: dimensions reference"
+    try:
+        full = _resolve_media_path(path, prefix)
+        if kind == "images":
+            from PIL import Image
+            with Image.open(full) as im:
+                return int(im.width), int(im.height)
+        from .video_utils import probe_video_file
+        info = probe_video_file(full, prefix)
+        return int(info.get("width") or 0), int(info.get("height") or 0)
+    except Exception as e:
+        print(f"[DAZ TOOLS] {prefix}: could not measure '{path}' — "
+              f"falling back to the stored size ({e})")
+        return 0, 0
+
+
+def _dim_plan(active_set: dict, node_name: str) -> tuple:
+    """A set's dimensions block resolved once, as (mode, value, width, height, div).
+
+    width and height are what the node reports. The mode travels with them
+    because it is also applied to every slot marked use_for_dim, each against
+    its own size — so the rule is worked out here and applied per media below.
+
+    use_image on takes the size from the reference media and ignores the stored
     width/height entirely; only 'none' and 'factor' are meaningful there, and
-    anything else is treated as 'none'. If the image cannot be loaded the stored
-    size is passed straight through — the editor writes the already-scaled size
-    into it, so re-applying the factor here would double it.
+    anything else is treated as 'none'. With nothing to measure the stored size
+    is passed straight through — the editor writes the already-scaled size into
+    it, so re-applying the factor here would double it.
 
     With use_image off the stored width and height are the input to the rule:
 
       none    — nothing is touched.
-      factor  — width, height and the image are each scaled by the value, so
-                every one of them keeps its own aspect ratio.
-      longest — the image's longest side becomes the value and the width/height
-                outputs follow the image's new size. With no image there is
-                nothing to follow, so the rule falls back to the stored size.
-      fit     — the image is cover-scaled and centre-cropped to the stored
-                width x height, which are output unchanged. An image smaller
-                than the box on both axes is stretched to fill it instead, since
-                the point of the mode is to avoid padding.
+      factor  — width, height and every marked media are each scaled by the
+                value, so every one of them keeps its own aspect ratio.
+      longest — the longest side becomes the value, the outputs following the
+                reference media's new size. With nothing to measure the rule
+                falls back to scaling the stored size.
+      fit     — marked media are cover-scaled and centre-cropped to the stored
+                width x height, which are output unchanged. One smaller than the
+                box on both axes is stretched to fill it instead, since the point
+                of the mode is to avoid padding.
+
+    Every size the rule computes is then snapped down to a multiple of
+    scale.div. 'fit' computes nothing — its target is the stored width and
+    height as typed — so it is the one mode div does not touch.
 
     The stored width/height are never rewritten from here. They are the input to
     the rule, so scaling them in place would compound on every run.
     """
-    dims  = _get_dimensions(active_set)
-    scale = dims["scale"]
-    mode  = scale["mode"]
-    value = scale["value"]
-
+    dims   = _get_dimensions(active_set)
+    mode   = dims["scale"]["mode"]
+    value  = dims["scale"]["value"]
+    div    = dims["scale"]["div"]
     width  = _get_int(active_set.get("width"))
     height = _get_int(active_set.get("height"))
-
-    iw = ih = 0
-    if image is not None:
-        try:
-            ih, iw = int(image.shape[1]), int(image.shape[2])
-        except Exception:
-            iw = ih = 0
+    rw, rh = _dim_reference_size(active_set, node_name)
 
     if dims["use_image"]:
-        if iw > 0 and ih > 0:
-            width, height = iw, ih
+        if rw > 0 and rh > 0:
+            width, height = rw, rh
             if mode not in _DIM_USE_IMAGE_MODES:
                 mode = "none"
         else:
-            # No image to measure. The stored width/height are the editor's echo
-            # of the image size with the factor already in them, so scaling them
-            # again here would apply it twice — pass them through untouched.
             mode = "none"
-
-    if mode == "none":
-        return image, width, height
 
     if mode == "factor":
         if value <= 0:
             print(f"[DAZ TOOLS] {node_name}: scale factor {value} is not positive — "
-                  f"leaving the size and the reference image alone")
-            return image, width, height
-        if image is not None:
-            image = _scale_image(image, _round_dim(iw * value), _round_dim(ih * value),
-                                 "disabled", node_name)
-        return image, _round_dim(width * value), _round_dim(height * value)
+                  f"leaving the size and the media alone")
+            return "none", value, width, height, div
+        return (mode, value, _snap_dim(width * value, div),
+                _snap_dim(height * value, div), div)
 
     if mode == "longest":
         target = int(value)
         if target <= 0:
             print(f"[DAZ TOOLS] {node_name}: longest dimension {target} is not positive — "
-                  f"leaving the size and the reference image alone")
-            return image, width, height
-        if image is not None:
-            factor = target / max(iw, ih)
-            width, height = _round_dim(iw * factor), _round_dim(ih * factor)
-            image = _scale_image(image, width, height, "disabled", node_name)
+                  f"leaving the size and the media alone")
+            return "none", value, width, height, div
+        if rw > 0 and rh > 0:
+            factor = target / max(rw, rh)
+            width, height = _snap_dim(rw * factor, div), _snap_dim(rh * factor, div)
         elif max(width, height) > 0:
             factor = target / max(width, height)
-            width, height = _round_dim(width * factor), _round_dim(height * factor)
-        return image, width, height
+            width, height = (_snap_dim(width * factor, div),
+                             _snap_dim(height * factor, div))
+        return mode, value, width, height, div
 
-    if mode == "fit":
-        if image is not None and width > 0 and height > 0:
-            crop  = "disabled" if (iw < width and ih < height) else "center"
-            image = _scale_image(image, width, height, crop, node_name)
-        return image, width, height
+    return mode, value, width, height, div
 
-    return image, width, height
+
+def _apply_dim_rule(image, plan: tuple, node_name: str):
+    """Resize one media by a resolved plan, against its own size."""
+    mode, value, width, height, div = plan
+    iw, ih = _tensor_size(image)
+    if mode == "none" or not iw or not ih:
+        return image
+
+    if mode == "factor":
+        return _scale_image(image, _snap_dim(iw * value, div),
+                            _snap_dim(ih * value, div), "disabled", node_name)
+
+    if mode == "longest":
+        factor = int(value) / max(iw, ih)
+        return _scale_image(image, _snap_dim(iw * factor, div),
+                            _snap_dim(ih * factor, div), "disabled", node_name)
+
+    if mode == "fit" and width > 0 and height > 0:
+        crop = "disabled" if (iw < width and ih < height) else "center"
+        return _scale_image(image, width, height, crop, node_name)
+
+    return image
+
+
+def resolve_dimensions(active_set: dict, image, node_name: str):
+    """Apply a set's dimensions block to the reference image, returning
+    (image, width, height).
+
+    The size the node reports is the plan's; the image itself is resized only if
+    it is one of the media marked use_for_dim, which is now a per-slot choice
+    rather than a property of the reference image. See _dim_plan for the rules.
+    """
+    plan = _dim_plan(active_set, node_name)
+    img  = active_set.get("image_path")
+    if isinstance(img, dict) and img.get("use_for_dim"):
+        image = _apply_dim_rule(image, plan, node_name)
+    return image, plan[2], plan[3]
+
+
+def _resolve_media_path(path: str, error_prefix: str) -> str:
+    """Absolute path for an extended_media row, relative ones resolving against
+    ComfyUI's input directory the same way the reference image slot does."""
+    if os.path.isabs(path):
+        full = path
+    elif _fp is not None:
+        full = os.path.join(_fp.get_input_directory(), path)
+    else:
+        full = os.path.abspath(path)
+    if not os.path.exists(full):
+        raise ValueError(f"[DAZ TOOLS] {error_prefix}: file not found at '{full}'")
+    return full
+
+
+def _load_media_image(full_path: str):
+    """Read a still into a single-image IMAGE batch. Pillow, numpy and torch are
+    imported here so the module keeps loading outside a running ComfyUI."""
+    from PIL import Image
+    import numpy as np
+    import torch
+    img = Image.open(full_path).convert("RGB")
+    arr = np.array(img).astype(np.float32) / 255.0
+    return torch.from_numpy(arr)[None,]
+
+
+def _apply_media_resize(image, marked: bool, plan: tuple, node_name: str):
+    """Scale one extended media by the take's dimensions rule, if it asked to be.
+
+    Stills only. A clip is scaled inside its decode instead, a chunk at a time,
+    so that it never exists whole at its source resolution; the rule below is
+    what gets handed down there. An unmarked slot is handed straight back — the
+    flag on the row is the whole of the decision.
+    """
+    return _apply_dim_rule(image, plan, node_name) if marked else image
+
+
+def _get_media_name(value) -> str:
+    """The name beside a take's own image_path / audio_path, or "" for none.
+
+    Its own reader rather than _get_name, which is for the model-and-strength
+    objects and would read a plain path string as a name."""
+    return str(value.get("name", "") or "") if isinstance(value, dict) else ""
+
+
+def resolve_extended_media(active_set: dict, node_name: str,
+                           root_image=None, root_audio=None) -> dict:
+    """Load a take's extended_media into decoded, slot-numbered lists.
+
+    Only the editor's slots are read. A row with an out-of-range order, an order
+    already taken (first wins) or an empty path is skipped, so a slot with
+    nothing in it is simply absent from the result and the Media Splitter leaves
+    that output empty.
+
+    root_image and root_audio are the take's own image_path and audio_path,
+    already decoded by the caller for its own image and audio outputs. They go
+    in as slot 0 so a workflow can take every slot the editor shows off the
+    splitter, instead of reaching back to the config node for the first of
+    each. Passing them in rather than loading them here is what keeps that
+    free: the splitter hands on the very tensor the node already output.
+    """
+    block  = _coerce_extended_media(active_set.get("extended_media"))
+    result: dict = {kind: [] for kind in _EXTENDED_MEDIA_KEYS}
+    # Worked out once for the whole take: every marked slot is scaled by the same
+    # rule, each against its own size. Read from the files rather than from
+    # root_image, which the caller has already had resized by resolve_dimensions.
+    plan = _dim_plan(active_set, node_name)
+
+    # These two carry a name of their own, beside their path, the way an
+    # extended row does. Nothing in the editor writes it yet, so it is empty
+    # unless the file was edited by hand.
+    if root_image is not None:
+        img = active_set.get("image_path")
+        result["images"].append({
+            "slot": 0, "name": _get_media_name(img), "path": _get_path(img),
+            "image": root_image,
+            "use_for_dim": bool(img.get("use_for_dim", False)) if isinstance(img, dict) else False,
+        })
+    if root_audio is not None:
+        aud = active_set.get("audio_path")
+        result["audios"].append({
+            "slot": 0, "name": _get_media_name(aud), "path": _get_path(aud),
+            "audio": root_audio,
+        })
+    for kind in _EXTENDED_MEDIA_KEYS:
+        limit = _EXTENDED_MEDIA_SLOTS[kind]
+        taken = set()
+        for item in block[kind]:
+            order = item["order"]
+            path  = item[_MEDIA_PATH_KEYS[kind]]
+            if not (1 <= order <= limit) or order in taken or not path:
+                continue
+            taken.add(order)
+            prefix = f"{node_name}: {kind[:-1]} slot {order}"
+            full   = _resolve_media_path(path, prefix)
+            entry  = {"slot": order, "name": item["name"], "path": full}
+            if kind != "audios":
+                entry["use_for_dim"] = item["use_for_dim"]
+            if kind == "images":
+                entry["image"] = _apply_media_resize(_load_media_image(full),
+                                                    item["use_for_dim"], plan, node_name)
+            elif kind == "videos":
+                from .media_utils import decode_video_frames
+                # The rule goes down into the decode rather than being applied to
+                # what comes back, so a marked clip is never held whole at its
+                # source resolution. Unpacked straight into the entry for the same
+                # reason a still is: a name bound here would keep this slot's
+                # frames alive through the next slot's decode.
+                (entry["frames"], entry["fps"],
+                 entry["frame_count"]) = decode_video_frames(
+                    full, prefix,
+                    start_frame=item["start_frame"],
+                    cap_frames=item["cap_frames"],
+                    scale=((lambda batch: _apply_dim_rule(batch, plan, node_name))
+                           if item["use_for_dim"] else None),
+                )
+            else:
+                from .audio_utils import decode_audio_file
+                entry["audio"] = decode_audio_file(full, prefix)
+            result[kind].append(entry)
+        result[kind].sort(key=lambda e: e["slot"])
+    return result
 
 
 def _get_loras(set_obj: dict) -> dict:
@@ -554,6 +902,19 @@ def _coerce_lora(value, existing=None) -> dict:
 
 
 # ── Set field helpers ─────────────────────────────────────────────────────────
+
+def _find_set(entry: dict, version) -> Optional[dict]:
+    """The set a save is acting on: the one matching the posted version, else the
+    last one. Mirrors how the in-place branch picks its target."""
+    sets = entry.get("sets")
+    if not isinstance(sets, list) or not sets:
+        return None
+    if version:
+        for s in sets:
+            if str(s.get("version", "")) == str(version):
+                return s
+    return sets[-1]
+
 
 def _apply_set_fields(target: dict, data: dict) -> None:
     """Apply typed-object field updates from request data onto a set dict in place."""
@@ -649,13 +1010,22 @@ def _apply_set_fields(target: dict, data: dict) -> None:
     if "dimensions" in data:
         target["dimensions"] = _coerce_dimensions(data["dimensions"])
 
+    if "extended_media" in data:
+        target["extended_media"] = _merge_extended_media(
+            target.get("extended_media"), data["extended_media"])
+
     if "note" in data:
         v = data["note"]
         target["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
 
 
-def _build_set_from_data(data: dict, version: str, now: str) -> dict:
-    """Build a new set object from request data."""
+def _build_set_from_data(data: dict, version: str, now: str,
+                         source_set: Optional[dict] = None) -> dict:
+    """Build a new set object from request data.
+
+    source_set is the take a "save as new version" was branched off; it is there
+    so the new take inherits the extended media rows the editor never saw.
+    """
     s: dict = {"version": version, "label": str(data.get("version_label") or ""), "created_at": now, "updated_at": now}
     s["type"] = data.get("type", "")
     s["clip_type"] = str(data.get("clip_type") or "stable_diffusion")
@@ -717,6 +1087,8 @@ def _build_set_from_data(data: dict, version: str, now: str) -> dict:
     }
     if "dimensions" in data:
         s["dimensions"] = _coerce_dimensions(data["dimensions"])
+    s["extended_media"] = _merge_extended_media(
+        (source_set or {}).get("extended_media"), data.get("extended_media"))
     v = data.get("note")
     s["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
     return s
@@ -745,6 +1117,9 @@ def _normalize_set(set_obj: dict) -> dict:
     # reference image and no IMAGE output, and an inert block there is just noise.
     if "dimensions" in result:
         result["dimensions"] = _coerce_dimensions(result["dimensions"])
+
+    if "extended_media" in result:
+        result["extended_media"] = _coerce_extended_media(result["extended_media"])
 
     v = result.get("group")
     if not isinstance(v, dict):
@@ -1006,7 +1381,8 @@ _DEFAULT_PRESET_PROFILES: dict = {
         "master_prompt", "positive_prompt", "negative_prompt", "trail_prompt",
         "unet_high", "vae", "audio_vae", "clip", "loras",
         "dimensions",
-        "width", "height", "steps", "cfg_high",
+        "width", "height", "shift_high", "shift_low",
+        "steps", "cfg_high",
         "total_frames", "fps",
         "flags", "custom",
     ],
@@ -1201,7 +1577,10 @@ def _apply_preset_to_set(target: dict, preset: dict, profile: list) -> None:
         elif field == "note":
             target["note"] = val if isinstance(val, dict) else {"value": str(val or "")}
         elif field == "dimensions":
-            target["dimensions"] = _coerce_dimensions(val)
+            # dim_reference names one of this take's media, so it is the take's
+            # to keep — a preset brings the rule, not what it is measured on.
+            keep = _get_dimensions(target)["dim_reference"]
+            target["dimensions"] = dict(_coerce_dimensions(val), dim_reference=keep)
         elif field in _PRESET_TEXT_FIELDS:
             target[field] = val if isinstance(val, dict) else {"text": str(val or "")}
         elif field == "positive_prompt":
@@ -1368,6 +1747,112 @@ def _backfill_dimensions(configs: dict) -> bool:
             if not isinstance(s.get("dimensions"), dict):
                 s["dimensions"] = dict(_DEFAULT_DIMENSIONS, scale=dict(_DEFAULT_DIMENSIONS["scale"]))
                 changed = True
+    return changed
+
+
+def _backfill_extended_media(configs: dict) -> bool:
+    """Ensure every set has an extended_media block with all three lists.
+    Additive and idempotent, mirroring _backfill_dimensions — but for every
+    class, since named media is not tied to the reference-image slot."""
+    changed = False
+    for entry in configs.values():
+        for s in entry.get("sets", []):
+            block = s.get("extended_media")
+            if not isinstance(block, dict):
+                s["extended_media"] = {k: [] for k in _EXTENDED_MEDIA_KEYS}
+                changed = True
+                continue
+            for key in _EXTENDED_MEDIA_KEYS:
+                if not isinstance(block.get(key), list):
+                    block[key] = []
+                    changed = True
+    return changed
+
+
+def _backfill_media_ids(configs: dict) -> bool:
+    """Give every filled media slot an id, and point dim_reference at one.
+
+    The ids come first and unconditionally: a slot with a file and no id is
+    unreachable by dimensions.dim_reference, whether it got that way by
+    predating ids or by being hand-edited.
+
+    The rest runs once per set, gated on the dimensions block not having a
+    dim_reference yet. Before it, use_for_dim marked the one slot the size was
+    meant to come from and the reference image was the only thing ever resized —
+    so the mark becomes the reference, and the flag is rewritten to say what it
+    now means: image_path is resized, nothing else is. A set that never carried
+    a mark falls back to the reference image, which is what the old code
+    measured regardless.
+
+    Runs before _backfill_dimensions so that a set old enough to have no
+    dimensions block at all is migrated too, rather than being handed an empty
+    dim_reference a moment before this would have filled it in.
+    """
+    changed = False
+    for entry in configs.values():
+        dim_class = entry.get("class") in _DIM_CLASSES
+        for s in entry.get("sets", []):
+            marked = ""
+            img    = s.get("image_path")
+            # A hand-edited file can still hold the bare path string the field
+            # was before it grew a name — and a string has nowhere to put an id.
+            # _backfill_dim_source opens it out the same way for the same reason.
+            if not isinstance(img, dict) and str(img or ""):
+                img = s["image_path"] = {"path": str(img)}
+                changed = True
+            rows   = []
+            block  = s.get("extended_media")
+            if isinstance(block, dict):
+                for kind in ("images", "videos"):
+                    raw = block.get(kind)
+                    rows += [r for r in raw if isinstance(r, dict)] if isinstance(raw, list) else []
+            for media in ([img] if isinstance(img, dict) else []) + rows:
+                path = media.get("path") or media.get("image_path") or media.get("video_path")
+                if not str(path or ""):
+                    continue
+                if not str(media.get("id") or ""):
+                    media["id"] = uuid.uuid4().hex[:12]
+                    changed = True
+                if not marked and media.get("use_for_dim"):
+                    marked = media["id"]
+
+            dims = s.get("dimensions")
+            if not isinstance(dims, dict):
+                if not dim_class:
+                    continue
+                dims = s["dimensions"] = dict(_DEFAULT_DIMENSIONS,
+                                              scale=dict(_DEFAULT_DIMENSIONS["scale"]))
+            elif "dim_reference" in dims:
+                continue
+            root_id = str(img.get("id") or "") if isinstance(img, dict) else ""
+            dims["dim_reference"] = marked or root_id
+            for media in rows:
+                if media.get("use_for_dim"):
+                    media["use_for_dim"] = False
+            if isinstance(img, dict) and root_id:
+                img["use_for_dim"] = True
+            changed = True
+    return changed
+
+
+def _backfill_dim_source(configs: dict) -> bool:
+    """Move a set-root use_for_dim into its image_path, where it now lives.
+
+    Only sets written by an earlier build of this feature have one; everything
+    else passes through untouched, so this is idempotent like the rest."""
+    changed = False
+    for entry in configs.values():
+        for s in entry.get("sets", []):
+            if "use_for_dim" not in s:
+                continue
+            flag = bool(s.pop("use_for_dim"))
+            img = s.get("image_path")
+            if not isinstance(img, dict):
+                img = {"path": str(img or "")}
+                s["image_path"] = img
+            if flag:
+                img["use_for_dim"] = True
+            changed = True
     return changed
 
 
@@ -1629,7 +2114,7 @@ try:
 
         if save_mode == "new_version":
             new_ver = _next_version(entry)
-            new_set = _build_set_from_data(data, new_ver, now)
+            new_set = _build_set_from_data(data, new_ver, now, _find_set(entry, version))
             if not isinstance(entry.get("sets"), list):
                 entry["sets"] = []
             entry["sets"].append(new_set)

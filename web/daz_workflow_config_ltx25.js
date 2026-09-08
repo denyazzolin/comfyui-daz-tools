@@ -200,7 +200,7 @@ function buildDimsHtml(data, h) {
   const { fValue, fRandomize, durationRow, dimensionsRows, sizeRow, ns, lbl, cb } = h
   return `
     ${dimensionsRows(data)}
-    ${sizeRow(data)}
+    ${sizeRow(data, true)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
       <div><label style="${lbl}">Steps</label>
         <input id="daz-steps" type="number" value="${fValue(data.steps) || 0}" style="width:100%;${ns}"></div>
@@ -265,10 +265,12 @@ function buildPayload(wrap) {
     trail_prompt:    { text:  wrap.querySelector('#daz-trail-prompt')?.value    ?? '' },
     filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '' },
     dimensions: {
-      use_image: wrap.querySelector('#daz-dim-use-image')?.checked ?? false,
+      use_image:     wrap.querySelector('#daz-dim-use-image')?.checked ?? false,
+      dim_reference: wrap.querySelector('#daz-dim-reference')?.value ?? '',
       scale: {
         mode:  wrap.querySelector('#daz-dim-scale-mode')?.value ?? 'none',
         value: parseFloat(wrap.querySelector('#daz-dim-scale-value')?.value ?? '1') || 1.0,
+        div:   parseInt(wrap.querySelector('#daz-dim-divs')?.dataset.div ?? '32', 10) || 0,
       },
     },
     width:           { value: parseInt(wrap.querySelector('#daz-width')?.value        ?? '0', 10) },
