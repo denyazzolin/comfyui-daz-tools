@@ -347,6 +347,10 @@ export function buildWorkflowConfigExtension(cfg) {
       const EM_SLOTS    = { images: 5, videos: 2, audios: 2 }
       const EM_ROOT     = { images: 1, videos: 0, audios: 1 }
       const EM_PATH_KEY = { images: 'image_path', videos: 'video_path', audios: 'audio_path' }
+      // What an audio picker holds when it is pointed at a video rather than at a
+      // file: this, then that video's media id. Nothing in the input folder can
+      // be called it, so the two kinds of pick stay tellable apart in one list.
+      const EM_FROM_VIDEO = 'video://'
       const EM_KINDS    = ['images', 'videos', 'audios']
 
       // What each picker offers out of the input folder. Narrowing only — drop
@@ -1406,12 +1410,21 @@ export function buildWorkflowConfigExtension(cfg) {
               // rule it holds resizes this slot. Audio has neither.
               id:          kind === 'audios' ? '' : (typeof r.id === 'string' ? r.id : ''),
               use_for_dim: kind !== 'audios' && r.use_for_dim === true,
+              // The id of the video an audio slot takes its track off instead of
+              // holding a file of its own. Only audio slots carry one, and it and
+              // a file are never both set — the picker is one dropdown.
+              from_video:  kind === 'audios' && typeof r.from_video === 'string'
+                             ? r.from_video : '',
               start_frame: Number(r.start_frame) || 0,
               cap_frames:  Number(r.cap_frames)  || 0,
               // Read off the file whenever one is picked and never stored: the
               // rate, the length and the frame size belong to the clip, and a
               // reference take has nothing of its own to say about them.
               fps: 0, frames: 0, width: 0, height: 0,
+              // Whether the clip has a track an audio slot could take, and
+              // whether that has been asked yet — a reference is only ever
+              // dropped on a definite no, never on a probe that did not answer.
+              hasAudio: false, probed: false,
             }
           }
         }
@@ -1757,6 +1770,7 @@ export function buildWorkflowConfigExtension(cfg) {
         async function probeVideo(n, filename) {
           const st = store.videos[n]
           st.fps = st.frames = st.width = st.height = 0
+          st.hasAudio = st.probed = false
           if (filename) {
             try {
               const r = await fetch(
@@ -1767,6 +1781,11 @@ export function buildWorkflowConfigExtension(cfg) {
               st.frames = Math.max(0, Math.round(Number(info.frame_count) || 0))
               st.width  = Math.max(0, Math.round(Number(info.width)  || 0))
               st.height = Math.max(0, Math.round(Number(info.height) || 0))
+              // Whether an audio slot may be pointed at this clip. Set only on an
+              // answer, so a probe that failed leaves the question open rather
+              // than saying no.
+              st.hasAudio = !!info.has_audio
+              st.probed   = true
             } catch (err) {
               console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not read '${filename}'`, err)
             }
@@ -1774,6 +1793,9 @@ export function buildWorkflowConfigExtension(cfg) {
           // The frame size is one of the dropdown's labels, and this is the only
           // place it arrives — for the slot on screen and the one behind it.
           dimsCtl.refresh()
+          // Whether the clip has a track to offer arrives here too, and that is
+          // what puts it in the audio pickers or keeps it out of them.
+          syncAudioOptions()
           if (n === active.videos) {
             syncPane('videos')
             // The rate only arrives here, and the in-point cannot be worked out
@@ -1818,16 +1840,53 @@ export function buildWorkflowConfigExtension(cfg) {
           syncAudioBtns()
         }
 
+        // Where a line's sound comes from: the file it picked, or the video it
+        // was pointed at and the window that video is trimmed to. Nothing is
+        // extracted to play it — the browser is handed the clip itself and reads
+        // the track out of it, which is the same file the Video tab is streaming.
+        function audioSource(n) {
+          const st = store.audios[n]
+          if (!st.from_video) {
+            const file = selOf('audios', n)?.value || ''
+            return file && !file.startsWith(EM_FROM_VIDEO)
+              ? { file, start: 0, end: 0 } : null
+          }
+          const v = videoAudioSlot(st.from_video)
+          if (!v) return null
+          const vs   = store.videos[v]
+          const file = selOf('videos', v)?.value || ''
+          if (!file) return null
+          // A row with no window of its own takes the whole track, which is what
+          // the node does with it too — so the preview is not cut short at the
+          // end of the picture on a file whose sound runs past it.
+          const t = (vs.start_frame || vs.cap_frames) ? rangeTimes(vs) : null
+          return { file, start: t ? t.start : 0, end: t ? t.end : 0 }
+        }
+
         function toggleAudio(n) {
           const playing = audioOn === n
           stopAudio()
-          const file = selOf('audios', n)?.value
-          if (playing || !file) return
-          audioEl = new Audio(`/view?filename=${encodeURIComponent(file)}&type=input`)
-          audioEl.addEventListener('ended', stopAudio)
+          const src = audioSource(n)
+          if (playing || !src) return
+          const el = new Audio(`/view?filename=${encodeURIComponent(src.file)}&type=input`)
+          audioEl = el
+          el.addEventListener('ended', stopAudio)
+          // The window is held the way the video preview holds its own: the
+          // playhead is parked on the in-point once there is a duration to seek
+          // within, and the out-point stops it rather than the end of the file.
+          if (src.start > 0) {
+            el.addEventListener('loadedmetadata', () => {
+              try { el.currentTime = src.start } catch (e) {}
+            })
+          }
+          if (src.end > 0) {
+            el.addEventListener('timeupdate', () => {
+              if (audioEl === el && el.currentTime >= src.end) stopAudio()
+            })
+          }
           audioOn = n
           syncAudioBtns()
-          audioEl.play().catch(err => {
+          el.play().catch(err => {
             console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: audio playback failed`, err)
             stopAudio()
           })
@@ -1845,6 +1904,71 @@ export function buildWorkflowConfigExtension(cfg) {
             if (!has && audioOn === n) stopAudio()
           }
           syncAudioBtns()
+        }
+
+        // Which video slot holds the media an id names, or 0 for none. The slot
+        // has to still have a file for its id to name anything — clearing it is
+        // exactly what ends a reference to it.
+        function videoAudioSlot(id) {
+          if (!id) return 0
+          for (let v = 1; v <= EM_SLOTS.videos; v++) {
+            if (store.videos[v].id === id && selOf('videos', v)?.value) return v
+          }
+          return 0
+        }
+
+        // The audio pickers' video entries. A loaded video that has a track of
+        // its own can be picked as a source, and the sound is then taken off it
+        // rather than off a file. Rebuilt rather than patched — a pick, an
+        // upload, a clear and a probe all land here the same way — and driven off
+        // the store rather than off the boxes, because the probe that says
+        // whether a clip has a track lands after the first paint.
+        function syncAudioOptions() {
+          syncIds()
+          const refs = new Set()
+          for (let n = 1; n <= EM_SLOTS.audios; n++) {
+            const st = store.audios[n]
+            const v  = videoAudioSlot(st.from_video)
+            // Dropped on a definite no only: the video is gone, or it has been
+            // probed and has no track. A line that loses its source goes quiet,
+            // which is what a cleared video has to mean for the audio taking it.
+            if (st.from_video &&
+                (!v || (store.videos[v].probed && !store.videos[v].hasAudio))) {
+              st.from_video = ''
+            }
+            if (st.from_video) refs.add(st.from_video)
+          }
+          for (let n = 1; n <= EM_SLOTS.audios; n++) {
+            const sel = selOf('audios', n)
+            if (!sel) continue
+            const st  = store.audios[n]
+            const cur = sel.value || ''
+            // What it had picked, if that was a file. A reference left in the box
+            // after the store dropped it is not one.
+            const file = (st.from_video || cur.startsWith(EM_FROM_VIDEO)) ? '' : cur
+            qa(`[data-em-sel="audios:${n}"] option[data-em-video]`).forEach(o => o.remove())
+            // Straight under the "no audio" entry rather than below the whole
+            // input folder: there are at most two of them, and they are the pick
+            // this list exists to offer. Each goes before the same anchor, so
+            // they come out in slot order.
+            const anchor = sel.firstElementChild?.nextElementSibling || null
+            for (let v = 1; v <= EM_SLOTS.videos; v++) {
+              const vs   = store.videos[v]
+              const vfil = selOf('videos', v)?.value || ''
+              if (!vfil || !vs.id) continue
+              // Offered once the probe says there is a track to take. One that is
+              // already picked is listed either way, so a take that is reopened
+              // shows what it points at without waiting for the probe.
+              if (!vs.hasAudio && !refs.has(vs.id)) continue
+              const o = document.createElement('option')
+              o.value           = EM_FROM_VIDEO + vs.id
+              o.dataset.emVideo = vs.id
+              o.textContent     = `\u266b video ${v}: ${vfil}`
+              sel.insertBefore(o, anchor)
+            }
+            sel.value = st.from_video ? EM_FROM_VIDEO + st.from_video : file
+          }
+          syncAudio()
         }
 
         // Programmatic writes go back through the select's own change event, so
@@ -1901,6 +2025,10 @@ export function buildWorkflowConfigExtension(cfg) {
             store.videos[n].cap_frames  = 0
             showVideo(n, e.target.value)
             syncPane('videos')
+            // Ahead of the probe, which is what re-adds the entry: a slot that
+            // was just cleared has to leave the audio pickers now, not when the
+            // answer for whatever replaced it comes back.
+            syncAudioOptions()
             dimsCtl.refresh()
           })
         }
@@ -1916,7 +2044,15 @@ export function buildWorkflowConfigExtension(cfg) {
           })
         })
         for (let n = 1; n <= EM_SLOTS.audios; n++) {
-          selOf('audios', n)?.addEventListener('change', syncAudio)
+          selOf('audios', n)?.addEventListener('change', e => {
+            // One dropdown, one pick: choosing a video ends whatever file the
+            // line held, and choosing a file ends the reference. Everything else
+            // the change means is worked out from the store.
+            const v = e.target.value || ''
+            store.audios[n].from_video =
+              v.startsWith(EM_FROM_VIDEO) ? v.slice(EM_FROM_VIDEO.length) : ''
+            syncAudioOptions()
+          })
           q(`[data-em-play="${n}"]`)?.addEventListener('click', () => toggleAudio(n))
         }
 
@@ -2080,7 +2216,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const nm = q(`#daz-em-audios-${n}-name`)
           if (nm) nm.value = store.audios[n].name
         }
-        syncAudio()
+        syncAudioOptions()
         dimsCtl.refresh()
 
         return {
@@ -2113,16 +2249,21 @@ export function buildWorkflowConfigExtension(cfg) {
             const out = { images: [], videos: [], audios: [] }
             for (const kind of EM_KINDS) {
               for (let n = 1 + EM_ROOT[kind]; n <= EM_SLOTS[kind]; n++) {
-                const file = selOf(kind, n)?.value || ''
-                if (!file) continue
-                const st  = store[kind][n]
+                const st   = store[kind][n]
+                const from = kind === 'audios' ? st.from_video : ''
+                // A slot pointed at a video keeps no path of its own, and one
+                // holding neither is left out rather than saved as a blank row.
+                const file = from ? '' : (selOf(kind, n)?.value || '')
+                if (!file && !from) continue
                 const row = { name: nameOf(kind, n), order: n - EM_ROOT[kind],
                               [EM_PATH_KEY[kind]]: file }
                 if (kind === 'videos') {
                   row.start_frame = st.start_frame
                   row.cap_frames  = st.cap_frames
                 }
-                if (kind !== 'audios') {
+                if (kind === 'audios') {
+                  row.from_video  = from
+                } else {
                   row.id          = st.id
                   row.use_for_dim = st.use_for_dim
                 }
@@ -2135,7 +2276,10 @@ export function buildWorkflowConfigExtension(cfg) {
               // than into a row.
               rootImage: { name: nameOf('images', 1), id: store.images[1].id,
                            use_for_dim: store.images[1].use_for_dim },
-              rootAudioName: nameOf('audios', 1),
+              rootAudio: { name: nameOf('audios', 1),
+                           path: store.audios[1].from_video
+                                   ? '' : (selOf('audios', 1)?.value || ''),
+                           from_video: store.audios[1].from_video },
               extended_media: out,
             }
           },
@@ -2175,14 +2319,16 @@ export function buildWorkflowConfigExtension(cfg) {
         // just assembled.
         const em = wrap?._dazEmCtl?.collect()
         if (!em) return out
-        const { rootImage, rootAudioName, ...rest } = em
+        const { rootImage, rootAudio, ...rest } = em
         const merged = {
           ...out, ...rest,
           image_path: { ...(out.image_path || {}), ...rootImage },
         }
-        // Only where the class has one: a name must not conjure the field.
+        // Only where the class has one: a name must not conjure the field. The
+        // path goes on too, because a line pointed at a video puts the reference
+        // in the picker and the class builder would otherwise save that as a path.
         if ('audio_path' in out) {
-          merged.audio_path = { ...out.audio_path, name: rootAudioName }
+          merged.audio_path = { ...out.audio_path, ...rootAudio }
         }
         return merged
       }

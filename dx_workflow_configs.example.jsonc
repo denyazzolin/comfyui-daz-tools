@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 13,                  // internal schema version; do not change
+    "schema_version": 14,                  // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -31,7 +31,7 @@
         "shift_high": { "value": 5.0 },       // high-pass unet timestep shift (positive shifts towards earlier, more noisy steps)
         "shift_low": { "value": 5.0 },        // low-pass unet timestep
         "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
-        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": "" }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it. "from_video" is the "id" of an extended_media video to take the sound off instead of a file of its own - set it and leave "path" empty; the track is trimmed to that video's own "start_frame"/"cap_frames". The editor lists a loaded video in the audio picker once it finds the clip has a track, and clears the reference if that video is cleared
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 720 },        // output height in pixels
         "dimensions":{
@@ -55,7 +55,7 @@
           // the editor mints it when a slot gains a file and drops it when the slot is cleared.
           "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
           "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
-          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
+          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":""}] // "from_video" is the "id" of one of the videos above, to take the sound off that clip's track instead of an audio file - set it and leave "audio_path" empty, and the track arrives trimmed to that video's "start_frame"/"cap_frames"
         },
         "steps": { "value": 30 },          // number of denoising steps
         "split_step": { "value": 15 },     // step at which high/low-pass unet split occurs
@@ -116,7 +116,7 @@
         "shift_high": { "value": 5.0 },       // NOT USED by LTX node
         "shift_low": { "value": 5.0 },        // NOT USED by LTX node
         "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "", "use_for_dim": false }, // input image path (empty for T2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
-        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": "" }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it. "from_video" is the "id" of an extended_media video to take the sound off instead of a file of its own - set it and leave "path" empty; the track is trimmed to that video's own "start_frame"/"cap_frames". The editor lists a loaded video in the audio picker once it finds the clip has a track, and clears the reference if that video is cleared
         "width": { "value": 768 },         // output width in pixels
         "height": { "value": 512 },        // output height in pixels
         "dimensions":{
@@ -140,7 +140,7 @@
           // the editor mints it when a slot gains a file and drops it when the slot is cleared.
           "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
           "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
-          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
+          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":""}] // "from_video" is the "id" of one of the videos above, to take the sound off that clip's track instead of an audio file - set it and leave "audio_path" empty, and the track arrives trimmed to that video's "start_frame"/"cap_frames"
         },
         "steps": { "value": 8 },           // number of denoising steps
         "split_step": { "value": 0 },      // NOT USED by LTX node
@@ -268,7 +268,7 @@
         "shift_high": { "value": 0.0 },       // NOT USED by LTX2.5 node
         "shift_low": { "value": 0.0 },        // NOT USED by LTX2.5 node
         "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": false }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
-        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": "" }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it. "from_video" is the "id" of an extended_media video to take the sound off instead of a file of its own - set it and leave "path" empty; the track is trimmed to that video's own "start_frame"/"cap_frames". The editor lists a loaded video in the audio picker once it finds the clip has a track, and clears the reference if that video is cleared
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 704 },        // output height in pixels
         "dimensions":{
@@ -292,7 +292,7 @@
           // the editor mints it when a slot gains a file and drops it when the slot is cleared.
           "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
           "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
-          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
+          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":""}] // "from_video" is the "id" of one of the videos above, to take the sound off that clip's track instead of an audio file - set it and leave "audio_path" empty, and the track arrives trimmed to that video's "start_frame"/"cap_frames"
         },
         "steps": { "value": 20 },          // number of denoising steps
         "split_step": { "value": 0 },      // NOT USED by LTX2.5 node
@@ -353,7 +353,7 @@
         "shift_high": { "value": 0.0 },       // flow shift for video, the "shift_video" of ComfyUI's ModelSamplingMiniMaxH3 (12.0 there). Patched into "unet_stack"; 0.0 on both means no patch
         "shift_low": { "value": 0.0 },        // flow shift for audio, the "shift_audio" of the same node (3.0 there). Set with "shift_high" or not at all
         "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": true }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
-        "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
+        "audio_path": { "name": "", "path": "", "from_video": "" }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it. "from_video" is the "id" of an extended_media video to take the sound off instead of a file of its own - set it and leave "path" empty; the track is trimmed to that video's own "start_frame"/"cap_frames". The editor lists a loaded video in the audio picker once it finds the clip has a track, and clears the reference if that video is cleared
         "width": { "value": 1280 },        // output width in pixels
         "height": { "value": 720 },        // output height in pixels
         "dimensions":{
@@ -377,7 +377,7 @@
           // the editor mints it when a slot gains a file and drops it when the slot is cleared.
           "images":[{"name":"first_frame", "order":1, "id":"3f7b1c8e24d0", "image_path":"C:/path/to/first_frame.png", "use_for_dim":false}],
           "videos":[{"name":"drive_clip", "order":1, "id":"7d3f0b1c8e24", "video_path":"C:/path/to/clip.mp4", "start_frame":0, "cap_frames":0, "use_for_dim":false}], // start_frame: 1-based first frame to load, 0 means the same as 1; cap_frames: how many to take from there, 0 = to the end of the clip. The two handles under the editor's video preview set the pair
-          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":0}]
+          "audios":[{"name":"voice_ref", "order":1, "audio_path":"C:/path/to/voice.wav", "from_video":""}] // "from_video" is the "id" of one of the videos above, to take the sound off that clip's track instead of an audio file - set it and leave "audio_path" empty, and the track arrives trimmed to that video's "start_frame"/"cap_frames"
         },
         "steps": { "value": 30 },          // number of denoising steps
         "split_step": { "value": 0 },      // NOT USED by MiniMax H3 node

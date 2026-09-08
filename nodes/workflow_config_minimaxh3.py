@@ -4,7 +4,7 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions, resolve_extended_media,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions, resolve_extended_media, resolve_audio_source,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -89,7 +89,7 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]
 
 
-def _load_audio(path: str):
+def _load_audio(path: str, start_s: float = 0.0, end_s: float = 0.0):
     if not path:
         return None
     if os.path.isabs(path):
@@ -98,7 +98,7 @@ def _load_audio(path: str):
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: audio not found at '{full}'")
-    return decode_audio_file(full, "WorkflowConfigMiniMaxH3")
+    return decode_audio_file(full, "WorkflowConfigMiniMaxH3", start_s=start_s, end_s=end_s)
 
 
 def _load_lora(name: str):
@@ -367,7 +367,11 @@ class WorkflowConfigMiniMaxH3:
             active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigMiniMaxH3")
         # Held rather than loaded inline in the tuple: extended_media carries
         # this same audio as its slot 0, and it is loaded once for both.
-        ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
+        # Where the sound comes from is the field's own business: an audio file,
+        # or the track of a video the take already holds, trimmed to that video's
+        # own window.
+        ref_audio = _load_audio(*resolve_audio_source(
+            active_set, active_set.get("audio_path"), "WorkflowConfigMiniMaxH3: audio"))
 
         # shift_high is the video shift and shift_low the audio one - the pair
         # ComfyUI's ModelSamplingMiniMaxH3 takes. Patched onto the stacked output
