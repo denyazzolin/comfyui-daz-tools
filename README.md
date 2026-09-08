@@ -211,51 +211,25 @@ Whenever the size comes from the reference the editor fills the boxes in and sho
 
 Beyond the single **Image** and **Audio** slots, a take can carry named extra media for workflows that need more than one reference — REF2VA on MiniMax H3, MSR on LTX2.3 and LTX2.5, first-frame/last-frame and multi-frame setups anywhere. The four video nodes carry the whole lot on one `extended_media` output; the **Image** node has none.
 
-Each take holds three lists, stored under `extended_media` in the config file:
+A take has **5 image slots**, **2 video slots** and **2 audio slots**. Image slot 1 and audio slot 1 are the take's own **Image** and **Audio**; the rest are the extra ones. Those numbers are the ones the editor shows and the ones the Media Splitter's sockets carry — image slot 3 is always `image_3`, whatever else is filled.
 
-| List | Slots | Per item |
-|---|---|---|
-| `images` | 4 | `name`, `order`, `id`, `image_path`, `use_for_dim` |
-| `videos` | 2 | `name`, `order`, `id`, `video_path`, `start_frame`, `cap_frames`, `use_for_dim` |
-| `audios` | 1 | `name`, `order`, `audio_path`, `from_video` |
+A slot is a fixed position rather than a place in a list: filling or clearing one never shifts another, gaps are fine, and an empty slot simply outputs nothing. Each slot also carries a **name** of your own, written in the box beside its **clear** button — a label for you, which never renames a socket.
 
-`order` is a **slot number, not a sort key**: the node loads slot 1 into output 1 whatever position the row sits in, so clearing one row never shifts another, and a list may have holes. Only the slots listed above are loaded — a row with an order outside the range, a second row claiming an order already taken, or a row with no path is skipped. Extra rows are never removed from the file on save, so a hand-edited config keeps whatever you put there; the caps are what the node reads, not what the file may hold. `name` is a label for your own use — the box beside each slot's **clear** writes it, and the Media Splitter's sockets are named by slot, not by it.
-
-The editor numbers the same media differently, because it counts the take's own **Image** and **Audio** as slot 1 of their kind. Its image slots **2–5** are `images` orders 1–4, its audio slot **2** is the one `audios` row, and its video slots **1–2** are the `videos` orders of the same number — video has no slot at the root to count first.
-
-Those two first slots are the take's own `image_path` and `audio_path`, and they take the same `name` an extended row does, beside their path:
-
-```jsonc
-"image_path": { "name": "hero still", "id": "a91c4e07b2f5", "path": "…", "use_for_dim": false },
-"audio_path": { "name": "vo take 3",  "path": "…" },
-```
-
-The name box on image slot 1 and audio slot 1 writes these, and a save carries through anything else you put in either object. They reach the node the way an extended row's name does.
-
-A video slot loads a window of the clip, not the whole thing:
-
-| Field | Meaning |
-|---|---|
-| `start_frame` | First frame to load, 1-based; `0` means the same as `1` |
-| `cap_frames` | Maximum frames to load, `0` for no cap |
+A video slot loads a window of the clip, not the whole thing — the two handles under its preview pick which stretch, and a slot left alone loads the clip whole.
 
 Decoded frames are float32 RGB — about 12 bytes a pixel — so a decode also stops at **600 frames** or **4 GB**, whichever comes first, and says in the console which ceiling it hit.
 
-`use_for_dim` says the take's scale rule resizes this slot — see [Dimensions and scaling](#dimensions-and-scaling). Any number of image and video slots may carry it, the take's own reference image included: that one keeps its flag *inside* its `image_path` (`"image_path": { "path": "…", "use_for_dim": true }`), exactly as an extended row keeps it beside its own path.
+**Resize**, the checkbox in the corner of an image or video preview, marks that slot for the take's scale rule — see [Dimensions and scaling](#dimensions-and-scaling). Any number of slots may be marked, the take's own reference image included.
 
-`id` is what **Reference media** points at to name the slot the rule *measures*. The editor mints one when a slot gains a file and drops it when the slot is cleared, which also clears a reference that named it — so it identifies the media, not the position. Re-picking a file into a slot keeps its id, and so keeps the reference pointed at it.
+**Reference media**, in the **Dimensions and More** box, names the one slot the rule *measures*. It lists every filled image and video slot, and the pick is on the slot: re-picking a file there keeps the rule measuring it, and clearing the slot clears the pick.
 
 ##### Audio from a video
 
-An audio slot can take its sound off a loaded video instead of holding a file of its own. `from_video` is the `id` of one of the take's video slots; set it and leave the path empty — the two are never both filled, the picker being one dropdown. The track arrives trimmed to that video's own `start_frame` and `cap_frames`, so what is heard is the stretch the same clip decodes. The take's own `audio_path` carries the field exactly as an extended row does:
+Either audio slot can take its sound off a loaded video instead of holding a file of its own: its picker lists the take's loaded videos above the input folder's audio files, and picking one sounds that clip's track. It arrives trimmed to the stretch the video's handles chose, so what is heard is what that video slot decodes. A file and a video are never both set — the picker is one dropdown.
 
-```jsonc
-"audio_path": { "name": "vo take 3", "path": "", "from_video": "7d3f0b1c8e24" },
-```
+The pick is on the *slot*, not the file: re-picking a video keeps it, and the sound follows whatever is loaded there. Clearing that video slot ends it and returns the audio to **— no audio —**, as does a new clip with no track of its own. A silent video is never offered in the first place, and nothing is ever extracted to a file: the play button reads the track out of the streamed clip, and a run decodes just the window it needs.
 
-The editor lists a video in the audio pickers once it has read the clip and found a track there — a silent one is never offered — and clearing that video ends the reference, returning the audio slot to **— no audio —**. Picking a different file into that slot does not: the reference is to the slot, so the sound follows whatever is loaded there — unless the new clip has no track, which ends it as a clearing would. A reference broken by hand in the file is dropped the same way on load. Nothing is ever extracted to a file of its own: the play button streams the clip and lets the browser read the track out of it, and a run decodes just the window it needs straight from the container.
-
-The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Resize** in the corner of the preview marks that slot for the take's scale rule. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner — and, under that in yellow, the size the take's scale rule will resize it to, whenever the slot is marked **Resize** and the rule has a size to give it. Each also carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses, writing `start_frame` and `cap_frames`: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding. Each picker lists the audio files in the input folder and, below them, any loaded video that has a track of its own — picking one of those takes the sound off that clip, and play then sounds its trimmed stretch alone.
+The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Resize** in the corner of the preview marks that slot for the take's scale rule. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner — and, under that in yellow, the size the take's scale rule will resize it to, whenever the slot is marked **Resize** and the rule has a size to give it. Each also carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding. Each picker lists any loaded video that has a track of its own directly under **— no audio —**, above the input folder's audio files.
 
 #### Duration and frame counts
 
