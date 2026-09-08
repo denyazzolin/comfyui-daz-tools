@@ -95,6 +95,31 @@
 
   const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple', 'timecode', 'h3'])
 
+  // The two start-time marks an H3 prompt can carry. The first is the one this
+  // editor writes - decimal seconds, "At 3.6s," - and the second is the
+  // MM:SS.mmm of MiniMax's own prompting guide, "At 00:12.000,". Both are read
+  // back so a prompt pasted from the guide keeps its segments; only the first is
+  // ever written, so saving normalises a pasted prompt to it.
+  //
+  // The fraction is read as a decimal fraction of a second rather than as a
+  // count of milliseconds, so ".5", ".50" and ".500" all mean half a second. The
+  // guide always writes three digits; this way a hand-shortened one is not read
+  // as a thousandth of what was meant.
+  //
+  // The comma is optional. Prompts are written both ways in the wild, so the
+  // mark is taken as ended by a comma or by plain space. The cost is that a
+  // line of prose opening with a time - "At 10:30 the meeting starts" - now
+  // reads as a segment mark; there is no way to accept the comma-less marks
+  // that are actually out there without accepting that too.
+  const H3_MARK = /^At\s+(?:(\d+):(\d+)(?:\.(\d+))?s?|(\d+(?:\.\d+)?)s)(?:\s*,\s*|\s+|\s*$)/
+
+  // Seconds off an H3_MARK match, whichever of the two forms matched.
+  function h3StartSec(m) {
+    if (m[4] !== undefined) return parseFloat(m[4])
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10) +
+           (m[3] ? parseInt(m[3], 10) / Math.pow(10, m[3].length) : 0)
+  }
+
   // Infer the serialised format of prompt text from its content.
   // Returns 'beats', 'smart', 'timecode', 'h3', or null (= cannot determine, use declared type).
   function detectPromptFormat(text) {
@@ -109,8 +134,9 @@
     if (lines.length >= 2 && lines.some(l => /^\[(\d+):(\d+)\]/.test(l))) {
       return 'timecode'
     }
-    // H3: at least one line starts a segment with an "At X.Ys," marker
-    if (lines.some(l => /^At\s+\d+(?:\.\d+)?s,/.test(l))) {
+    // H3: at least one line starts a segment with an "At X.Ys" or
+    // "At MM:SS.mmm" marker, with or without the comma after it
+    if (lines.some(l => H3_MARK.test(l))) {
       return 'h3'
     }
     // Smart: multiple pipe-separated parts where at least one ends with [X-Y]
@@ -218,12 +244,13 @@
     if (parseType === 'h3') {
       const lines = text.split('\n').filter(l => l.trim())
       if (!lines.length) return [{ text: '', frames: totalFrames }]
-      // Same marker-to-marker grouping as timecode, keyed on a decimal-seconds "At X.Ys," start time.
+      // Same marker-to-marker grouping as timecode, keyed on the start time an
+      // H3 mark carries in either of its two forms.
       const blocks = []
       for (const line of lines) {
-        const m = line.match(/^At\s+(\d+(?:\.\d+)?)s,\s*([\s\S]*)$/)
+        const m = line.match(H3_MARK)
         if (m) {
-          blocks.push({ startSec: parseFloat(m[1]), lines: [m[2].trim()] })
+          blocks.push({ startSec: h3StartSec(m), lines: [line.slice(m[0].length).trim()] })
         } else if (blocks.length) {
           blocks[blocks.length - 1].lines.push(line.trim())
         } else {
@@ -872,7 +899,7 @@
             if (oldType === 'h3' && promptType !== 'h3') {
               segments = segments.map(s => ({
                 ...s,
-                text: s.text.replace(/^At\s+\d+(?:\.\d+)?s,\s*/, '').trim(),
+                text: s.text.replace(H3_MARK, '').trim(),
               }))
             }
             if (promptType === 'simple') {
