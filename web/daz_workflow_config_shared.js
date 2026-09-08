@@ -1947,6 +1947,11 @@ export function buildWorkflowConfigExtension(cfg) {
             // after the store dropped it is not one.
             const file = (st.from_video || cur.startsWith(EM_FROM_VIDEO)) ? '' : cur
             qa(`[data-em-sel="audios:${n}"] option[data-em-video]`).forEach(o => o.remove())
+            // Straight under the "no audio" entry rather than below the whole
+            // input folder: there are at most two of them, and they are the pick
+            // this list exists to offer. Each goes before the same anchor, so
+            // they come out in slot order.
+            const anchor = sel.firstElementChild?.nextElementSibling || null
             for (let v = 1; v <= EM_SLOTS.videos; v++) {
               const vs   = store.videos[v]
               const vfil = selOf('videos', v)?.value || ''
@@ -1959,7 +1964,7 @@ export function buildWorkflowConfigExtension(cfg) {
               o.value           = EM_FROM_VIDEO + vs.id
               o.dataset.emVideo = vs.id
               o.textContent     = `\u266b video ${v}: ${vfil}`
-              sel.appendChild(o)
+              sel.insertBefore(o, anchor)
             }
             sel.value = st.from_video ? EM_FROM_VIDEO + st.from_video : file
           }
