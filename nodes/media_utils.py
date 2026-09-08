@@ -2,7 +2,8 @@
 Video frame decoding for the WorkflowConfig extended media block.
 
 video_utils probes a file (fps, duration, frame count) without touching pixels;
-this decodes an actual window of frames out of one into a ComfyUI IMAGE batch.
+this decodes an actual window of frames out of one into a ComfyUI IMAGE batch,
+optionally scaling it as it goes.
 Both use PyAV, imported lazily so this module stays importable without it.
 """
 import os
@@ -15,9 +16,16 @@ import os
 MAX_VIDEO_FRAMES        = 600
 MAX_VIDEO_DECODED_BYTES = 4 * 1024 ** 3
 
+# How much of a clip is converted to float32 at a time when it is being
+# scaled. This is the only part of the window that exists at its source
+# resolution once the conversion starts, so it is the figure that decides how
+# much a downscale actually saves. Small enough not to matter beside the batch
+# that survives, large enough that a 4K frame still goes through in company.
+MAX_SCALE_CHUNK_BYTES   = 256 * 1024 ** 2
+
 
 def decode_video_frames(full_path: str, error_prefix: str, start_frame: int = 0,
-                        cap_frames: int = 0):
+                        cap_frames: int = 0, scale=None):
     """Decode a window of a video into (IMAGE batch, fps, frame count).
 
     start_frame is 1-based and 0 means the same as 1, and cap_frames is how many
@@ -25,6 +33,18 @@ def decode_video_frames(full_path: str, error_prefix: str, start_frame: int = 0,
     handles under the editor's video preview set. The fps returned is the file's
     own. The frames are an [N, H, W, 3] float32 tensor in 0..1, the same layout
     every other image output in the plugin uses.
+
+    scale, if given, is applied to the frames on their way out — an
+    [n, H, W, 3] batch in, the scaled batch back. It is taken as a callable
+    rather than a size so this module keeps knowing nothing about the take's
+    dimensions rule; the caller passes the rule it has already worked out. It is
+    called on each chunk in turn rather than on the whole window, which is what
+    keeps the clip from ever existing whole at its source resolution — so it
+    must scale each frame on its own, as a resize filter does, and not read
+    across the batch.
+
+    The ceilings above are measured on the source frame either way. What comes
+    back is bounded by the window they allow, not by what scale leaves of it.
     """
     try:
         import av
@@ -82,16 +102,43 @@ def decode_video_frames(full_path: str, error_prefix: str, start_frame: int = 0,
     if capped_by and len(frames) >= limit:
         print(f"[DAZ TOOLS] {error_prefix}: stopped at {len(frames)} frames — hit {capped_by}")
 
-    # Built in three deliberate steps rather than as one expression. Written as
-    # np.stack(frames).astype(np.float32) / 255.0, four copies of the clip are
-    # alive at the peak - the per-frame list, the stacked uint8, the float32 the
-    # conversion makes and the second float32 the divide makes - roughly twice
-    # the batch that survives, on top of a window that may already be at the
-    # ceiling. Releasing each one as soon as it is spent, and scaling in place,
-    # holds the peak to the float32 batch plus the uint8 it was converted from.
-    count = len(frames)
-    batch = np.stack(frames)
+    # Converted a chunk at a time, straight into the batch that is returned.
+    # Done whole - np.stack(frames).astype(np.float32) / 255.0 - four copies of
+    # the clip are alive at the peak: the per-frame list, the stacked uint8, the
+    # float32 the conversion makes and the second float32 the divide makes.
+    # Scaling afterwards then adds a fifth, the source-resolution float32 being
+    # held while the scaled copy is built, and at 4K that copy is tens of
+    # gigabytes that no output ever sees. Going a chunk at a time, and releasing
+    # each one as it is spent, holds the source-resolution cost to the uint8
+    # frames still waiting plus the chunk in hand. An unscaled decode is left
+    # costing what it did before: the same conversion, in pieces.
+    #
+    # The list is decoded in full first, so the frame count is known before any
+    # float32 exists and the batch can be allocated once, at its final size.
+    # Growing it by concatenation instead would hold the finished clip twice.
+    count     = len(frames)
+    per_frame = max(1, frames[0].shape[0] * frames[0].shape[1] * 3 * 4)
+    step      = max(1, int(MAX_SCALE_CHUNK_BYTES // per_frame))
+    batch, at = None, 0
+    for first in range(0, count, step):
+        last  = min(first + step, count)
+        chunk = np.stack(frames[first:last])
+        # Dropped as they are consumed, so the uint8 list shrinks as the float32
+        # batch fills rather than both being held whole.
+        for i in range(first, last):
+            frames[i] = None
+        chunk = chunk.astype(np.float32)
+        chunk /= 255.0
+        piece = torch.from_numpy(chunk)
+        del chunk
+        if scale is not None:
+            piece = scale(piece)
+        if batch is None:
+            # The first scaled chunk is what says how big the result is, so the
+            # caller's rule does not have to be asked for a size as well.
+            batch = torch.empty((count,) + tuple(piece.shape[1:]), dtype=piece.dtype)
+        batch[at:at + piece.shape[0]] = piece
+        at += piece.shape[0]
+        del piece
     frames.clear()
-    batch = batch.astype(np.float32)
-    batch /= 255.0
-    return torch.from_numpy(batch), fps, count
+    return batch, fps, count

@@ -741,8 +741,10 @@ def _load_media_image(full_path: str):
 def _apply_media_resize(image, marked: bool, plan: tuple, node_name: str):
     """Scale one extended media by the take's dimensions rule, if it asked to be.
 
-    Stills and decoded video frames alike come through here, and an unmarked slot
-    is handed straight back — the flag on the row is the whole of the decision.
+    Stills only. A clip is scaled inside its decode instead, a chunk at a time,
+    so that it never exists whole at its source resolution; the rule below is
+    what gets handed down there. An unmarked slot is handed straight back — the
+    flag on the row is the whole of the decision.
     """
     return _apply_dim_rule(image, plan, node_name) if marked else image
 
@@ -813,15 +815,19 @@ def resolve_extended_media(active_set: dict, node_name: str,
                                                     item["use_for_dim"], plan, node_name)
             elif kind == "videos":
                 from .media_utils import decode_video_frames
-                frames, fps, count = decode_video_frames(
+                # The rule goes down into the decode rather than being applied to
+                # what comes back, so a marked clip is never held whole at its
+                # source resolution. Unpacked straight into the entry for the same
+                # reason a still is: a name bound here would keep this slot's
+                # frames alive through the next slot's decode.
+                (entry["frames"], entry["fps"],
+                 entry["frame_count"]) = decode_video_frames(
                     full, prefix,
                     start_frame=item["start_frame"],
                     cap_frames=item["cap_frames"],
+                    scale=((lambda batch: _apply_dim_rule(batch, plan, node_name))
+                           if item["use_for_dim"] else None),
                 )
-                entry["frames"]      = _apply_media_resize(frames, item["use_for_dim"],
-                                                          plan, node_name)
-                entry["fps"]         = fps
-                entry["frame_count"] = count
             else:
                 from .audio_utils import decode_audio_file
                 entry["audio"] = decode_audio_file(full, prefix)
