@@ -15,6 +15,7 @@ from .audio_utils import decode_audio_file
 try:
     import comfy.sd
     import comfy.utils
+    import comfy.model_sampling
 except Exception:
     pass
 
@@ -130,6 +131,48 @@ def _apply_loras(model, lora_pairs):
             continue
         result, _ = comfy.sd.load_lora_for_models(result, None, sd, strength, strength)
     return result
+
+
+def _apply_sigma_shift(model, shift_video: float, shift_audio: float):
+    """Patch the flow shifts onto a model, as ModelSamplingMiniMaxH3 does.
+
+    The two are set in one call because the model derives them together: the
+    video shift drives the sampler's sigma schedule, and the DiT inverts that
+    back to the shared base grid to get the audio one. So a pair is what this
+    takes, not two independent knobs.
+
+    0.0 is below what the stock node accepts for either, so it is read here as
+    "leave the model alone". That is what every take already on disk says —
+    the two fields were written for every set while nothing read them — so an
+    untouched config keeps behaving exactly as it did.
+    """
+    if model is None or (not shift_video and not shift_audio):
+        return model
+    if not shift_video or not shift_audio:
+        print("[DAZ TOOLS] WorkflowConfigMiniMaxH3: the video and audio shifts are "
+              "set together or not at all, and one of them is 0.0 - neither was "
+              "applied.")
+        return model
+
+    class ModelSamplingAdvanced(comfy.model_sampling.ModelSamplingAV,
+                                comfy.model_sampling.CONST):
+        pass
+
+    m              = model.clone()
+    original       = m.get_model_object("model_sampling")
+    model_sampling = ModelSamplingAdvanced(model.model.model_config)
+    model_sampling.set_parameters(shift=shift_video, audio_shift=shift_audio)
+    if hasattr(original, "noise_scale"):
+        model_sampling.set_noise_scale(original.noise_scale)
+    m.add_object_patch("model_sampling", model_sampling)
+
+    # The sampler reads the schedule patched in above; the DiT reads the two
+    # figures themselves, which is why they are handed over twice.
+    to = m.model_options["transformer_options"] = \
+        m.model_options.get("transformer_options", {}).copy()
+    to["minimax_h3_sigma_shift_video"] = shift_video
+    to["minimax_h3_sigma_shift_audio"] = shift_audio
+    return m
 
 
 class WorkflowConfigMiniMaxH3:
@@ -326,6 +369,15 @@ class WorkflowConfigMiniMaxH3:
         # this same audio as its slot 0, and it is loaded once for both.
         ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
+        # shift_high is the video shift and shift_low the audio one - the pair
+        # ComfyUI's ModelSamplingMiniMaxH3 takes. Patched onto the stacked output
+        # only, so unet_only stays the model as it was loaded.
+        unet_stack = _apply_sigma_shift(
+            _apply_loras(unet, lora_pairs),
+            _get_float(active_set.get("shift_high")),
+            _get_float(active_set.get("shift_low")),
+        )
+
         return (
             unet,
             video_vae,
@@ -346,7 +398,7 @@ class WorkflowConfigMiniMaxH3:
             _get_float(active_set.get("fps")),
             lora_1_sd, lora_2_sd, lora_3_sd, lora_4_sd, lora_5_sd, lora_6_sd,
             _get_file(active_set.get("filename")),
-            _apply_loras(unet, lora_pairs),
+            unet_stack,
             active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),

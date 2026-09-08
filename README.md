@@ -105,7 +105,7 @@ All five nodes share a common set of configurable fields:
 | **CFG High / CFG Low** | CFG scale for each model pass |
 | **Shift High / Shift Low** | Timestep shift applied to the high and low model passes respectively (default 5.0). Equivalent to ComfyUI's **ModelSamplingSD3** node |
 
-LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be applied independently to each model pass. The node outputs a ready-to-use model stack for each pass (`unet_stack_high` and `unet_stack_low`) with all enabled LoRAs applied and the timestep shift already patched in — connect those directly to your sampler. **Shift is applied automatically inside these stacked outputs; it is a WAN2.2-only feature and is not present on the LTX2.3 node.**
+LoRA slots in WAN2.2 are arranged as 4 High/Low pairs, so each LoRA can be applied independently to each model pass. The node outputs a ready-to-use model stack for each pass (`unet_stack_high` and `unet_stack_low`) with all enabled LoRAs applied and the timestep shift already patched in — connect those directly to your sampler. **Shift is applied automatically inside these stacked outputs.** WAN2.2 and MiniMax H3 are the two nodes that patch a shift into their stacked output — the LTX2.3, LTX2.5 and Image nodes have no shift field at all. What the two patch in differs: WAN2.2 sets a timestep shift per model pass, MiniMax H3 a video/audio flow shift pair on its single model.
 
 **LTX2.3** additionally stores:
 
@@ -154,6 +154,7 @@ You can fill in either the checkpoint path or the standalone model paths — all
 | **Video VAE / Audio VAE** | Separate VAE models for video and audio |
 | **CLIP** | Text encoder (loaded with the MiniMax CLIP type) |
 | **CFG** | CFG scale |
+| **Shift Video / Shift Audio** | Flow shifts patched into `unet_stack` — the pair ComfyUI's **ModelSamplingMiniMaxH3** node takes as `shift_video` and `shift_audio` (12.0 and 3.0 there). Stored as `shift_high` / `shift_low`. The model derives the two together, so they are set together or not at all: leave both at 0 and the model comes out unpatched, which is what a take that has never touched them does. Set just one and neither is applied, with a note in the console |
 
 
 #### GGUF unet loading
@@ -162,7 +163,7 @@ The standalone unet field on each node (**UNet High/Low** on WAN2.2, **UNet/Tran
 
 Requires the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) custom node package. Without it installed, `.gguf` files won't be listed, and running a scene configured for GGUF raises a clear error instead of silently falling back.
 
-LoRAs and the timestep-shift model patch (WAN2.2) are fully supported on GGUF-loaded unets, same as regular models.
+LoRAs and the shift model patch (WAN2.2 and MiniMax H3) are fully supported on GGUF-loaded unets, same as regular models.
 
 Presets carry the `gguf` flag along with the model name, so applying a preset with a GGUF model correctly sets the loader to use.
 

@@ -347,8 +347,8 @@
         "clip_2": { "name": "" },          // NOT USED by MiniMax H3 node
         "latent_upscale": { "name": "" },  // NOT USED by MiniMax H3 node (LTX2.3/LTX2.5 only)
         "clip_type": "stable_diffusion",   // NOT USED by MiniMax H3 node
-        "shift_high": { "value": 0.0 },       // NOT USED by MiniMax H3 node
-        "shift_low": { "value": 0.0 },        // NOT USED by MiniMax H3 node
+        "shift_high": { "value": 0.0 },       // flow shift for video, the "shift_video" of ComfyUI's ModelSamplingMiniMaxH3 (12.0 there). Patched into "unet_stack"; 0.0 on both means no patch
+        "shift_low": { "value": 0.0 },        // flow shift for audio, the "shift_audio" of the same node (3.0 there). Set with "shift_high" or not at all
         "image_path": { "name": "", "id": "a91c4e07b2f5", "path": "C:/path/to/input_image.png", "use_for_dim": true }, // absolute path to input image (for I2V). "use_for_dim" means the take's scale rule resizes this image - the editor's image slot 1 - and any number of slots may set it, here or in extended_media. "id" is what "dimensions"."dim_reference" names to measure the size on. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "audio_path": { "name": "", "path": "", "from_video": 0 }, // absolute path to input reference audio file. "name" is a label of your own, like an extended_media row's; the name box on slot 1 of the editor's Images/Audio tab writes it.
         "width": { "value": 1280 },        // output width in pixels
