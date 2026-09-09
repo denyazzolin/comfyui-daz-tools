@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-daz-tools"
-description = "A collection of utility nodes: Workflow Managers for WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 - all in-one "movie" setups that you can organize in scenes, takes, etc; A promtp stack node to organize and save your prompts; Audio Mixer - mix audio on a visual tool, matching video frames, and enhance your video audio tracks!; Tools for null checking and more!"
+description = "A collection of utility nodes: Workflow Managers for WAN2.2, LTX2.3, LTX2.5 and MiniMax H3 - all in-one -movie- setups that you can organize in scenes, takes, etc; A promtp stack node to organize and save your prompts; Audio Mixer - mix audio on a visual tool, matching video frames, and enhance your video audio tracks!; Tools for null checking and more!"
 version = "4.1.0"
 license = "MIT"
 
