@@ -187,10 +187,12 @@ class WorkflowConfigMiniMaxH3:
         for f in files:
             for lbl in labels_for_class(_CLASS, file=f["file"]):
                 if lbl not in seen:
-                    seen.add(lbl); all_labels.append(lbl)
+                    seen.add(lbl)
+                    all_labels.append(lbl)
         for lbl in labels_for_class(_CLASS, file=None):
             if lbl not in seen:
-                seen.add(lbl); all_labels.append(lbl)
+                seen.add(lbl)
+                all_labels.append(lbl)
 
         all_versions = all_versions_for_class(_CLASS)
 
