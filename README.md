@@ -169,7 +169,7 @@ LoRAs and the shift model patch (WAN2.2 and MiniMax H3) are fully supported on G
 
 Presets carry the `gguf` flag along with the model name, so applying a preset with a GGUF model correctly sets the loader to use.
 
-**How to start?**: hit the **New Take** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
+**How to start?**: hit the **New Scene** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
 
 As you create scenes and takes, you may easily just **duplicate** one to keep working on a separate scene or to bootstrap the creation of a new scene.
 
@@ -181,7 +181,7 @@ Below is a picture of the scene editor.
 
 In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everything, experiment with new prompts, add other reference images, other loras, etc, all in the context of the same scene.
 
-Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "+ Take" button.
+Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "Save as New Take" button — or hit **New/Duplicate Take** on the node, which opens the editor on the current take and saves it as a new take in the same scene.
 
 #### Dimensions and scaling
 
