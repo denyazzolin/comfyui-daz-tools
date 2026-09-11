@@ -2948,7 +2948,7 @@ export function buildWorkflowConfigExtension(cfg) {
               posType === 'smart' ? 'Warning! Prompt Relays work better with CFG 1.0' :
               posType === 'beats' ? 'Beats will coerce frame count into full seconds' :
               posType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]' :
-              posType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+              posType === 'h3' ? 'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in' : 'Simple prompt will remove all segments'
             }</div>
             <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
             <label style="${lbl}">Master</label>
@@ -3133,7 +3133,7 @@ export function buildWorkflowConfigExtension(cfg) {
           beats:    'Beats will coerce frame count into full seconds',
           simple:   'Simple prompt will remove all segments',
           timecode: 'Timecode marks each segment\'s start time as [MM:SS]',
-          h3:       'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in',
+          h3:       'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in',
         }
         panel.querySelectorAll(`input[name="daz-pos-type-${uid}"]`).forEach(r => {
           r.addEventListener('change', () => {
@@ -3561,7 +3561,7 @@ export function buildWorkflowConfigExtension(cfg) {
               ? 'Warning! Prompt Relays work better with CFG 1.0'
               : newType === 'beats' ? 'Beats will coerce frame count into full seconds'
               : newType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]'
-              : newType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+              : newType === 'h3' ? 'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in' : 'Simple prompt will remove all segments'
             continue
           }
           if (field === 'dimensions') {
@@ -4167,7 +4167,7 @@ export function buildWorkflowConfigExtension(cfg) {
               ? 'Warning! Prompt Relays work better with CFG 1.0'
               : newType === 'beats' ? 'Beats will coerce frame count into full seconds'
               : newType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]'
-              : newType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+              : newType === 'h3' ? 'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in' : 'Simple prompt will remove all segments'
             const negTA = wrap.querySelector('#daz-negative-prompt')
             if (negTA) negTA.value = updates.negative_prompt.text
             const trailInput = wrap.querySelector('#daz-trail-prompt')
@@ -4455,7 +4455,7 @@ export function buildWorkflowConfigExtension(cfg) {
             ? 'Warning! Prompt Relays work better with CFG 1.0'
             : posType === 'beats' ? 'Beats will coerce frame count into full seconds'
             : posType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]'
-            : posType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+            : posType === 'h3' ? 'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in' : 'Simple prompt will remove all segments'
           const negTA = wrap.querySelector('#daz-negative-prompt')
           if (negTA) negTA.value = fText(detail.negative_prompt)
           const trailTA = wrap.querySelector('#daz-trail-prompt')
