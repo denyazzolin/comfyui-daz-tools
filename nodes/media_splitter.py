@@ -32,13 +32,16 @@ class MediaSplitter:
         }
 
     # Derived from the same slot counts the editor and the loader use, so the
-    # three stay in step.
+    # three stay in step. "preview" hands the input on untouched, last so that
+    # existing links keep their indices. Typed like the input, it is also the
+    # one output ComfyUI still feeds when the node is bypassed.
     RETURN_TYPES = (("IMAGE",) * len(_slots("images"))
                     + ("IMAGE",) * len(_slots("videos"))
-                    + ("AUDIO",) * len(_slots("audios")))
+                    + ("AUDIO",) * len(_slots("audios"))
+                    + ("DX_EXTENDED_MEDIA",))
     RETURN_NAMES = tuple(
         f"{kind[:-1]}_{s + _MEDIA_ROOT_SLOTS[kind]}"
-        for kind in _KINDS for s in _slots(kind))
+        for kind in _KINDS for s in _slots(kind)) + ("preview",)
     FUNCTION     = "split"
     CATEGORY     = "utils"
     OUTPUT_NODE  = False
@@ -55,4 +58,5 @@ class MediaSplitter:
             by_slot = {e.get("slot"): e.get(key)
                        for e in block.get(kind, []) if isinstance(e, dict)}
             out.extend(by_slot.get(s) for s in _slots(kind))
+        out.append(extended_media)
         return tuple(out)

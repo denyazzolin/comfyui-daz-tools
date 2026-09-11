@@ -377,6 +377,18 @@ The numbering is the editor's, so `image_1` and `audio_1` are the take's own ref
 
 The outputs are fixed and slot-numbered, so `image_3` is always the take's image slot 3 regardless of what the other slots hold. See [Extended media](#extended-media) for what goes into the slots.
 
+The last output, `preview`, passes the `extended_media` input on unchanged, for wiring an [Extended Media Preview](#extended-media-preview-utils) next to the splitter. It keeps working when the splitter is bypassed. The slot outputs get no value then, so a node wired to one of them that requires its input stops the run with a missing-input error.
+
+A Media Splitter saved in a workflow before `preview` was added doesn't show it, because ComfyUI rebuilds a loaded node's outputs from the workflow. Delete the node and add it again, then reconnect its links.
+
+---
+
+### Extended Media Preview (`utils`)
+
+Shows what a WorkflowConfig node's `extended_media` output carries, inside the node: every loaded image, the first frame of every loaded video, and a box with a music note for every loaded audio, in that order. Each gets one square cell, up to three to a row, sized to fill the node however it's resized. Empty slots take no cell, so a take with just one extra image shows a single cell and a full one (5 images, 2 videos, 2 audios) a 3x3 grid.
+
+Images and frames keep their aspect ratio. Each cell shows the media's name top left (its file name when it has none), its width x height top right for images and videos, and **Image**, **Video** or **Audio** bottom left. The size is what the WorkflowConfig node outputs, so a slot marked for the dimensions rule shows its resized size, and a video's first frame is the first of its trimmed window. Nothing plays; the grid refreshes each time the workflow runs.
+
 ---
 
 ### Sound Mixer (`audio`)
