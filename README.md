@@ -274,7 +274,7 @@ Click **Prompt Editor** inside the edit panel to open a full-screen editor. It l
 
 - **Frames / FPS** — changing Frames rescales all segment lengths proportionally; changing FPS updates the time labels on the ruler.
 - **Master** — free-form text area. A **Default** button (left of **Clear**) fills in a class-specific default template, when one is defined for the node's class — currently only MiniMax H3, whose default varies by I2V/T2V/MULTI workflow type. For Beats, Timecode, H3, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
-- **Prompt type** — switch between Smart, Beats, Timecode, H3, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
+- **Prompt type** — switch between Smart, Beats, Timecode, H3, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block). Switching to H3 from another type also takes a pasted full prompt apart: the text before the `[Shot 1]` that opens the first segment is added to the end of the Master, and the last segment's text from `overall_soundscape:` or `non_diegetic_music:` onward is added to the front of the Qualifiers — so a full prompt pasted as Simple is split up just by selecting H3.
 - **Segment bar** — a horizontal bar showing each segment as a proportional colour-coded block. Click any block to select it; the active segment is highlighted in green.
 - **Frame ruler** — marks 0%, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels include both frame number and seconds (e.g. `40 (2.5s)`).
 - **Segment text** — edit the text for the selected segment.

@@ -953,6 +953,26 @@
                 isShot: false,
               }))
             }
+            if (promptType === 'h3' && oldType !== 'h3') {
+              // Turning a pasted full prompt into H3: the text before the
+              // [Shot 1] that opens the first segment goes to the end of the
+              // master, and the last segment's closing sound sections go to
+              // the front of the qualifiers.
+              const first = segments[0]
+              const mark  = h3Marks(first.text)[0]
+              if (mark?.shot === 1) {
+                const lead = first.text.slice(0, mark.pos).trim()
+                if (lead) masterText = masterText.trim() ? `${masterText.trimEnd()}\n\n${lead}` : lead
+                first.text = first.text.slice(mark.end).trim()
+              }
+              const last  = segments[segments.length - 1]
+              const sound = last.text.search(/\b(?:overall_soundscape|non_diegetic_music):/)
+              if (sound >= 0) {
+                const tail = last.text.slice(sound).trim()
+                trailText  = trailText.trim() ? `${tail}\n\n${trailText.trimStart()}` : tail
+                last.text  = last.text.slice(0, sound).trim()
+              }
+            }
             if (promptType === 'simple') {
               const merged = segments.map(s => s.text).filter(t => t.trim()).join('\n')
               segments = [{ text: merged, frames: totalFrames }]
