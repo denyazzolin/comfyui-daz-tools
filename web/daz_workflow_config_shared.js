@@ -2388,11 +2388,17 @@ export function buildWorkflowConfigExtension(cfg) {
             <button id="daz-new-btn"
               style="font-family:monospace;font-size:12px;padding:2px 10px;
                      background:#000000;color:#ffffff;border:1px solid #54af7b;
-                     border-radius:3px;cursor:pointer">New Take</button>
+                     border-radius:3px;cursor:pointer">New Scene</button>
+            <div style="display:flex;gap:6px">
+            <button id="daz-new-take-btn"
+              style="font-family:monospace;font-size:12px;padding:2px 10px;
+                     background:#000000;color:#ffffff;border:1px solid #54af7b;
+                     border-radius:3px;cursor:pointer">New/Duplicate Take</button>
             <button id="daz-edit-btn"
               style="font-family:monospace;font-size:12px;padding:2px 10px;
                      background:#000000;color:#ffffff;border:1px solid #666;
                      border-radius:3px;cursor:pointer">Edit Take</button>
+            </div>
           </div>
           ${renderDetailHtml(data, {
             showMovie:  _configFiles.length > 1,
@@ -2408,6 +2414,7 @@ export function buildWorkflowConfigExtension(cfg) {
           </div>
         `
         wrap.querySelector('#daz-new-btn')?.addEventListener('click', () => enterEditForm(node, true))
+        wrap.querySelector('#daz-new-take-btn')?.addEventListener('click', () => enterEditForm(node, false, true))
         wrap.querySelector('#daz-edit-btn')?.addEventListener('click', () => enterEditForm(node, false))
         wrap.querySelector('#daz-prompt-editor-btn')?.addEventListener('click', () => openPromptEditorFromUse(node))
         wrap.querySelector('#daz-use-preview-btn')?.addEventListener('click', () => {
@@ -2592,7 +2599,9 @@ export function buildWorkflowConfigExtension(cfg) {
 
       // ── Floating edit panel ───────────────────────────────────────────────
 
-      async function enterEditForm(node, isNew = false) {
+      // newTake: open the current take as the starting point for a new take in
+      // the same scene — every save from this panel adds a take, never overwrites.
+      async function enterEditForm(node, isNew = false, newTake = false) {
         if (node[keys.editMode]) return
         node[keys.editMode] = true
 
@@ -2849,7 +2858,10 @@ export function buildWorkflowConfigExtension(cfg) {
         const panelHeader = document.createElement('div')
         panelHeader.style.cssText =
           'padding:7px 14px;border-bottom:1px solid #333;color:#aaa;font-size:12px;flex-shrink:0'
-        panelHeader.textContent = isNew ? 'New Configuration' : `Edit Configuration — version ${curVer}`
+        panelHeader.textContent = isNew ? 'New Configuration'
+          : newTake ? `New Take — from version ${curVer}`
+          : `Edit Configuration — version ${curVer}`
+        panel._dazNewTake = newTake
 
         const panelBody = document.createElement('div')
         panelBody.setAttribute('data-daz-panel-body', '1')
@@ -2895,7 +2907,7 @@ export function buildWorkflowConfigExtension(cfg) {
                 style="${tas};height:60px;resize:none">${esc(fNote(data.note))}</textarea>
             </div>
             <div style="${rw}"><label style="${lbl}">Take Label</label>
-              <input id="daz-version-label" type="text" value="${esc(data.label || '')}"
+              <input id="daz-version-label" type="text" value="${esc(newTake ? 'NEW TAKE - CHANGE ME' : (data.label || ''))}"
                 data-original="${esc(data.label || '')}"
                 placeholder="Optional version label…" style="${fs}">
             </div>
@@ -2936,7 +2948,7 @@ export function buildWorkflowConfigExtension(cfg) {
               posType === 'smart' ? 'Warning! Prompt Relays work better with CFG 1.0' :
               posType === 'beats' ? 'Beats will coerce frame count into full seconds' :
               posType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]' :
-              posType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+              posType === 'h3' ? 'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in' : 'Simple prompt will remove all segments'
             }</div>
             <input type="hidden" id="daz-positive-prompt-type" value="${esc(posType)}">
             <label style="${lbl}">Master</label>
@@ -3084,8 +3096,8 @@ export function buildWorkflowConfigExtension(cfg) {
              ${sep}${presetBtns}${sep}
              <div style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;justify-content:flex-end">
                <button id="daz-cancel-btn"      style="${btnBase} #666;background:#444;color:#ccc">Cancel</button>
-               <button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Take</button>
-               <button id="daz-new-version-btn" style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd">+ Take</button>
+               ${newTake ? '' : `<button id="daz-del-version-btn" style="${btnBase} #803030;background:#5c1a1a;color:#f99">Delete Take</button>`}
+               <button id="daz-new-version-btn"${newTake ? ' disabled' : ''} style="${btnBase} #2a5080;background:#1a3a5c;color:#9cd${newTake ? ';opacity:0.4;cursor:default' : ''}">Save as New Take</button>
                <button id="daz-save-btn"        style="${btnBase} #2a8050;background:#1a5c35;color:#cde">Save</button>
              </div>`
 
@@ -3121,7 +3133,7 @@ export function buildWorkflowConfigExtension(cfg) {
           beats:    'Beats will coerce frame count into full seconds',
           simple:   'Simple prompt will remove all segments',
           timecode: 'Timecode marks each segment\'s start time as [MM:SS]',
-          h3:       'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in',
+          h3:       'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in',
         }
         panel.querySelectorAll(`input[name="daz-pos-type-${uid}"]`).forEach(r => {
           r.addEventListener('change', () => {
@@ -3259,7 +3271,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // Seed randomize (immediate save in edit mode)
         panel.querySelector('#daz-seed-randomize')?.addEventListener('change', async (e) => {
-          if (isNew) return
+          if (isNew || panel._dazNewTake) return
           const cw    = node.widgets?.find(w => w.name === 'scene')
           const label = cw?.value
           if (!label || label === '(no configs)') return
@@ -3549,7 +3561,7 @@ export function buildWorkflowConfigExtension(cfg) {
               ? 'Warning! Prompt Relays work better with CFG 1.0'
               : newType === 'beats' ? 'Beats will coerce frame count into full seconds'
               : newType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]'
-              : newType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+              : newType === 'h3' ? 'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in' : 'Simple prompt will remove all segments'
             continue
           }
           if (field === 'dimensions') {
@@ -4155,7 +4167,7 @@ export function buildWorkflowConfigExtension(cfg) {
               ? 'Warning! Prompt Relays work better with CFG 1.0'
               : newType === 'beats' ? 'Beats will coerce frame count into full seconds'
               : newType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]'
-              : newType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+              : newType === 'h3' ? 'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in' : 'Simple prompt will remove all segments'
             const negTA = wrap.querySelector('#daz-negative-prompt')
             if (negTA) negTA.value = updates.negative_prompt.text
             const trailInput = wrap.querySelector('#daz-trail-prompt')
@@ -4253,6 +4265,9 @@ export function buildWorkflowConfigExtension(cfg) {
         const label = cw?.value
         if (!label || label === '(no configs)') return
 
+        // A New/Duplicate Take panel always adds a take, whichever path saves it
+        // (Save, the pre-duplicate modal); saveMode still picks the button to update
+        const serverMode = wrap._dazNewTake ? 'new_version' : saveMode
         const saveBtn   = wrap.querySelector('#daz-save-btn')
         const nvBtn     = wrap.querySelector('#daz-new-version-btn')
         const errorDiv  = wrap.querySelector('#daz-save-error')
@@ -4291,8 +4306,8 @@ export function buildWorkflowConfigExtension(cfg) {
         const originalLabel  = versionLabelEl?.dataset.original ?? ''
         const payload = {
           label, class: CLASS, file: currentFile(node), new_name: newName,
-          version: node._dazCurrentVersion || '1', save_mode: saveMode,
-          version_label: saveMode === 'new_version'
+          version: node._dazCurrentVersion || '1', save_mode: serverMode,
+          version_label: serverMode === 'new_version'
             ? (versionLabel === originalLabel ? (versionLabel ? 'alt ' + versionLabel : '') : versionLabel)
             : versionLabel,
           group: { name: wrap.querySelector('#daz-group')?.value ?? '' },
@@ -4306,7 +4321,7 @@ export function buildWorkflowConfigExtension(cfg) {
             body: JSON.stringify(payload),
           })
           if (r.status === 409) {
-            activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
+            activeBtn.textContent = saveMode === 'new_version' ? 'Save as New Take' : 'Save'
             activeBtn.disabled    = false
             showNameClashModal(wrap.querySelector('#daz-config-name'), () => saveConfig(node, wrap, saveMode, true, true, keepPanelOpen, thenFn))
             return
@@ -4318,7 +4333,7 @@ export function buildWorkflowConfigExtension(cfg) {
             if (node[keys.editOverlay]) { node[keys.editOverlay].remove(); node[keys.editOverlay] = null }
             node[keys.editMode] = false
           } else {
-            activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
+            activeBtn.textContent = saveMode === 'new_version' ? 'Save as New Take' : 'Save'
             activeBtn.disabled    = false
           }
 
@@ -4347,11 +4362,14 @@ export function buildWorkflowConfigExtension(cfg) {
           if (detailResp.ok) node[keys.detail] = await detailResp.json()
 
           node._dazEditPanelDirty = false
+          // The new take now exists; a panel kept open edits it from here on
+          wrap._dazNewTake = false
+          if (nvBtn) { nvBtn.disabled = false; nvBtn.style.opacity = '1'; nvBtn.style.cursor = 'pointer' }
           if (!keepPanelOpen) renderUseMode(node, node[keys.detail] || {})
           thenFn?.()
           return true
         } catch (e) {
-          activeBtn.textContent = saveMode === 'new_version' ? '+ Take' : 'Save'
+          activeBtn.textContent = saveMode === 'new_version' ? 'Save as New Take' : 'Save'
           activeBtn.disabled    = false
           errorDiv.textContent  = `Error: ${e.message}`
         }
@@ -4437,7 +4455,7 @@ export function buildWorkflowConfigExtension(cfg) {
             ? 'Warning! Prompt Relays work better with CFG 1.0'
             : posType === 'beats' ? 'Beats will coerce frame count into full seconds'
             : posType === 'timecode' ? 'Timecode marks each segment\'s start time as [MM:SS]'
-            : posType === 'h3' ? 'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in' : 'Simple prompt will remove all segments'
+            : posType === 'h3' ? 'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in' : 'Simple prompt will remove all segments'
           const negTA = wrap.querySelector('#daz-negative-prompt')
           if (negTA) negTA.value = fText(detail.negative_prompt)
           const trailTA = wrap.querySelector('#daz-trail-prompt')

@@ -51,10 +51,11 @@
       >${label}</button>`
   }
 
-  function mkCheckbox(id, label, checked) {
-    return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:#ccc;font-size:11px">
-      <input type="checkbox" id="${id}"${checked ? ' checked' : ''}
-        style="cursor:pointer;accent-color:#54af7b;margin:0">
+  function mkCheckbox(id, label, checked, disabled = false) {
+    const cursor = disabled ? 'default' : 'pointer'
+    return `<label style="display:flex;align-items:center;gap:5px;cursor:${cursor};color:#ccc;font-size:11px;opacity:${disabled ? 0.6 : 1}">
+      <input type="checkbox" id="${id}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}
+        style="cursor:${cursor};accent-color:#54af7b;margin:0">
       ${label}
     </label>`
   }
@@ -95,34 +96,68 @@
 
   const VALID_PROMPT_TYPES = new Set(['smart', 'beats', 'simple', 'timecode', 'h3'])
 
-  // The two start-time marks an H3 prompt can carry. The first is the one this
-  // editor writes - decimal seconds, "At 3.6s," - and the second is the
-  // MM:SS.mmm of MiniMax's own prompting guide, "At 00:12.000,". Both are read
-  // back so a prompt pasted from the guide keeps its segments; only the first is
-  // ever written, so saving normalises a pasted prompt to it.
-  //
-  // The fraction is read as a decimal fraction of a second rather than as a
-  // count of milliseconds, so ".5", ".50" and ".500" all mean half a second. The
-  // guide always writes three digits; this way a hand-shortened one is not read
-  // as a thousandth of what was meant.
-  //
-  // The comma is optional. Prompts are written both ways in the wild, so the
-  // mark is taken as ended by a comma or by plain space. The cost is that a
-  // line of prose opening with a time - "At 10:30 the meeting starts" - now
-  // reads as a segment mark; there is no way to accept the comma-less marks
-  // that are actually out there without accepting that too.
-  const H3_MARK = /^At\s+(?:(\d+):(\d+)(?:\.(\d+))?s?|(\d+(?:\.\d+)?)s)(?:\s*,\s*|\s+|\s*$)/
+  // H3 segment marks. "[Shot N]" opens a segment wherever it sits in the text;
+  // a start time opens one at the start of a line or right after a [Shot N].
+  // The time is written "At MM:SS.mmm," and the legacy "At X.Ys," is still
+  // read; the comma is required in both. The first segment is always [Shot 1]
+  // and carries no time.
+  const H3_SHOT = /\[Shot\s+(\d+)\]/g
+  const H3_TIME = /At\s+(?:(\d{2}):(\d{2})\.(\d{3})|(\d+(?:\.\d+)?)s),/y
 
-  // Seconds off an H3_MARK match, whichever of the two forms matched.
-  function h3StartSec(m) {
-    if (m[4] !== undefined) return parseFloat(m[4])
-    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10) +
-           (m[3] ? parseInt(m[3], 10) / Math.pow(10, m[3].length) : 0)
+  // Section labels of a structured prompt: a lowercase name and a colon at the
+  // start of a line, or a snake_case one anywhere. When the text carries one of
+  // H3_SHOT_SECTIONS, only the [Shot N] inside those sections are segment
+  // marks - the ones under subject_definitions:, summary: and the like are not.
+  const H3_LABEL = /^[ \t]*([a-z][a-z0-9_]*):|\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+):/gm
+  const H3_SHOT_SECTIONS = new Set(['integrated_multimodal_description', 'detailed_description'])
+
+  // [start, end) ranges where H3 marks count, or null when they count anywhere.
+  function h3MarkScopes(text) {
+    const labels = [...text.matchAll(H3_LABEL)].map(m => ({
+      start: m.index, end: m.index + m[0].length, name: m[1] ?? m[2],
+    }))
+    if (!labels.some(l => H3_SHOT_SECTIONS.has(l.name))) return null
+    return labels.flatMap((l, i) => H3_SHOT_SECTIONS.has(l.name)
+      ? [[l.end, labels[i + 1]?.start ?? text.length]] : [])
+  }
+
+  // The time mark at pos as { sec, end }, or null when there isn't one there.
+  function h3TimeAt(text, pos) {
+    H3_TIME.lastIndex = pos
+    const m = H3_TIME.exec(text)
+    if (!m) return null
+    const sec = m[4] !== undefined ? parseFloat(m[4])
+      : parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + parseInt(m[3], 10) / 1000
+    return { sec, end: H3_TIME.lastIndex }
+  }
+
+  // Every H3 mark in text, in order, as { pos, end, shot, startSec } - shot is
+  // the N of a [Shot N] (0 for a bare time mark) and startSec is null for a
+  // [Shot N] with no time after it.
+  function h3Marks(text) {
+    const scopes  = h3MarkScopes(text)
+    const inScope = pos => !scopes || scopes.some(([a, b]) => pos >= a && pos < b)
+    const marks   = []
+    for (const m of text.matchAll(H3_SHOT)) {
+      if (!inScope(m.index)) continue
+      const end = m.index + m[0].length
+      const t   = h3TimeAt(text, end + text.slice(end).match(/^\s*/)[0].length)
+      marks.push({ pos: m.index, end: t ? t.end : end, shot: parseInt(m[1], 10), startSec: t ? t.sec : null })
+    }
+    for (const m of text.matchAll(/^[ \t]*(?=At\s)/gm)) {
+      const pos = m.index + m[0].length
+      if (!inScope(pos) || marks.some(k => pos >= k.pos && pos < k.end)) continue
+      const t = h3TimeAt(text, pos)
+      if (t) marks.push({ pos, end: t.end, shot: 0, startSec: t.sec })
+    }
+    return marks.sort((a, b) => a.pos - b.pos)
   }
 
   // Infer the serialised format of prompt text from its content.
   // Returns 'beats', 'smart', 'timecode', 'h3', or null (= cannot determine, use declared type).
-  function detectPromptFormat(text) {
+  // 'h3' comes back only for text declared H3: another type's text is never
+  // read as H3, even when it carries H3 marks.
+  function detectPromptFormat(text, declared) {
     const lines = text.split('\n').filter(l => l.trim())
     // Beats: at least one line starts a segment with a numeric range [X-Y] or [Xs-Ys].
     // Lines without a marker are continuations of the previous segment, not their own
@@ -134,9 +169,8 @@
     if (lines.length >= 2 && lines.some(l => /^\[(\d+):(\d+)\]/.test(l))) {
       return 'timecode'
     }
-    // H3: at least one line starts a segment with an "At X.Ys" or
-    // "At MM:SS.mmm" marker, with or without the comma after it
-    if (lines.some(l => H3_MARK.test(l))) {
+    // H3: at least one [Shot N] or start-time mark
+    if (declared === 'h3' && h3Marks(text).length) {
       return 'h3'
     }
     // Smart: multiple pipe-separated parts where at least one ends with [X-Y]
@@ -155,7 +189,7 @@
     // If the text's actual format differs from the declared type, infer from
     // content so segment structure survives a type switch in the edit panel.
     // 'simple' is never overridden — it has no detectable markers.
-    const detected  = type !== 'simple' ? detectPromptFormat(text) : null
+    const detected  = type !== 'simple' ? detectPromptFormat(text, type) : null
     const parseType = detected ?? type
 
     if (parseType === 'smart') {
@@ -242,38 +276,37 @@
     }
 
     if (parseType === 'h3') {
-      const lines = text.split('\n').filter(l => l.trim())
-      if (!lines.length) return [{ text: '', frames: totalFrames }]
-      // Same marker-to-marker grouping as timecode, keyed on the start time an
-      // H3 mark carries in either of its two forms.
-      const blocks = []
-      for (const line of lines) {
-        const m = line.match(H3_MARK)
-        if (m) {
-          blocks.push({ startSec: h3StartSec(m), lines: [line.slice(m[0].length).trim()] })
-        } else if (blocks.length) {
-          blocks[blocks.length - 1].lines.push(line.trim())
-        } else {
-          blocks.push({ startSec: null, lines: [line.trim()] })
-        }
+      // Mark-to-mark grouping, like timecode. A mark at the very top opens the
+      // first segment and its time, if any, is dropped - the first segment
+      // always starts at frame 0. A [Shot 1] after lead-in text (a section
+      // label, say) stays in the text where it is; the lead-in is then the
+      // start of the first segment, as is any text before a later mark.
+      const marks  = h3Marks(text)
+      let segStart = 0
+      if (marks.length && !text.slice(0, marks[0].pos).trim()) {
+        segStart = marks.shift().end
+      } else if (marks.length && marks[0].shot === 1) {
+        marks.shift()
       }
-      if (blocks.length > 1 && blocks[0].startSec === null) {
-        const pre = blocks.shift()
-        blocks[0].lines = [...pre.lines, ...blocks[0].lines]
-      }
-      const texts = blocks.map(b => b.lines.filter(Boolean).join('\n'))
-      if (fps > 0 && blocks.every(b => b.startSec !== null)) {
+      const bounds = [{ end: segStart, shot: 1, startSec: 0 }, ...marks]
+      const segs   = bounds.map((b, i) => ({
+        text: text.slice(b.end, bounds[i + 1]?.pos ?? text.length)
+          .split('\n').map(l => l.trim()).filter(Boolean).join('\n'),
+        isShot: b.shot > 0,
+      }))
+      if (fps > 0 && bounds.every(b => b.startSec !== null)) {
         let used = 0
-        return blocks.map((b, i) => {
-          const isLast = i === blocks.length - 1
+        return segs.map((s, i) => {
+          const isLast = i === segs.length - 1
           const frames = isLast
             ? Math.max(1, totalFrames - used)
-            : Math.max(1, Math.round((blocks[i + 1].startSec - b.startSec) * fps))
+            : Math.max(1, Math.round((bounds[i + 1].startSec - bounds[i].startSec) * fps))
           used += frames
-          return { text: texts[i], frames }
+          return { ...s, frames }
         })
       }
-      return blocks.map((b, i) => ({ text: texts[i], frames: Math.max(1, Math.floor(totalFrames / blocks.length)) }))
+      // A [Shot N] with no time after it: fall back to an even split
+      return segs.map(s => ({ ...s, frames: Math.max(1, Math.floor(totalFrames / segs.length)) }))
     }
 
     // simple: one flat segment — no structural parsing
@@ -333,14 +366,28 @@
       }).join('\n')
     }
     if (type === 'h3') {
-      // Each segment marks its own start time in decimal seconds (tenths); the
-      // first segment always starts at 0.0s since it starts at frame 0.
+      // The first segment is always [Shot 1] and carries no time - it starts
+      // at frame 0. Every later one marks its start time as MM:SS.mmm, behind a
+      // [Shot N] of its own when it is ticked "is Shot"; shots are numbered in
+      // order. A first segment that already holds its [Shot 1] (after a section
+      // label) is written as it is.
+      const pad = (v, n) => String(v).padStart(n, '0')
+      const fmt = secs => {
+        const ms = Math.round(secs * 1000)
+        return `${pad(Math.floor(ms / 60000), 2)}:${pad(Math.floor(ms / 1000) % 60, 2)}.${pad(ms % 1000, 3)}`
+      }
       let accFrames = 0
-      return segments.map(s => {
-        const startSec = fps > 0 ? accFrames / fps : accFrames
+      let shot      = 1
+      return segments.map((s, i) => {
         let t = s.text.trim()
         if (!t.endsWith('.')) t += '.'
-        const line = `At ${startSec.toFixed(1)}s, ${t}`
+        let line
+        if (i === 0) {
+          line = /\[Shot\s+1\]/.test(t) ? t : `[Shot 1] ${t}`
+        } else {
+          const mark = `At ${fmt(fps > 0 ? accFrames / fps : accFrames)}, ${t}`
+          line = s.isShot ? `[Shot ${++shot}] ${mark}` : mark
+        }
         accFrames += s.frames
         return line
       }).join('\n')
@@ -759,6 +806,9 @@
 
     function render() {
       clampSel()
+      // An H3 prompt's first segment is always a shot, and keeps that if a
+      // segment is later inserted before it.
+      if (promptType === 'h3' && segments[0]) segments[0].isShot = true
       panel.innerHTML = ''
 
       // ── Top row: Frames / FPS / Master label (stack mode swaps the master
@@ -855,7 +905,7 @@
         beats:    'Beats will coerce frame count into full seconds',
         simple:   'Simple prompt will remove all segments',
         timecode: 'Timecode marks each segment\'s start time as [MM:SS]',
-        h3:       'H3 marks each segment\'s start time as "At X.Ys," and merges the master prompt in',
+        h3:       'H3 opens with [Shot 1], marks later segments "At MM:SS.mmm," and merges the master prompt in',
       }
       const promptHdr = el('div', 'display:flex;align-items:center;gap:10px;padding:6px 10px 4px')
       promptHdr.innerHTML = `
@@ -899,8 +949,29 @@
             if (oldType === 'h3' && promptType !== 'h3') {
               segments = segments.map(s => ({
                 ...s,
-                text: s.text.replace(H3_MARK, '').trim(),
+                text: s.text.replace(/^(?:\[Shot\s+\d+\]\s*)?(?:At\s+(?:\d{2}:\d{2}\.\d{3}|\d+(?:\.\d+)?s),)?/, '').trim(),
+                isShot: false,
               }))
+            }
+            if (promptType === 'h3' && oldType !== 'h3') {
+              // Turning a pasted full prompt into H3: the text before the
+              // [Shot 1] that opens the first segment goes to the end of the
+              // master, and the last segment's closing sound sections go to
+              // the front of the qualifiers.
+              const first = segments[0]
+              const mark  = h3Marks(first.text)[0]
+              if (mark?.shot === 1) {
+                const lead = first.text.slice(0, mark.pos).trim()
+                if (lead) masterText = masterText.trim() ? `${masterText.trimEnd()}\n\n${lead}` : lead
+                first.text = first.text.slice(mark.end).trim()
+              }
+              const last  = segments[segments.length - 1]
+              const sound = last.text.search(/\b(?:overall_soundscape|non_diegetic_music):/)
+              if (sound >= 0) {
+                const tail = last.text.slice(sound).trim()
+                trailText  = trailText.trim() ? `${tail}\n\n${trailText.trimStart()}` : tail
+                last.text  = last.text.slice(0, sound).trim()
+              }
             }
             if (promptType === 'simple') {
               const merged = segments.map(s => s.text).filter(t => t.trim()).join('\n')
@@ -956,6 +1027,7 @@
         ${mkBtn('pe-seg-clear',  'clear',    '#555',    '#333',    '#999')}
         <span style="flex:1"></span>
         <span id="pe-seg-err" style="color:#f88;font-size:10px"></span>
+        ${promptType === 'h3' ? mkCheckbox('pe-seg-shot', 'is Shot', !!selSeg?.isShot, selIdx === 0) : ''}
         ${mkBtn('pe-seg-del', 'delete',   '#803030', '#5c1a1a', '#f99')}
         ${mkBtn('pe-seg-eq',  'equalize', '#555',    '#333',    '#ccc')}
         ${mkBtn('pe-seg-ins', 'insert',   '#2a5878', '#1a3c52', '#cde')}
@@ -1037,6 +1109,10 @@
         prevFrames = nv
         if (segments[selIdx]) segments[selIdx].frames = nv
         refreshBar()
+      })
+
+      segCtrl.querySelector('#pe-seg-shot')?.addEventListener('change', e => {
+        if (segments[selIdx]) segments[selIdx].isShot = e.target.checked
       })
 
       segCtrl.querySelector('#pe-seg-clear').addEventListener('click', () => {
@@ -1252,7 +1328,7 @@
 
     // Use the actual serialised format (may differ from declared type if text was
     // written in a different mode) so rescaling never silently converts the format.
-    const effectiveType = (type !== 'simple' ? detectPromptFormat(text) : null) ?? type
+    const effectiveType = (type !== 'simple' ? detectPromptFormat(text, type) : null) ?? type
     return writeSegments(scaled, effectiveType, fps)
   }
 

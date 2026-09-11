@@ -169,7 +169,7 @@ LoRAs and the shift model patch (WAN2.2 and MiniMax H3) are fully supported on G
 
 Presets carry the `gguf` flag along with the model name, so applying a preset with a GGUF model correctly sets the loader to use.
 
-**How to start?**: hit the **New Take** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
+**How to start?**: hit the **New Scene** button, which will bring up the editor for you to start creating your scene/take! (if there's presets in place, the editor will ask you to pick one or go anew).
 
 As you create scenes and takes, you may easily just **duplicate** one to keep working on a separate scene or to bootstrap the creation of a new scene.
 
@@ -181,7 +181,7 @@ Below is a picture of the scene editor.
 
 In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everything, experiment with new prompts, add other reference images, other loras, etc, all in the context of the same scene.
 
-Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "+ Take" button.
+Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "Save as New Take" button — or hit **New/Duplicate Take** on the node, which opens the editor on the current take and saves it as a new take in the same scene.
 
 #### Dimensions and scaling
 
@@ -261,7 +261,7 @@ Each scene/take stores three prompt fields — **Master**, **Positive**, and **N
 | **Smart** | The positive prompt is split into pipe-separated segments, each covering a frame range (`text [start-end] \| text [start-end] \| …`). A downstream Prompt Relay node handles distribution across frames. Best used with CFG ≈ 1.0. |
 | **Beats** | Segments are aligned to time ranges in seconds (`[start-ends] text`, one per line). Frame counts are derived from FPS automatically. |
 | **Timecode** | Segments are aligned to absolute start times (`[MM:SS] text`, one per line). Each marker is the segment's start time; frame counts are derived from the gap to the next marker (or the end of the video) using FPS. |
-| **H3** | Segments are aligned to absolute start times in decimal seconds (`At X.Ys, text`, one per line; the first segment always starts at `At 0.0s,`). Each segment's text gets a trailing period if it doesn't already have one. Frame counts are derived the same way as Timecode. Parsing back also reads the `At MM:SS.mmm, text` marks MiniMax's own prompting guide uses, so a prompt pasted from it keeps its segments. The comma after the time is optional in both forms — `At 3.6s a man walks` is read as a mark too — and saving rewrites whatever came in as `At X.Ys,`. |
+| **H3** | One segment per line. The first segment opens with `[Shot 1]` and carries no time; every later one starts with its start time, `At MM:SS.mmm, text` (two-digit minutes and seconds, three-digit milliseconds). Tick **is Shot** on a segment in the editor and it also gets a `[Shot N]` in front of its time — shots are numbered in order on save. Each segment's text gets a trailing period if it doesn't already have one. Frame counts are derived the same way as Timecode; a `[Shot N]` with no time after it splits the frames evenly. Parsing back starts a segment at every `[Shot N]`, wherever it sits in the line, and at every line that starts with a time mark. The comma after the time is required, and the old `At X.Ys,` marks are still read, so saving rewrites them in the new format. When the prompt has section labels, only a `[Shot N]` under `integrated_multimodal_description:` or `detailed_description:` starts a segment — those under `subject_definitions:`, `summary:` and the like stay as text. A prompt saved as another type is never read as H3. |
 | **Simple** | A single flat text string passed as-is. |
 
 For **Simple**, **Beats**, **Timecode**, and **H3** types, the Master prompt is combined with the positive prompt before it reaches the sampler. An **Append** checkbox lets you switch the Master to go after the positive text instead of before (the default). For **Smart**, the positive text goes to the relay as-is, and the Master is available as a separate output.
@@ -274,7 +274,7 @@ Click **Prompt Editor** inside the edit panel to open a full-screen editor. It l
 
 - **Frames / FPS** — changing Frames rescales all segment lengths proportionally; changing FPS updates the time labels on the ruler.
 - **Master** — free-form text area. A **Default** button (left of **Clear**) fills in a class-specific default template, when one is defined for the node's class — currently only MiniMax H3, whose default varies by I2V/T2V/MULTI workflow type. For Beats, Timecode, H3, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
-- **Prompt type** — switch between Smart, Beats, Timecode, H3, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block).
+- **Prompt type** — switch between Smart, Beats, Timecode, H3, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block). Switching to H3 from another type also takes a pasted full prompt apart: the text before the `[Shot 1]` that opens the first segment is added to the end of the Master, and the last segment's text from `overall_soundscape:` or `non_diegetic_music:` onward is added to the front of the Qualifiers — so a full prompt pasted as Simple is split up just by selecting H3.
 - **Segment bar** — a horizontal bar showing each segment as a proportional colour-coded block. Click any block to select it; the active segment is highlighted in green.
 - **Frame ruler** — marks 0%, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels include both frame number and seconds (e.g. `40 (2.5s)`).
 - **Segment text** — edit the text for the selected segment.
@@ -376,6 +376,18 @@ Unpacks the `extended_media` output of a WorkflowConfig node into one output per
 The numbering is the editor's, so `image_1` and `audio_1` are the take's own reference image and audio — the same ones the WorkflowConfig node puts on its **image** and **audio** outputs, ridden along here so a workflow can take every slot off this node instead of reaching back for the first of each. They are handed on, not loaded again, so wiring both costs nothing. A take with no reference image or audio leaves those outputs empty like any other unfilled slot.
 
 The outputs are fixed and slot-numbered, so `image_3` is always the take's image slot 3 regardless of what the other slots hold. See [Extended media](#extended-media) for what goes into the slots.
+
+The last output, `preview`, passes the `extended_media` input on unchanged, for wiring an [Extended Media Preview](#extended-media-preview-utils) next to the splitter. It keeps working when the splitter is bypassed. The slot outputs get no value then, so a node wired to one of them that requires its input stops the run with a missing-input error.
+
+A Media Splitter saved in a workflow before `preview` was added doesn't show it, because ComfyUI rebuilds a loaded node's outputs from the workflow. Delete the node and add it again, then reconnect its links.
+
+---
+
+### Extended Media Preview (`utils`)
+
+Shows what a WorkflowConfig node's `extended_media` output carries, inside the node: every loaded image, the first frame of every loaded video, and a box with a music note for every loaded audio, in that order. Each gets one square cell, up to three to a row, sized to fill the node however it's resized. Empty slots take no cell, so a take with just one extra image shows a single cell and a full one (5 images, 2 videos, 2 audios) a 3x3 grid.
+
+Images and frames keep their aspect ratio. Each cell shows the media's name top left (its file name when it has none), its width x height top right for images and videos, and **Image**, **Video** or **Audio** bottom left. The size is what the WorkflowConfig node outputs, so a slot marked for the dimensions rule shows its resized size, and a video's first frame is the first of its trimmed window. Nothing plays; the grid refreshes each time the workflow runs.
 
 ---
 
