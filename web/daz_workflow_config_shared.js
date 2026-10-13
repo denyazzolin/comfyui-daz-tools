@@ -636,6 +636,11 @@ export function buildWorkflowConfigExtension(cfg) {
         },
       }
 
+      // The sizes a class's model publishes as native, as "WxH" keys. The dialog
+      // sets those in bold; a class that supplies no cfg.nativeSizes gets none.
+      const SIZING_NATIVE = new Set(
+        (cfg.nativeSizes?.sizes ?? []).map(([w, h]) => `${w}x${h}`))
+
       // Which ratio / divisor / set a width x height came from, or null. The
       // default divisor is tried first because several sets repeat across
       // divisors, and 32 is the one the dialog would otherwise open on.
@@ -704,6 +709,8 @@ export function buildWorkflowConfigExtension(cfg) {
           </div>
           <hr style="${rule}">
           <div id="daz-sz-list" style="display:flex;flex-direction:column;gap:3px"></div>
+          ${cfg.nativeSizes ? `<p style="font-size:10px;color:#888;margin:8px 0 0;text-align:center">
+            <b>bold</b> means native resolution for ${cfg.nativeSizes.model}</p>` : ''}
           <hr style="${rule}">
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button type="button" id="daz-sz-cancel" style="${bGray}">Cancel</button>
@@ -744,6 +751,7 @@ export function buildWorkflowConfigExtension(cfg) {
             return `<button type="button" class="daz-sz-pair" data-idx="${i}"
               style="font-family:monospace;font-size:12px;padding:3px 0;cursor:pointer;
                      border-radius:3px;text-align:center;
+                     font-weight:${SIZING_NATIVE.has(`${w}x${h}`) ? 'bold' : 'normal'};
                      border:1px solid ${on ? '#54af7b' : 'transparent'};
                      background:${on ? '#1e3527' : 'transparent'};color:${on ? '#cde' : '#aaa'}">
               ${w} x ${h}</button>`
