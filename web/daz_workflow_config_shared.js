@@ -637,7 +637,7 @@ export function buildWorkflowConfigExtension(cfg) {
       }
 
       // The sizes a class's model publishes as native, as "WxH" keys. The dialog
-      // sets those in bold; a class that supplies no cfg.nativeSizes gets none.
+      // sets those in bold green; a class that supplies no cfg.nativeSizes gets none.
       const SIZING_NATIVE = new Set(
         (cfg.nativeSizes?.sizes ?? []).map(([w, h]) => `${w}x${h}`))
 
@@ -710,7 +710,7 @@ export function buildWorkflowConfigExtension(cfg) {
           <hr style="${rule}">
           <div id="daz-sz-list" style="display:flex;flex-direction:column;gap:3px"></div>
           ${cfg.nativeSizes ? `<p style="font-size:10px;color:#888;margin:8px 0 0;text-align:center">
-            <b>bold</b> means native resolution for ${cfg.nativeSizes.model}</p>` : ''}
+            <b style="color:#54af7b">green</b> means native resolution for ${cfg.nativeSizes.model}</p>` : ''}
           <hr style="${rule}">
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button type="button" id="daz-sz-cancel" style="${bGray}">Cancel</button>
@@ -747,13 +747,15 @@ export function buildWorkflowConfigExtension(cfg) {
 
         function renderList() {
           listEl.innerHTML = pairs().map(([w, h], i) => {
-            const on = i === sel.idx
+            const on     = i === sel.idx
+            const native = SIZING_NATIVE.has(`${w}x${h}`)
             return `<button type="button" class="daz-sz-pair" data-idx="${i}"
               style="font-family:monospace;font-size:12px;padding:3px 0;cursor:pointer;
                      border-radius:3px;text-align:center;
-                     font-weight:${SIZING_NATIVE.has(`${w}x${h}`) ? 'bold' : 'normal'};
+                     font-weight:${native ? 'bold' : 'normal'};
                      border:1px solid ${on ? '#54af7b' : 'transparent'};
-                     background:${on ? '#1e3527' : 'transparent'};color:${on ? '#cde' : '#aaa'}">
+                     background:${on ? '#1e3527' : 'transparent'};
+                     color:${native ? '#54af7b' : on ? '#cde' : '#aaa'}">
               ${w} x ${h}</button>`
           }).join('')
         }

@@ -244,7 +244,7 @@ You can always type a frame count of your own; the duration follows it. Parsing 
 
 #### The Sizing dialog
 
-The **sizing** button beside Width and Height opens a picker of known-good resolutions: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must divide by (8, 16, 32, 64), and take one of the six sizes offered. On WAN2.2 and MiniMax H3, a size in bold is one the model publishes as native; the other nodes have no such list and show no bold. **OK** writes the pair into Width and Height, **Cancel** discards — nothing else closes the dialog. It opens on the current size if that size is in the list, otherwise on 9:16 ÷32, and is disabled while the size is being derived from the image.
+The **sizing** button beside Width and Height opens a picker of known-good resolutions: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must divide by (8, 16, 32, 64), and take one of the six sizes offered. On WAN2.2 and MiniMax H3, a size in green is one the model publishes as native; the other nodes have no such list and show none. **OK** writes the pair into Width and Height, **Cancel** discards — nothing else closes the dialog. It opens on the current size if that size is in the list, otherwise on 9:16 ÷32, and is disabled while the size is being derived from the image.
 
 The **8 / 16 / 32 / 64** buttons beside it are the divisor the scale rule rounds its calculated sizes down to — see *Dimensions and scaling* above. They are toggles: clicking the lit one turns the divisor off, which is the only way to reach 0, so there is no button for it. New takes start on **32**. The Image node has no scale rule and so has no buttons.
 
