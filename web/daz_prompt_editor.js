@@ -195,6 +195,45 @@
     }
   }
 
+  // Segment marks of the other types: beats and timecode open a segment with
+  // one at the start of a line, smart closes one with an [X-Y] at its end -
+  // before a "|", a line break or the end of the text.
+  const PASTE_MARKS = {
+    beats:    /^\[\d+\s*[-–]\s*\d+s?\]/gm,
+    timecode: /^\[\d+:\d+\]/gm,
+    smart:    /\[\d+\s*[-–]\s*\d+\](?=[ \t]*(?:\||\n|$))/g,
+  }
+
+  // A full prompt of the given type split like splitH3Prompt, or null when the
+  // text has none of its marks. Without section labels to go by, a blank line
+  // ends the master before the first segment and starts the qualifiers after
+  // the last. Smart's qualifiers are the text after its last [X-Y], unless that
+  // opens another part.
+  function splitPastedPrompt(text, type) {
+    if (type === 'h3') return splitH3Prompt(text)
+    if (!PASTE_MARKS[type]) return null
+    text = (text || '').replace(/\r\n?/g, '\n').trim()
+    const marks = [...text.matchAll(PASTE_MARKS[type])]
+    if (!marks.length) return null
+    const first  = marks[0].index
+    const last   = marks[marks.length - 1]
+    const blanks = [...text.matchAll(/\n[ \t]*\n/g)].map(b => b.index)
+    let start, end
+    if (type === 'smart') {
+      start = blanks.filter(b => b < first).pop() ?? 0
+      end   = last.index + last[0].length
+      if (/^\s*\|/.test(text.slice(end))) end = text.length
+    } else {
+      start = first
+      end   = blanks.find(b => b > last.index) ?? text.length
+    }
+    return {
+      master: text.slice(0, start).trim(),
+      body:   text.slice(start, end).trim(),
+      trail:  text.slice(end).trim(),
+    }
+  }
+
   // Infer the serialised format of prompt text from its content.
   // Returns 'beats', 'smart', 'timecode', 'h3', or null (= cannot determine, use declared type).
   // 'h3' comes back only for text declared H3: another type's text is never
@@ -807,12 +846,21 @@
       btnRow.querySelector('#pe-popup-no' ).addEventListener('click', () => { ov.remove(); callback(false) })
     }
 
-    // ── H3 Special Paste ──────────────────────────────────────────────────
-    // Takes a full H3 prompt and replaces the master, the segments and the
-    // qualifiers with its parts. Stopping at either question goes back to the
+    // ── Special Paste ─────────────────────────────────────────────────────
+    // Takes a full prompt of the current type and replaces the master, the
+    // segments and the qualifiers with its parts - or only the segments, with
+    // "segments only" ticked. Stopping at either question goes back to the
     // paste box with the text still in it.
 
-    function specialPastePopup(initial = '') {
+    const PASTE_TYPE_NAMES = { h3: 'H3', beats: 'Beats', timecode: 'Timecode', smart: 'Smart' }
+    const PASTE_MARK_HINTS = {
+      h3:       '[Shot] or "At MM:SS.mmm,"',
+      beats:    '"[X-Ys]"',
+      timecode: '"[MM:SS]"',
+      smart:    '"[X-Y]"',
+    }
+
+    function specialPastePopup(initial = '', segmentsOnly = false) {
       const ov  = el('div',
         'position:fixed;top:0;left:0;right:0;bottom:0;' +
         'background:rgba(0,0,0,0.6);z-index:10001;' +
@@ -823,10 +871,12 @@
         'display:flex;flex-direction:column;gap:8px;width:600px')
       box.innerHTML = `
         <div style="display:flex;justify-content:space-between">
-          <span style="color:#999;font-size:11px">Paste a full H3 prompt</span>${sectionLabel('SPECIAL PASTE')}
+          <span style="color:#999;font-size:11px">Paste a full ${PASTE_TYPE_NAMES[promptType]} prompt</span>${sectionLabel('SPECIAL PASTE')}
         </div>
         <textarea id="pe-sp-text" style="${TA_STYLE};min-height:420px"></textarea>
-        <div style="display:flex;justify-content:flex-end;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          ${mkCheckbox('pe-sp-segments', 'segments only', segmentsOnly)}
+          <span style="flex:1"></span>
           ${mkBtn('pe-sp-cancel', 'cancel', '#555', '#333', '#bbb')}
           ${mkBtn('pe-sp-parse',  'parse',  '#2a8050', '#1a5c35', '#cde')}
         </div>
@@ -839,16 +889,17 @@
       ta.focus()
       box.querySelector('#pe-sp-cancel').addEventListener('click', () => ov.remove())
       box.querySelector('#pe-sp-parse').addEventListener('click', () => {
-        const text = ta.value
+        const text    = ta.value
+        const segOnly = box.querySelector('#pe-sp-segments').checked
         if (!text.trim()) return
         ov.remove()
-        const split = splitH3Prompt(text)
+        const split = splitPastedPrompt(text, promptType)
         if (!split) {
           confirmPopup(
-            'No [Shot] or "At MM:SS.mmm," mark was found. Continue and put the whole text into a ' +
+            `No ${PASTE_MARK_HINTS[promptType]} mark was found. Continue and put the whole text into a ` +
             'single segment? The master and the qualifiers are left as they are.',
             yes => {
-              if (!yes) { specialPastePopup(text); return }
+              if (!yes) { specialPastePopup(text, segOnly); return }
               saveDomState()
               segments = [{ text: text.trim(), frames: totalFrames }]
               selIdx   = 0
@@ -857,29 +908,44 @@
           return
         }
         confirmPopup(
-          'The master, the segments and the qualifiers will be replaced by the pasted prompt.',
-          yes => yes ? applyH3Split(split) : specialPastePopup(text),
+          segOnly ? 'The segments will be replaced by the pasted text.'
+                  : 'The master, the segments and the qualifiers will be replaced by the pasted prompt.',
+          yes => yes ? applySplit(segOnly ? { body: text.replace(/\r\n?/g, '\n').trim() } : split)
+                     : specialPastePopup(text, segOnly),
           'Replace', 'Cancel')
       })
     }
 
-    function applyH3Split(split) {
+    // split.master and split.trail are left out for a segments-only paste.
+    function applySplit(split) {
       saveDomState()
-      masterText     = split.master
-      masterPosition = 'before'
-      trailText      = split.trail
-      segments       = parseSegments(split.body, 'h3', totalFrames, fps)
-      selIdx         = 0
+      if ('master' in split) {
+        masterText     = split.master
+        masterPosition = 'before'
+        trailText      = split.trail
+      }
+      segments = parseSegments(split.body, promptType, totalFrames, fps)
+      selIdx   = 0
       render()
       // The pasted times are kept as they are, even when they run past the
-      // prompt's frames. The first mark's time is not one of them: the first
-      // segment always starts at frame 0.
-      const lastStart = Math.max(0, ...h3Marks(split.body).slice(1).map(m => m.startSec ?? 0))
-      if (fps > 0 && Math.round(lastStart * fps) >= totalFrames) {
+      // prompt's frames.
+      if (promptType === 'h3') {
+        // The first mark's time is not one of them: the first segment always
+        // starts at frame 0.
+        const lastStart = Math.max(0, ...h3Marks(split.body).slice(1).map(m => m.startSec ?? 0))
+        if (fps > 0 && Math.round(lastStart * fps) >= totalFrames) {
+          infoPopup(
+            `The pasted times run to ${lastStart.toFixed(3)}s, past the ${totalFrames} frames ` +
+            `(${(totalFrames / fps).toFixed(3)}s) of this prompt. The times were kept as they are, ` +
+            'so the segments run past the end.')
+        }
+        return
+      }
+      const used = segments.reduce((a, s) => a + s.frames, 0)
+      if (used > totalFrames) {
         infoPopup(
-          `The pasted times run to ${lastStart.toFixed(3)}s, past the ${totalFrames} frames ` +
-          `(${(totalFrames / fps).toFixed(3)}s) of this prompt. The times were kept as they are, ` +
-          'so the segments run past the end.')
+          `The pasted segments add up to ${used} frames, past the ${totalFrames} frames of this ` +
+          'prompt. The times were kept as they are, so the segments run past the end.')
       }
     }
 
@@ -1137,7 +1203,7 @@
         ${mkRadio('pe-timecode', 'pe-type', 'timecode', 'Timecode', promptType === 'timecode')}
         ${mkRadio('pe-h3',       'pe-type', 'h3',       'H3',       promptType === 'h3')}
         <span id="pe-type-hint" style="flex:1;text-align:center;font-size:10px;font-family:monospace;color:#c8922a">${esc(TYPE_HINTS[promptType] ?? '')}</span>
-        ${promptType === 'h3' ? mkBtn('pe-special-paste', 'special paste', '#2a5878', '#1a3c52', '#cde') : ''}
+        ${promptType !== 'simple' ? mkBtn('pe-special-paste', 'special paste', '#2a5878', '#1a3c52', '#cde') : ''}
         ${sectionLabel('PROMPT')}
       `
       panel.appendChild(promptHdr)
