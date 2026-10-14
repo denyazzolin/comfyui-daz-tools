@@ -147,9 +147,15 @@
   function h3Marks(text) {
     const scopes  = h3MarkScopes(text)
     const inScope = pos => !scopes || scopes.some(([a, b]) => pos >= a && pos < b)
+    // A structured prompt with no shot section: only a [Shot N] that starts a
+    // line is a mark, not one mentioned inside retention_analysis: and the like.
+    const first    = text.search(H3_SHOT)
+    const lineOnly = !scopes && first > 0 && H3_LABEL.test(text.slice(0, first))
+    H3_LABEL.lastIndex = 0
     const marks   = []
     for (const m of text.matchAll(H3_SHOT)) {
       if (!inScope(m.index)) continue
+      if (lineOnly && text.slice(text.lastIndexOf('\n', m.index - 1) + 1, m.index).trim()) continue
       const end = m.index + m[0].length
       const t   = h3TimeAt(text, end + text.slice(end).match(/^\s*/)[0].length)
       marks.push({ pos: m.index, end: t ? t.end : end, shot: parseInt(m[1], 10), startSec: t ? t.sec : null })
