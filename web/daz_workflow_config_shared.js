@@ -4103,6 +4103,7 @@ export function buildWorkflowConfigExtension(cfg) {
           defaultMasterPrompt:   cfg.defaultMasterPrompt ?? '',
           defaultTrailPrompt:    cfg.defaultTrailPrompt ?? '',
           workflowType:          node[keys.detail]?.type || '',
+          historyKey:            `${CLASS}|${currentFile(node)}|${node.widgets?.find(w => w.name === 'scene')?.value}|${node._dazCurrentVersion || '1'}`,
           onSave: async (updates) => {
             const cw    = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
@@ -4149,6 +4150,7 @@ export function buildWorkflowConfigExtension(cfg) {
           defaultMasterPrompt:   cfg.defaultMasterPrompt ?? '',
           defaultTrailPrompt:    cfg.defaultTrailPrompt ?? '',
           workflowType:          wrap.querySelector('#daz-type')?.value || '',
+          historyKey:            `${CLASS}|edit|${node.id}`,
           detail: {
             master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '', position: masterPos },
             positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },

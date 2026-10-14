@@ -10,6 +10,9 @@
 //   classes whose default text depends on type — see resolveTypedDefault().
 // workflowType is the invoking node's I2V/T2V/MULTI selection, or '' when the
 //   caller has no such concept (e.g. the Prompt Stack Manager).
+// historyKey names the take the editor is opened on, so its Undo history
+//   outlives the editor (a string, or a function returning one). In stack mode
+//   it names the sequence and each prompt slot's index is appended to it.
 
 ;(function () {
   'use strict'
@@ -34,6 +37,13 @@
 
   // Max prompt slots in stack mode — mirrors PromptStackManager's MAX_PROMPTS.
   const MAX_STACK_PROMPTS = 10
+
+  // Undo history, per historyKey, for the life of the page: the prompt as it
+  // was at each Save, oldest first, and a cursor on the one the take holds.
+  // Undo moves the cursor back; a Save drops what is past the cursor before
+  // adding the new state, so a Redo would only move the cursor forward.
+  const _history    = new Map()
+  const HISTORY_MAX = 50
 
   // ── HTML helpers ──────────────────────────────────────────────────────────
 
@@ -151,6 +161,32 @@
       if (t) marks.push({ pos, end: t.end, shot: 0, startSec: t.sec })
     }
     return marks.sort((a, b) => a.pos - b.pos)
+  }
+
+  // Where the closing sections that belong in the qualifiers start, or -1.
+  // In a structured prompt that is the label ending the shot section holding
+  // from; otherwise the first overall_soundscape: or non_diegetic_music:.
+  function h3TrailStart(text, from = 0) {
+    const scope = h3MarkScopes(text)?.find(([a, b]) => from >= a && from < b)
+    if (scope) return scope[1] < text.length ? scope[1] : -1
+    const s = text.slice(from).search(/\b(?:overall_soundscape|non_diegetic_music):/)
+    return s >= 0 ? from + s : -1
+  }
+
+  // A full H3 prompt split as the editor holds it: the text before the first
+  // mark goes to the master, the shots to the positive prompt and the closing
+  // sections to the qualifiers. null when the text has no [Shot N] or time mark.
+  function splitH3Prompt(text) {
+    text = (text || '').replace(/\r\n?/g, '\n').trim()
+    const first = h3Marks(text)[0]
+    if (!first) return null
+    const tail = h3TrailStart(text, first.pos)
+    const end  = tail >= 0 ? tail : text.length
+    return {
+      master: text.slice(0, first.pos).trim(),
+      body:   text.slice(first.pos, end).trim(),
+      trail:  text.slice(end).trim(),
+    }
   }
 
   // Infer the serialised format of prompt text from its content.
@@ -416,7 +452,7 @@
   // ── Main open ─────────────────────────────────────────────────────────────
 
   function open({ detail, onSave, defaultNegativePrompt = '', defaultMasterPrompt = '',
-                  defaultTrailPrompt = '', workflowType = '', stackMode = null }) {
+                  defaultTrailPrompt = '', workflowType = '', stackMode = null, historyKey = null }) {
     if (_overlay) _overlay.remove()
 
     const resolvedDefaultMaster = resolveTypedDefault(defaultMasterPrompt, workflowType)
@@ -432,6 +468,10 @@
     const fValue    = v => (v && typeof v === 'object') ? (v.value ?? 0)  : (v ?? 0)
     const fPosition = v => (v && typeof v === 'object' && (v.position === 'before' || v.position === 'after'))
                              ? v.position : 'before'
+    const fType     = v => {
+      const t = (v && typeof v === 'object') ? (v.type || 'smart') : 'smart'
+      return VALID_PROMPT_TYPES.has(t) ? t : 'smart'
+    }
 
     // 'index' is a numeric per-sequence identity assigned server-side (not
     // shown in this UI) — passed through untouched when present so editing
@@ -470,20 +510,95 @@
 
     let masterText, masterPosition, negText, trailText, promptType, segments
 
-    function loadActivePromptFields() {
-      const src = stackMode ? prompts[activeIdx] : detail
+    function parsePositive(src) {
+      const segs = parseSegments(fText(src.positive_prompt), fType(src.positive_prompt), totalFrames, fps)
+      if (segs.length) {
+        const last = segs[segs.length - 1]
+        last.text  = stripTrailFromText(last.text, fText(src.trail_prompt))
+      }
+      return segs
+    }
+
+    function loadPromptFields(src) {
       masterText     = fText(src.master_prompt)
       masterPosition = fPosition(src.master_prompt)
       negText        = fText(src.negative_prompt)
       trailText      = fText(src.trail_prompt)
-      promptType     = (src.positive_prompt && typeof src.positive_prompt === 'object')
-                          ? (src.positive_prompt.type || 'smart') : 'smart'
-      if (!VALID_PROMPT_TYPES.has(promptType)) promptType = 'smart'
-      segments       = parseSegments(fText(src.positive_prompt), promptType, totalFrames, fps)
-      if (segments.length) {
-        const last = segments[segments.length - 1]
-        last.text  = stripTrailFromText(last.text, trailText)
+      promptType     = fType(src.positive_prompt)
+      segments       = parsePositive(src)
+    }
+
+    // ── Undo history ──────────────────────────────────────────────────────
+    // A snapshot is the prompt as it is saved. Frames and FPS are left out:
+    // they are not the prompt's to undo, and in stack mode they are locked.
+
+    const snapOf = src => ({
+      master_prompt:   { text: fText(src.master_prompt), position: fPosition(src.master_prompt) },
+      positive_prompt: { text: fText(src.positive_prompt), type: fType(src.positive_prompt) },
+      negative_prompt: { text: fText(src.negative_prompt) },
+      trail_prompt:    { text: fText(src.trail_prompt) },
+    })
+
+    const currentSnap = () => ({
+      master_prompt:   { text: masterText, position: masterPosition },
+      positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
+      negative_prompt: { text: negText },
+      trail_prompt:    { text: trailText },
+    })
+
+    // A snapshot as the editor would write it back, so two that differ only
+    // in what a load/save round trip changes (a closing period) compare equal.
+    const normSig = snap => JSON.stringify([
+      snap.master_prompt, snap.negative_prompt, snap.trail_prompt,
+      writeSegments(parsePositive(snap), snap.positive_prompt.type, fps), snap.positive_prompt.type,
+    ])
+
+    // The cursor each history had when this editor first loaded it - restored
+    // on Cancel, so an Undo that is not saved is not kept either.
+    const sessionCursors = new Map()
+
+    function currentKey() {
+      const base = typeof historyKey === 'function' ? historyKey() : historyKey
+      if (!base) return null
+      if (!stackMode) return base
+      const idx = prompts[activeIdx]?.index
+      return Number.isInteger(idx) ? `${base}#${idx}` : null
+    }
+
+    // The first load of a take in this editor checks its history still ends
+    // on the prompt the take holds; a prompt changed elsewhere starts afresh.
+    function touchHistory(src) {
+      const key = currentKey()
+      if (!key || sessionCursors.has(key)) return
+      const snap = snapOf(src)
+      const h    = _history.get(key)
+      if (!h || JSON.stringify(h.entries[h.cursor]) !== JSON.stringify(snap)) {
+        _history.set(key, { entries: [snap], cursor: 0 })
       }
+      sessionCursors.set(key, _history.get(key).cursor)
+    }
+
+    function commitHistory(key, snap) {
+      const h = _history.get(key)
+      if (!h) { _history.set(key, { entries: [snap], cursor: 0 }); return }
+      // Same prompt: no new step, but keep the text as saved for touchHistory
+      if (normSig(h.entries[h.cursor]) === normSig(snap)) { h.entries[h.cursor] = snap; return }
+      h.entries.splice(h.cursor + 1, Infinity, snap)
+      if (h.entries.length > HISTORY_MAX) h.entries.splice(0, h.entries.length - HISTORY_MAX)
+      h.cursor = h.entries.length - 1
+    }
+
+    const activeHistory = () => { const key = currentKey(); return key ? _history.get(key) : null }
+    const isDirty       = h => normSig(currentSnap()) !== normSig(h.entries[h.cursor])
+    function canUndo() {
+      const h = activeHistory()
+      return !!h && (h.cursor > 0 || isDirty(h))
+    }
+
+    function loadActivePromptFields() {
+      const src = stackMode ? prompts[activeIdx] : detail
+      loadPromptFields(src)
+      touchHistory(src)
     }
     loadActivePromptFields()
     let selIdx = 0
@@ -504,6 +619,9 @@
     _overlay.appendChild(panel)
     document.body.appendChild(_overlay)
     panel.addEventListener('click', e => e.stopPropagation())
+    // Typing and the clear/default buttons don't re-render, so Undo's state
+    // follows the field handlers, which run before these do.
+    for (const ev of ['input', 'change', 'click']) panel.addEventListener(ev, () => updateUndoBtn())
 
     // ── State helpers ─────────────────────────────────────────────────────
 
@@ -659,7 +777,7 @@
       btnRow.querySelector('#pe-info-ok').addEventListener('click', () => ov.remove())
     }
 
-    function confirmPopup(message, callback) {
+    function confirmPopup(message, callback, yesLabel = 'Yes', noLabel = 'No') {
       const ov  = el('div',
         'position:fixed;top:0;left:0;right:0;bottom:0;' +
         'background:rgba(0,0,0,0.6);z-index:10001;' +
@@ -672,8 +790,8 @@
       msgDiv.textContent = message
       const btnRow = el('div', 'display:flex;gap:10px;justify-content:center')
       btnRow.innerHTML =
-        mkBtn('pe-popup-yes', 'Yes', '#2a8050', '#1a5c35', '#cde') +
-        mkBtn('pe-popup-no',  'No',  '#555',    '#333',    '#ccc')
+        mkBtn('pe-popup-yes', esc(yesLabel), '#2a8050', '#1a5c35', '#cde') +
+        mkBtn('pe-popup-no',  esc(noLabel),  '#555',    '#333',    '#ccc')
       box.appendChild(msgDiv)
       box.appendChild(btnRow)
       ov.appendChild(box)
@@ -681,6 +799,104 @@
       box.addEventListener('click', e => e.stopPropagation())
       btnRow.querySelector('#pe-popup-yes').addEventListener('click', () => { ov.remove(); callback(true)  })
       btnRow.querySelector('#pe-popup-no' ).addEventListener('click', () => { ov.remove(); callback(false) })
+    }
+
+    // ── H3 Special Paste ──────────────────────────────────────────────────
+    // Takes a full H3 prompt and replaces the master, the segments and the
+    // qualifiers with its parts. Stopping at either question goes back to the
+    // paste box with the text still in it.
+
+    function specialPastePopup(initial = '') {
+      const ov  = el('div',
+        'position:fixed;top:0;left:0;right:0;bottom:0;' +
+        'background:rgba(0,0,0,0.6);z-index:10001;' +
+        'display:flex;align-items:center;justify-content:center')
+      const box = el('div',
+        'background:#252525;border:1px solid #555;border-radius:6px;' +
+        'padding:12px 14px;font-family:monospace;font-size:12px;color:#ddd;' +
+        'display:flex;flex-direction:column;gap:8px;width:600px')
+      box.innerHTML = `
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:#999;font-size:11px">Paste a full H3 prompt</span>${sectionLabel('SPECIAL PASTE')}
+        </div>
+        <textarea id="pe-sp-text" style="${TA_STYLE};min-height:420px"></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          ${mkBtn('pe-sp-cancel', 'cancel', '#555', '#333', '#bbb')}
+          ${mkBtn('pe-sp-parse',  'parse',  '#2a8050', '#1a5c35', '#cde')}
+        </div>
+      `
+      ov.appendChild(box)
+      document.body.appendChild(ov)
+      box.addEventListener('click', e => e.stopPropagation())
+      const ta = box.querySelector('#pe-sp-text')
+      ta.value = initial
+      ta.focus()
+      box.querySelector('#pe-sp-cancel').addEventListener('click', () => ov.remove())
+      box.querySelector('#pe-sp-parse').addEventListener('click', () => {
+        const text = ta.value
+        if (!text.trim()) return
+        ov.remove()
+        const split = splitH3Prompt(text)
+        if (!split) {
+          confirmPopup(
+            'No [Shot] or "At MM:SS.mmm," mark was found. Continue and put the whole text into a ' +
+            'single segment? The master and the qualifiers are left as they are.',
+            yes => {
+              if (!yes) { specialPastePopup(text); return }
+              saveDomState()
+              segments = [{ text: text.trim(), frames: totalFrames }]
+              selIdx   = 0
+              render()
+            }, 'Continue', 'Stop')
+          return
+        }
+        confirmPopup(
+          'The master, the segments and the qualifiers will be replaced by the pasted prompt.',
+          yes => yes ? applyH3Split(split) : specialPastePopup(text),
+          'Replace', 'Cancel')
+      })
+    }
+
+    function applyH3Split(split) {
+      saveDomState()
+      masterText     = split.master
+      masterPosition = 'before'
+      trailText      = split.trail
+      segments       = parseSegments(split.body, 'h3', totalFrames, fps)
+      selIdx         = 0
+      render()
+      // The pasted times are kept as they are, even when they run past the
+      // prompt's frames. The first mark's time is not one of them: the first
+      // segment always starts at frame 0.
+      const lastStart = Math.max(0, ...h3Marks(split.body).slice(1).map(m => m.startSec ?? 0))
+      if (fps > 0 && Math.round(lastStart * fps) >= totalFrames) {
+        infoPopup(
+          `The pasted times run to ${lastStart.toFixed(3)}s, past the ${totalFrames} frames ` +
+          `(${(totalFrames / fps).toFixed(3)}s) of this prompt. The times were kept as they are, ` +
+          'so the segments run past the end.')
+      }
+    }
+
+    function doUndo() {
+      const h = activeHistory()
+      if (!h) return
+      saveDomState()
+      if (!isDirty(h)) {
+        if (h.cursor === 0) return
+        h.cursor--
+      }
+      loadPromptFields(h.entries[h.cursor])
+      selIdx = 0
+      render()
+    }
+
+    function updateUndoBtn() {
+      const b = panel.querySelector('#pe-undo')
+      if (!b) return
+      const ok = canUndo()
+      b.disabled      = !ok
+      b.style.opacity = ok ? 1 : 0.4
+      b.style.cursor  = ok ? 'pointer' : 'default'
     }
 
     // ── Stack-mode: prompt-slot selection ───────────────────────────────────
@@ -915,9 +1131,11 @@
         ${mkRadio('pe-timecode', 'pe-type', 'timecode', 'Timecode', promptType === 'timecode')}
         ${mkRadio('pe-h3',       'pe-type', 'h3',       'H3',       promptType === 'h3')}
         <span id="pe-type-hint" style="flex:1;text-align:center;font-size:10px;font-family:monospace;color:#c8922a">${esc(TYPE_HINTS[promptType] ?? '')}</span>
+        ${promptType === 'h3' ? mkBtn('pe-special-paste', 'special paste', '#2a5878', '#1a3c52', '#cde') : ''}
         ${sectionLabel('PROMPT')}
       `
       panel.appendChild(promptHdr)
+      promptHdr.querySelector('#pe-special-paste')?.addEventListener('click', () => specialPastePopup())
       promptHdr.querySelectorAll('input[name="pe-type"]').forEach(r => {
         r.addEventListener('change', e => {
           if (!e.target.checked) return
@@ -966,7 +1184,7 @@
                 first.text = first.text.slice(mark.end).trim()
               }
               const last  = segments[segments.length - 1]
-              const sound = last.text.search(/\b(?:overall_soundscape|non_diegetic_music):/)
+              const sound = h3TrailStart(last.text)
               if (sound >= 0) {
                 const tail = last.text.slice(sound).trim()
                 trailText  = trailText.trim() ? `${tail}\n\n${trailText.trimStart()}` : tail
@@ -1231,6 +1449,7 @@
       const footer = el('div', 'display:flex;align-items:center;gap:8px;padding:8px 10px')
       footer.innerHTML = `
         ${mkBtn('pe-clear-all', 'clear all', '#803030', '#5c1a1a', '#f99')}
+        ${mkBtn('pe-undo', 'undo', '#555', '#333', '#ccc', !canUndo())}
         <span style="flex:1"></span>
         ${mkBtn('pe-cancel', 'cancel', '#555', '#333', '#bbb')}
         ${mkBtn('pe-ok',     'ok',     '#2a8050', '#1a5c35', '#cde')}
@@ -1245,6 +1464,7 @@
         selIdx     = 0
         render()
       })
+      footer.querySelector('#pe-undo').addEventListener('click', () => doUndo())
       footer.querySelector('#pe-cancel').addEventListener('click', () => doCancel())
       footer.querySelector('#pe-ok').addEventListener('click',     () => doSave())
     }
@@ -1253,6 +1473,10 @@
 
     function doCancel() {
       if (!_overlay) return
+      for (const [key, cursor] of sessionCursors) {
+        const h = _history.get(key)
+        if (h) h.cursor = Math.min(cursor, h.entries.length - 1)
+      }
       _overlay.remove()
       _overlay = null
     }
@@ -1268,6 +1492,15 @@
         const seqNameEl = panel.querySelector('#pe-seq-name')
         if (seqNameEl) sequenceName = seqNameEl.value
         commitActivePrompt()
+        // Only slots loaded in this editor can have changed. A slot added
+        // here gets its index, and a history, on its next open.
+        const base = typeof historyKey === 'function' ? historyKey() : historyKey
+        if (base) {
+          for (const p of prompts) {
+            const key = Number.isInteger(p.index) ? `${base}#${p.index}` : null
+            if (key && sessionCursors.has(key)) commitHistory(key, snapOf(p))
+          }
+        }
         onSave({
           sequence_name: sequenceName,
           prompts:       prompts,
@@ -1276,11 +1509,10 @@
         })
       } else {
         saveDomState()
+        const key = currentKey()
+        if (key) commitHistory(key, currentSnap())
         onSave({
-          master_prompt:   { text: masterText, position: masterPosition },
-          positive_prompt: { text: writeSegments(segments, promptType, fps), type: promptType },
-          negative_prompt: { text: negText },
-          trail_prompt:    { text: trailText },
+          ...currentSnap(),
           total_frames:    { value: totalFrames },
           fps:             { value: fps },
         })
