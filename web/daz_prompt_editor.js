@@ -846,7 +846,7 @@
       btnRow.querySelector('#pe-popup-no' ).addEventListener('click', () => { ov.remove(); callback(false) })
     }
 
-    // ── Special Paste ─────────────────────────────────────────────────────
+    // ── Paste Special ─────────────────────────────────────────────────────
     // Takes a full prompt of the current type and replaces the master, the
     // segments and the qualifiers with its parts - or only the segments, with
     // "segments only" ticked. Stopping at either question goes back to the
@@ -871,7 +871,7 @@
         'display:flex;flex-direction:column;gap:8px;width:600px')
       box.innerHTML = `
         <div style="display:flex;justify-content:space-between">
-          <span style="color:#999;font-size:11px">Paste a full ${PASTE_TYPE_NAMES[promptType]} prompt</span>${sectionLabel('SPECIAL PASTE')}
+          <span style="color:#999;font-size:11px">Paste a full ${PASTE_TYPE_NAMES[promptType]} prompt</span>${sectionLabel('PASTE SPECIAL')}
         </div>
         <textarea id="pe-sp-text" style="${TA_STYLE};min-height:420px"></textarea>
         <div style="display:flex;align-items:center;gap:8px">
@@ -1203,7 +1203,7 @@
         ${mkRadio('pe-timecode', 'pe-type', 'timecode', 'Timecode', promptType === 'timecode')}
         ${mkRadio('pe-h3',       'pe-type', 'h3',       'H3',       promptType === 'h3')}
         <span id="pe-type-hint" style="flex:1;text-align:center;font-size:10px;font-family:monospace;color:#c8922a">${esc(TYPE_HINTS[promptType] ?? '')}</span>
-        ${promptType !== 'simple' ? mkBtn('pe-special-paste', 'special paste', '#2a5878', '#1a3c52', '#cde') : ''}
+        ${promptType !== 'simple' ? mkBtn('pe-special-paste', 'paste special', '#2a5878', '#1a3c52', '#cde') : ''}
         ${sectionLabel('PROMPT')}
       `
       panel.appendChild(promptHdr)
