@@ -455,6 +455,8 @@ app.registerExtension({
       const liveFrameCount = () => node._dazFrameCountWidget?.value ?? seqDetail.frame_count ?? 0
 
       window.DazPromptEditor.open({
+        // A function: a new sequence created from the editor moves seqRaw
+        historyKey: () => `stack|${sw.value}|${seqRaw}`,
         stackMode: {
           sequenceName: seqDetail.seq_name || '',
           prompts:      seqDetail.prompts || [],

@@ -330,6 +330,12 @@ app.registerExtension(buildWorkflowConfigExtension({
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
     { select: '#daz-unet-low',  checkbox: '#daz-unet-low-gguf' },
   ],
+  // SIZE_CONFIGS in the Wan2.2 repository (wan/configs/__init__.py).
+  nativeSizes: {
+    model: 'WAN2.2',
+    sizes: [[1280, 720], [720, 1280], [832, 480], [480, 832],
+            [1280, 704], [704, 1280], [1024, 704], [704, 1024]],
+  },
   defaultNegativePrompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走',
   defaultMasterPrompt:   '',
   defaultTrailPrompt:

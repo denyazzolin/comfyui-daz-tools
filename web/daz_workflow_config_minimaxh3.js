@@ -413,6 +413,14 @@ app.registerExtension(buildWorkflowConfigExtension({
   unetGgufFields: [
     { select: '#daz-unet-high', checkbox: '#daz-unet-high-gguf' },
   ],
+  // MiniMax publishes a 768px short edge rather than a list, so these are that
+  // edge at the model card's ratios (16:9, 4:3, 1:1 and their portraits). The
+  // 544 pair is not from a published source.
+  nativeSizes: {
+    model: 'MiniMax H3',
+    sizes: [[1344, 768], [768, 1344], [1024, 768], [768, 1024], [768, 768],
+            [960, 544], [544, 960]],
+  },
   durationModel:  DURATION_MODEL,
   defaultNegativePrompt: '',
   defaultMasterPrompt:   DEFAULT_MASTER_PROMPT,

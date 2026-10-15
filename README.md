@@ -244,7 +244,7 @@ You can always type a frame count of your own; the duration follows it. Parsing 
 
 #### The Sizing dialog
 
-The **sizing** button beside Width and Height opens a picker of known-good resolutions: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must divide by (8, 16, 32, 64), and take one of the five sizes offered. **OK** writes the pair into Width and Height, **Cancel** discards — nothing else closes the dialog. It opens on the current size if that size is in the list, otherwise on 9:16 ÷32, and is disabled while the size is being derived from the image.
+The **sizing** button beside Width and Height opens a picker of known-good resolutions: choose an aspect ratio (1:1, 16:9, 9:16, 3:2, 2:3, 4:3, 3:4), choose what the result must divide by (8, 16, 32, 64), and take one of the six sizes offered. On WAN2.2 and MiniMax H3, a size in green is one the model publishes as native; the other nodes have no such list and show none. **OK** writes the pair into Width and Height, **Cancel** discards — nothing else closes the dialog. It opens on the current size if that size is in the list, otherwise on 9:16 ÷32, and is disabled while the size is being derived from the image.
 
 The **8 / 16 / 32 / 64** buttons beside it are the divisor the scale rule rounds its calculated sizes down to — see *Dimensions and scaling* above. They are toggles: clicking the lit one turns the divisor off, which is the only way to reach 0, so there is no button for it. New takes start on **32**. The Image node has no scale rule and so has no buttons.
 
@@ -275,6 +275,7 @@ Click **Prompt Editor** inside the edit panel to open a full-screen editor. It l
 - **Frames / FPS** — changing Frames rescales all segment lengths proportionally; changing FPS updates the time labels on the ruler.
 - **Master** — free-form text area. A **Default** button (left of **Clear**) fills in a class-specific default template, when one is defined for the node's class — currently only MiniMax H3, whose default varies by I2V/T2V/MULTI workflow type. For Beats, Timecode, H3, and Simple, an **Append** checkbox next to it sets whether the Master goes before or after the positive prompt.
 - **Prompt type** — switch between Smart, Beats, Timecode, H3, and Simple. Switching converts existing segments where possible (e.g. Beats → Simple merges all segment texts into one block). Switching to H3 from another type also takes a pasted full prompt apart: the text before the `[Shot 1]` that opens the first segment is added to the end of the Master, and the last segment's text from `overall_soundscape:` or `non_diegetic_music:` onward is added to the front of the Qualifiers — so a full prompt pasted as Simple is split up just by selecting H3.
+- **Paste Special** — shown for every type but Simple. Opens a box to paste a full prompt of the current type, which then replaces the Master, the segments and the Qualifiers. For Beats and Timecode, the text before the first mark goes to the Master and the first blank line after the last mark starts the Qualifiers; for Smart, the Master ends at the last blank line before the first segment and the Qualifiers are whatever follows the last `[X-Y]`. Tick **segments only** to replace just the segments and leave the Master and the Qualifiers alone. A popup asks before anything is replaced; if none of the type's marks are found, it offers to put the whole text into a single segment instead. Pasted times are kept as they are, with a warning when they run past the prompt's frames. H3 is described under [H3 Paste Special](#h3-paste-special) below.
 - **Segment bar** — a horizontal bar showing each segment as a proportional colour-coded block. Click any block to select it; the active segment is highlighted in green.
 - **Frame ruler** — marks 0%, 25%, 50%, 75%, and 100% of total frames. When FPS is set, labels include both frame number and seconds (e.g. `40 (2.5s)`).
 - **Segment text** — edit the text for the selected segment.
@@ -282,8 +283,21 @@ Click **Prompt Editor** inside the edit panel to open a full-screen editor. It l
 - **Qualifiers** — free-form text area for the trail prompt, with its own **Default** button (same class-specific-template mechanism as Master) aligned to the left, like Negative's. When re-opening a saved prompt, text at the end of the last segment that matches the saved Qualifiers text (after a newline) is stripped back out so it isn't shown duplicated inside the segment.
 - **Negative** — free-form text area with a **Default** button that fills in a class-specific default negative prompt, when one is defined.
 - **Clear All** — resets Master, Positive, Negative, and Qualifiers to empty and collapses to a single segment.
+- **Undo** — first discards the edits made since the editor opened, then steps back through the prompts saved earlier with **OK**, one at a time. The history is kept in memory for the browser session — per take, per edit panel and per prompt-stack slot — so you can click OK, reopen the editor and still undo; it is lost on a page reload. **Cancel** drops an undo that was not saved, and a prompt changed outside the editor starts a fresh history. It covers Master (with its Append setting), Positive with its type, Negative and Qualifiers, but not Frames or FPS.
 
 Clicking **OK** sends all values back to the edit panel. It does **not** save to disk — use **Save** or **+ Take** in the edit panel to persist.
+
+##### H3 Paste Special
+
+Paste Special on an H3 prompt takes a full structured prompt, such as the REF2VA or FL2VA ones, and splits it in three:
+
+- **Master** — everything before the first segment mark: `subject_definitions:`, `summary:`, `retention_analysis:` and the `detailed_description:` (or `integrated_multimodal_description:`) label with any text that follows it before `[Shot 1]`. The Master is set to go before the positive prompt.
+- **Segments** — from the first mark to the end of the shot section. The first mark is usually `[Shot 1]`, but a line starting with `At MM:SS.mmm,` works too. A new segment starts at every later `[Shot N]` and at every line that starts with a time mark, exactly as when an H3 prompt is read back (see the H3 row above).
+- **Qualifiers** — the section labels that close the shot section, `overall_soundscape:` and `non_diegetic_music:`, through the end of the text.
+
+Which `[Shot N]` count as marks depends on the labels. With a `detailed_description:` or `integrated_multimodal_description:` label, only the ones inside that section do, so a `[Shot 1]` mentioned under `retention_analysis:` stays in the Master. Without one, but with labels before the first shot, only a `[Shot N]` that starts a line counts. Without labels at all, every `[Shot N]` does, and the Qualifiers start at the first `overall_soundscape:` or `non_diegetic_music:`.
+
+The pasted times are kept exactly, snapped to frames at the prompt's FPS; if the last segment starts at or past the prompt's frames, a warning says so and the segments are left running past the end. When no `[Shot N]` or time mark is found at all, a popup offers to **Continue**, putting the whole text into one segment and leaving the Master and Qualifiers as they are, or **Stop**, going back to the paste box with the text still in it. Saved straight away, a pasted prompt comes out as it went in, apart from the blank line the editor puts between the section label and `[Shot 1]`.
 
 #### Edit mode
 

@@ -571,7 +571,7 @@ export function buildWorkflowConfigExtension(cfg) {
       }
 
       // ── Sizing dialog ─────────────────────────────────────────────────────
-      // Curated width x height pairs, five per aspect ratio per divisor. This is
+      // Curated width x height pairs, six per aspect ratio per divisor. This is
       // a fixed table rather than something computed: rounding an aspect ratio to
       // a divisor has several defensible answers, and these are the chosen ones.
       // Ordered the way the dialog lays the panels out, three to a row.
@@ -590,51 +590,56 @@ export function buildWorkflowConfigExtension(cfg) {
 
       const SIZING_TABLE = {
         '1:1': {
-           8: [[576, 576], [624, 624], [832, 832], [960, 960], [1280, 1280]],
-          16: [[576, 576], [624, 624], [832, 832], [960, 960], [1280, 1280]],
-          32: [[576, 576], [608, 608], [832, 832], [960, 960], [1280, 1280]],
-          64: [[576, 576], [640, 640], [832, 832], [960, 960], [1280, 1280]],
+           8: [[576, 576], [624, 624], [768, 768], [832, 832], [960, 960], [1280, 1280]],
+          16: [[576, 576], [624, 624], [768, 768], [832, 832], [960, 960], [1280, 1280]],
+          32: [[576, 576], [608, 608], [768, 768], [832, 832], [960, 960], [1280, 1280]],
+          64: [[576, 576], [640, 640], [768, 768], [832, 832], [960, 960], [1280, 1280]],
         },
         '16:9': {
-           8: [[608, 352], [704, 400], [832, 480], [1024, 576], [1280, 720]],
-          16: [[608, 352], [704, 400], [832, 480], [1024, 576], [1280, 720]],
-          32: [[608, 352], [704, 384], [832, 480], [1024, 576], [1280, 704]],
-          64: [[640, 384], [704, 384], [832, 512], [1024, 576], [1280, 704]],
+           8: [[608, 352], [704, 400], [832, 480], [960, 544], [1024, 576], [1280, 720]],
+          16: [[608, 352], [704, 400], [832, 480], [960, 544], [1024, 576], [1280, 720]],
+          32: [[608, 352], [704, 384], [832, 480], [960, 544], [1024, 576], [1280, 704]],
+          64: [[640, 384], [704, 384], [832, 512], [960, 512], [1024, 576], [1280, 704]],
         },
         '9:16': {
-           8: [[352, 608], [400, 704], [480, 832], [576, 1024], [720, 1280]],
-          16: [[352, 608], [400, 704], [480, 832], [576, 1024], [720, 1280]],
-          32: [[352, 608], [384, 704], [480, 832], [576, 1024], [704, 1280]],
-          64: [[384, 640], [384, 704], [512, 832], [576, 1024], [704, 1280]],
+           8: [[352, 608], [400, 704], [480, 832], [544, 960], [576, 1024], [720, 1280]],
+          16: [[352, 608], [400, 704], [480, 832], [544, 960], [576, 1024], [720, 1280]],
+          32: [[352, 608], [384, 704], [480, 832], [544, 960], [576, 1024], [704, 1280]],
+          64: [[384, 640], [384, 704], [512, 832], [512, 960], [576, 1024], [704, 1280]],
         },
         '3:2': {
-           8: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
-          16: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
-          32: [[576, 384], [768, 512], [960, 640], [1248, 832], [1536, 1024]],
-          64: [[576, 384], [768, 512], [960, 640], [1152, 768], [1536, 1024]],
+           8: [[576, 384], [768, 512], [960, 640], [1152, 768], [1248, 832], [1536, 1024]],
+          16: [[576, 384], [768, 512], [960, 640], [1152, 768], [1248, 832], [1536, 1024]],
+          32: [[576, 384], [768, 512], [960, 640], [1152, 768], [1248, 832], [1536, 1024]],
+          64: [[576, 384], [768, 512], [960, 640], [1152, 768], [1344, 896], [1536, 1024]],
         },
         '2:3': {
-           8: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
-          16: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
-          32: [[384, 576], [512, 768], [640, 960], [832, 1248], [1024, 1536]],
-          64: [[384, 576], [512, 768], [640, 960], [768, 1152], [1024, 1536]],
+           8: [[384, 576], [512, 768], [640, 960], [768, 1152], [832, 1248], [1024, 1536]],
+          16: [[384, 576], [512, 768], [640, 960], [768, 1152], [832, 1248], [1024, 1536]],
+          32: [[384, 576], [512, 768], [640, 960], [768, 1152], [832, 1248], [1024, 1536]],
+          64: [[384, 576], [512, 768], [640, 960], [768, 1152], [896, 1344], [1024, 1536]],
         },
         // The /64 second entry differs from the source list, which repeated the
         // first entry there and so offered only four distinct sizes.
         '4:3': {
-           8: [[512, 384], [608, 456], [800, 600], [1024, 768], [1216, 912]],
-          16: [[512, 384], [576, 432], [768, 576], [1024, 768], [1216, 912]],
-          32: [[512, 384], [608, 448], [768, 576], [1024, 768], [1216, 896]],
-          64: [[512, 384], [704, 512], [768, 576], [1024, 768], [1280, 960]],
+           8: [[512, 384], [608, 456], [800, 600], [896, 672], [1024, 768], [1216, 912]],
+          16: [[512, 384], [576, 432], [768, 576], [896, 672], [1024, 768], [1216, 912]],
+          32: [[512, 384], [608, 448], [768, 576], [896, 672], [1024, 768], [1216, 896]],
+          64: [[512, 384], [704, 512], [768, 576], [896, 704], [1024, 768], [1280, 960]],
         },
         // The same correction as 4:3, mirrored.
         '3:4': {
-           8: [[384, 512], [456, 608], [600, 800], [768, 1024], [912, 1216]],
-          16: [[384, 512], [432, 576], [576, 768], [768, 1024], [912, 1216]],
-          32: [[384, 512], [448, 608], [576, 768], [768, 1024], [896, 1216]],
-          64: [[384, 512], [512, 704], [576, 768], [768, 1024], [960, 1280]],
+           8: [[384, 512], [456, 608], [600, 800], [672, 896], [768, 1024], [912, 1216]],
+          16: [[384, 512], [432, 576], [576, 768], [672, 896], [768, 1024], [912, 1216]],
+          32: [[384, 512], [448, 608], [576, 768], [672, 896], [768, 1024], [896, 1216]],
+          64: [[384, 512], [512, 704], [576, 768], [704, 896], [768, 1024], [960, 1280]],
         },
       }
+
+      // The sizes a class's model publishes as native, as "WxH" keys. The dialog
+      // sets those in bold green; a class that supplies no cfg.nativeSizes gets none.
+      const SIZING_NATIVE = new Set(
+        (cfg.nativeSizes?.sizes ?? []).map(([w, h]) => `${w}x${h}`))
 
       // Which ratio / divisor / set a width x height came from, or null. The
       // default divisor is tried first because several sets repeat across
@@ -704,6 +709,8 @@ export function buildWorkflowConfigExtension(cfg) {
           </div>
           <hr style="${rule}">
           <div id="daz-sz-list" style="display:flex;flex-direction:column;gap:3px"></div>
+          ${cfg.nativeSizes ? `<p style="font-size:10px;color:#888;margin:8px 0 0;text-align:center">
+            <b style="color:#54af7b">green</b> means native resolution for ${cfg.nativeSizes.model}</p>` : ''}
           <hr style="${rule}">
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button type="button" id="daz-sz-cancel" style="${bGray}">Cancel</button>
@@ -740,12 +747,15 @@ export function buildWorkflowConfigExtension(cfg) {
 
         function renderList() {
           listEl.innerHTML = pairs().map(([w, h], i) => {
-            const on = i === sel.idx
+            const on     = i === sel.idx
+            const native = SIZING_NATIVE.has(`${w}x${h}`)
             return `<button type="button" class="daz-sz-pair" data-idx="${i}"
               style="font-family:monospace;font-size:12px;padding:3px 0;cursor:pointer;
                      border-radius:3px;text-align:center;
+                     font-weight:${native ? 'bold' : 'normal'};
                      border:1px solid ${on ? '#54af7b' : 'transparent'};
-                     background:${on ? '#1e3527' : 'transparent'};color:${on ? '#cde' : '#aaa'}">
+                     background:${on ? '#1e3527' : 'transparent'};
+                     color:${native ? '#54af7b' : on ? '#cde' : '#aaa'}">
               ${w} x ${h}</button>`
           }).join('')
         }
@@ -4093,6 +4103,7 @@ export function buildWorkflowConfigExtension(cfg) {
           defaultMasterPrompt:   cfg.defaultMasterPrompt ?? '',
           defaultTrailPrompt:    cfg.defaultTrailPrompt ?? '',
           workflowType:          node[keys.detail]?.type || '',
+          historyKey:            `${CLASS}|${currentFile(node)}|${node.widgets?.find(w => w.name === 'scene')?.value}|${node._dazCurrentVersion || '1'}`,
           onSave: async (updates) => {
             const cw    = node.widgets?.find(w => w.name === 'scene')
             const label = cw?.value
@@ -4139,6 +4150,7 @@ export function buildWorkflowConfigExtension(cfg) {
           defaultMasterPrompt:   cfg.defaultMasterPrompt ?? '',
           defaultTrailPrompt:    cfg.defaultTrailPrompt ?? '',
           workflowType:          wrap.querySelector('#daz-type')?.value || '',
+          historyKey:            `${CLASS}|edit|${node.id}`,
           detail: {
             master_prompt:   { text: wrap.querySelector('#daz-master-prompt')?.value   ?? '', position: masterPos },
             positive_prompt: { text: wrap.querySelector('#daz-positive-prompt')?.value ?? '', type: posType },
