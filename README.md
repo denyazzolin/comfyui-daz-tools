@@ -23,6 +23,9 @@ You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config LTX2.5 (`utils`) · Workflow Config Image (`utils`) · Workflow Config MiniMaxH3 (`utils`)
 
+> [!CAUTION]
+> **Breaking change in v5.** The audio track of a video slot now comes out on its own Media Splitter outputs, `audio_from_video1` and `audio_from_video2`, instead of on the regular `audio_1`/`audio_2` outputs. A workflow that takes a video's sound from `audio_1` or `audio_2` must be rewired to the new outputs, and older Media Splitter nodes must be deleted and added again to show them. This mostly affects **MiniMax H3 REF2VA** workflows. See [A video's own audio](#a-videos-own-audio).
+
 These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically for you to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
 
 The configs are mapped in this way:
@@ -223,13 +226,13 @@ Decoded frames are float32 RGB — about 12 bytes a pixel — so a decode also s
 
 **Reference media**, in the **Dimensions and More** box, names the one slot the rule *measures*. It lists every filled image and video slot, and the pick is on the slot: re-picking a file there keeps the rule measuring it, and clearing the slot clears the pick.
 
-##### Audio from a video
+##### A video's own audio
 
-Either audio slot can take its sound off a loaded video instead of holding a file of its own: its picker lists the take's loaded videos above the input folder's audio files, and picking one sounds that clip's track. It arrives trimmed to the stretch the video's handles chose, so what is heard is what that video slot decodes. A file and a video are never both set — the picker is one dropdown.
+Each video slot also hands on its own sound, on the Media Splitter's `audio_from_video1` and `audio_from_video2`. **Include audio**, beside **Resize** in the corner of the video preview, turns it on or off for that slot. For a clip with no audio track the checkbox reads **Include silence** instead, and the node outputs silence the length of the clip. Either way, an output that's wired always gets an audio, so the workflow doesn't need rewiring when a take swaps one clip for another.
 
-The pick is on the *slot*, not the file: re-picking a video keeps it, and the sound follows whatever is loaded there. Clearing that video slot ends it and returns the audio to **— no audio —**, as does a new clip with no track of its own. A silent video is never offered in the first place, and nothing is ever extracted to a file: the play button reads the track out of the streamed clip, and a run decodes just the window it needs.
+The checkbox is on for every newly loaded clip. The sound is cut to the stretch the video's handles chose, and then fitted to the frames that were actually decoded: padded with silence or trimmed at the tail, never resampled. A track that ends before that stretch starts gives silence, the same as a clip with no track. MiniMax H3 fits it to a whole number of its 40 Hz audio tokens, and the other nodes fit it to the clip's duration. The console reports each fix, and each clip that got silence.
 
-The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Resize** in the corner of the preview marks that slot for the take's scale rule. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner — and, under that in yellow, the size the take's scale rule will resize it to, whenever the slot is marked **Resize** and the rule has a size to give it. Each also carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding. Each picker lists any loaded video that has a track of its own directly under **— no audio —**, above the input folder's audio files.
+The **Reference Image and Audio** box in the editor is where all of it is set. Three tabs — **Images**, **Audio**, **Video** — switch what the box is showing, always opening on Images. Images and Video each show a row of numbered slot buttons above one picker and one preview: the button picks the slot, the picker and the **Upload…** and **clear** buttons act on whichever slot is showing, and **Resize** in the corner of the preview marks that slot for the take's scale rule — with **Include audio** beside it on a video. A slot button's number is grey while that slot is empty, so the row says what is filled without clicking through it. Each preview reports the size of what is in it in the top corner — and, under that in yellow, the size the take's scale rule will resize it to, whenever the slot is marked **Resize** and the rule has a size to give it. Each also carries a **name** box beside **clear**. A video preview plays and pauses when clicked and loops when it reaches the end, and reads the rate, frame count and frame size off the file itself — all three belong to the clip, so none is stored in the take. Under it, two handles pick the stretch the take uses: dragging one stops playback and shows the frame under it, and the preview then plays that stretch alone. Picking, uploading or clearing a file hands them back the whole clip. Only the slot on screen streams, so the preview buffers the whole clip ahead of the playhead without a second slot competing for it. Audio has no preview or slots to switch: both lines are shown together, each framed with its own number, picker, upload, clear, name and a play button that toggles to stop while it is sounding.
 
 #### Duration and frame counts
 
@@ -325,6 +328,12 @@ The panel has three columns:
 
 When no presets exist yet, the node shows an empty state with a centred **Create** button.
 
+**Errors and warnings** — after a run, the use-mode panel shows what the node reported, under the **Prompt Editor** button, with the same text the console got:
+- **Red** — the error the run stopped on, for example a scene that could not be loaded because the movie file is missing or unreadable. An error that didn't come from these nodes only says the run failed and points at the console.
+- **Yellow** — a model field the take leaves empty. That is allowed, since the node outputs nothing for it, but whatever is wired to that output will fail. On LTX2.3 the checkpoint and transformer stand in for each other, and the two CLIPs load as one, so each pair only warns when both are empty.
+
+The messages belong to the scene and take that ran: picking another one hides them, and the next run replaces them.
+
 #### Preset library
 
 The preset library is a shared collection of model-and-parameter templates (`dx_workflow_presets.json` inside `.dx_mgr/`). Presets are not tied to any single workflow — they capture a node's key settings (models, dimensions, CFG, type, etc.) and can be applied to any config of the same class. This makes spinning up a new scene significantly faster: instead of filling in every field from scratch, you pick a preset and the edit panel is pre-filled in one click.
@@ -385,25 +394,33 @@ The **prompt editor for stacks** is the same full-screen editor used by the Work
 
 ### Media Splitter (`utils`)
 
-Unpacks the `extended_media` output of a WorkflowConfig node into one output per slot: `image_1`…`image_5` and `video_1`…`video_2` (IMAGE — a video slot is an image batch of its decoded frames), and `audio_1`…`audio_2` (AUDIO). Slots the take left empty output nothing (`None`).
+Unpacks the `extended_media` output of a WorkflowConfig node into one output per slot: `image_1`…`image_5` and `video_1`…`video_2` (IMAGE — a video slot is an image batch of its decoded frames), and `audio_1`…`audio_2` (AUDIO). After `preview` come `audio_from_video1` and `audio_from_video2` (AUDIO): each video slot's own sound, or silence for a clip with no track — see [A video's own audio](#a-videos-own-audio). Slots the take left empty output nothing (`None`), and so does a video slot's audio with **Include audio** off.
 
 The numbering is the editor's, so `image_1` and `audio_1` are the take's own reference image and audio — the same ones the WorkflowConfig node puts on its **image** and **audio** outputs, ridden along here so a workflow can take every slot off this node instead of reaching back for the first of each. They are handed on, not loaded again, so wiring both costs nothing. A take with no reference image or audio leaves those outputs empty like any other unfilled slot.
 
-The outputs are fixed and slot-numbered, so `image_3` is always the take's image slot 3 regardless of what the other slots hold. See [Extended media](#extended-media) for what goes into the slots.
+The outputs are fixed and slot-numbered, so `image_3` is always the take's image slot 3 regardless of what the other slots hold. After a run, each output whose slot has a **name** is labelled with it, cut to 40 characters. A video's audio output is labelled with the video's name after `audio:`, as in `audio:walk`, whether the clip had sound or silence. A slot with no name keeps its socket's own name. See [Extended media](#extended-media) for what goes into the slots.
 
-The last output, `preview`, passes the `extended_media` input on unchanged, for wiring an [Extended Media Preview](#extended-media-preview-utils) next to the splitter. It keeps working when the splitter is bypassed. The slot outputs get no value then, so a node wired to one of them that requires its input stops the run with a missing-input error.
+When an output that's wired comes out empty, the console names it and says why, for example that the take has nothing in that slot or that **Include audio** is off for that video.
 
-A Media Splitter saved in a workflow before `preview` was added doesn't show it, because ComfyUI rebuilds a loaded node's outputs from the workflow. Delete the node and add it again, then reconnect its links.
+`preview` passes the `extended_media` input on unchanged, for wiring an [Extended Media Preview](#extended-media-preview-utils) next to the splitter. It keeps working when the splitter is bypassed. The slot outputs get no value then, so a node wired to one of them that requires its input stops the run with a missing-input error.
+
+A Media Splitter saved in a workflow before `preview` or the `audio_from_video` outputs were added doesn't show them, because ComfyUI rebuilds a loaded node's outputs from the workflow. Delete the node and add it again, then reconnect its links.
 
 ---
 
 ### Extended Media Preview (`utils`)
 
-Shows what a WorkflowConfig node's `extended_media` output carries, inside the node: every loaded image, the first frame of every loaded video, and a box with a music note for every loaded audio, in that order. Each gets one square cell, up to three to a row, sized to fill the node however it's resized. Empty slots take no cell, so a take with just one extra image shows a single cell and a full one (5 images, 2 videos, 2 audios) a 3x3 grid.
+Shows what a WorkflowConfig node's `extended_media` output carries, inside the node: every loaded image, the first frame of every loaded video, and a box with a music note for every loaded audio, in that order. Each gets one square cell, up to three to a row, sized to fill the node however it's resized. Empty slots take no cell, so a take with just one extra image shows a single cell and a full one (5 images, 2 videos, 2 audios) a 3-wide grid three rows deep.
 
 Images and frames keep their aspect ratio. Each cell shows the media's name top left (its file name when it has none), its width x height top right for images and videos, and **Image**, **Video** or **Audio** bottom left. The size is what the WorkflowConfig node outputs, so a slot marked for the dimensions rule shows its resized size, and a video's first frame is the first of its trimmed window. Nothing plays; the grid refreshes each time the workflow runs.
 
 ---
+
+### AV Sync Fixer (`utils`)
+
+Fits an audio track to a batch of frames, for frames and audio that come from a loader of their own rather than from a WorkflowConfig take — the same fix the WorkflowConfig nodes apply to a video slot's own audio. A muxed file's audio rarely ends exactly where its frames do, and an encoder that turns both back into latents rejects the pair when the audio comes out a token short or long.
+
+Inputs are **images**, **audio**, the clip's **fps** (a batch of frames carries no rate of its own, so wire the loader's fps output here) and a **target**: **Wan2.2 / LTX2.3 / LTX2.5** fits the audio to the frames' duration at that fps, and **MiniMax H3** fits it to a whole number of H3's 40 Hz audio tokens. The frames pass through untouched; the audio is padded with silence or cut at its tail, never resampled. The console says what was fixed and by how much, or that the pair was already in sync. If nothing comes in on **images** or **audio**, the node stops and says which one is missing.
 
 ### Sound Mixer (`audio`)
 

@@ -2,6 +2,9 @@ from .workflow_config_base import _EXTENDED_MEDIA_SLOTS, _MEDIA_ROOT_SLOTS
 
 _KINDS = ("images", "videos", "audios")
 
+# The longest a slot's own name is shown on its output.
+_LABEL_MAX = 40
+
 
 def _slots(kind):
     """The slot numbers this node fans a kind out into, in output order.
@@ -12,6 +15,34 @@ def _slots(kind):
     number the editor shows: image slot 0 is the editor's image 1.
     """
     return range(1 - _MEDIA_ROOT_SLOTS[kind], _EXTENDED_MEDIA_SLOTS[kind] + 1)
+
+
+def _label(kind, entry):
+    """What an output is labelled with for this slot, or "" to keep its own name.
+
+    The slot's name, cut to _LABEL_MAX. A video's own sound is the video's name
+    behind "audio:", silent or not.
+    """
+    if not isinstance(entry, dict):
+        return ""
+    name = str(entry.get("name") or "").strip()[:_LABEL_MAX].strip()
+    if kind == "video_audio":
+        return f"audio:{name}" if name else ""
+    return name
+
+
+def _wired_outputs(prompt, unique_id) -> set:
+    """The indices of this node's outputs that something in the prompt reads."""
+    wired = set()
+    if not isinstance(prompt, dict) or unique_id is None:
+        return wired
+    for node in prompt.values():
+        inputs = node.get("inputs", {}) if isinstance(node, dict) else {}
+        for v in inputs.values():
+            if (isinstance(v, list) and len(v) == 2 and str(v[0]) == str(unique_id)
+                    and isinstance(v[1], int)):
+                wired.add(v[1])
+    return wired
 
 
 class MediaSplitter:
@@ -28,20 +59,27 @@ class MediaSplitter:
         return {
             "required": {
                 "extended_media": ("DX_EXTENDED_MEDIA",),
-            }
+            },
+            # Only to tell which outputs are wired, so an empty one that is can
+            # be named on the console before whatever it feeds fails on it.
+            "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
         }
 
     # Derived from the same slot counts the editor and the loader use, so the
-    # three stay in step. "preview" hands the input on untouched, last so that
-    # existing links keep their indices. Typed like the input, it is also the
-    # one output ComfyUI still feeds when the node is bypassed.
+    # three stay in step. "preview" hands the input on untouched, behind the
+    # slots so that existing links keep their indices. Typed like the input, it
+    # is also the one output ComfyUI still feeds when the node is bypassed.
+    # Each video slot's own sound follows it, one output per video slot.
     RETURN_TYPES = (("IMAGE",) * len(_slots("images"))
                     + ("IMAGE",) * len(_slots("videos"))
                     + ("AUDIO",) * len(_slots("audios"))
-                    + ("DX_EXTENDED_MEDIA",))
-    RETURN_NAMES = tuple(
+                    + ("DX_EXTENDED_MEDIA",)
+                    + ("AUDIO",) * len(_slots("videos")))
+    RETURN_NAMES = (tuple(
         f"{kind[:-1]}_{s + _MEDIA_ROOT_SLOTS[kind]}"
         for kind in _KINDS for s in _slots(kind)) + ("preview",)
+        + tuple(f"audio_from_video{s + _MEDIA_ROOT_SLOTS['videos']}"
+                for s in _slots("videos")))
     FUNCTION     = "split"
     CATEGORY     = "utils"
     OUTPUT_NODE  = False
@@ -50,13 +88,37 @@ class MediaSplitter:
     # than a still's.
     _PAYLOAD_KEYS = {"images": "image", "videos": "frames", "audios": "audio"}
 
-    def split(self, extended_media=None):
+    def split(self, extended_media=None, prompt=None, unique_id=None):
         block = extended_media if isinstance(extended_media, dict) else {}
-        out = []
+        out, labels, why = [], [], []
         for kind in _KINDS:
             key     = self._PAYLOAD_KEYS[kind]
-            by_slot = {e.get("slot"): e.get(key)
+            by_slot = {e.get("slot"): e
                        for e in block.get(kind, []) if isinstance(e, dict)}
-            out.extend(by_slot.get(s) for s in _slots(kind))
+            for s in _slots(kind):
+                entry = by_slot.get(s)
+                out.append(entry.get(key) if entry else None)
+                labels.append([f"{kind[:-1]}_{s + _MEDIA_ROOT_SLOTS[kind]}",
+                               _label(kind, entry)])
+                why.append("the take has nothing in that slot" if block
+                           else "no extended_media came in")
         out.append(extended_media)
-        return tuple(out)
+        why.append("no extended_media came in")
+        videos = {e.get("slot"): e
+                  for e in block.get("videos", []) if isinstance(e, dict)}
+        for s in _slots("videos"):
+            entry = videos.get(s)
+            out.append(entry.get("audio") if entry else None)
+            labels.append([f"audio_from_video{s + _MEDIA_ROOT_SLOTS['videos']}",
+                           _label("video_audio", entry)])
+            n = s + _MEDIA_ROOT_SLOTS["videos"]
+            why.append("no extended_media came in" if not block
+                       else f"video slot {n} is empty in the take" if not entry
+                       else f"video slot {n}: {entry.get('audio_note') or 'Include audio is off'}")
+        for i in sorted(_wired_outputs(prompt, unique_id)):
+            if i < len(out) and out[i] is None:
+                print(f"[DAZ TOOLS] Media Splitter: '{self.RETURN_NAMES[i]}' is connected "
+                      f"but empty — {why[i]}")
+        # An [output name, label] pair for every output but preview; the editor
+        # side relabels the sockets with them once the run comes back.
+        return {"ui": {"labels": labels}, "result": tuple(out)}

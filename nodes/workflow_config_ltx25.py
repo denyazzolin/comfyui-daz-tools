@@ -5,11 +5,11 @@ import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
     all_versions_for_class, parse_movie_file, load_unet_gguf, load_latent_upscale_model,
-    resolve_dimensions, resolve_extended_media, resolve_audio_source,
+    resolve_dimensions, resolve_extended_media,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
-    _resolve_path, _load_file, _write_file,
+    _resolve_path, _load_file, _write_file, scene_not_found, empty_model_warnings,
 )
 from .audio_utils import decode_audio_file
 
@@ -86,7 +86,7 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]
 
 
-def _load_audio(path: str, start_s: float = 0.0, end_s: float = 0.0):
+def _load_audio(path: str):
     if not path:
         return None
     if os.path.isabs(path):
@@ -95,7 +95,7 @@ def _load_audio(path: str, start_s: float = 0.0, end_s: float = 0.0):
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx25: audio not found at '{full}'")
-    return decode_audio_file(full, "WorkflowConfigLtx25", start_s=start_s, end_s=end_s)
+    return decode_audio_file(full, "WorkflowConfigLtx25")
 
 
 def _load_lora(name: str):
@@ -128,6 +128,14 @@ def _apply_loras(model, lora_pairs):
             continue
         result, _ = comfy.sd.load_lora_for_models(result, None, sd, strength, strength)
     return result
+
+
+# The model fields this node loads, as (key, label as the panel shows it). An
+# empty one is warned about on every run.
+_MODEL_FIELDS = (
+    ("unet_high", "Transformer"), ("vae", "Video VAE"), ("audio_vae", "Audio VAE"),
+    ("clip", "CLIP"), ("latent_upscale", "Latent Upscaler"),
+)
 
 
 class WorkflowConfigLtx25:
@@ -249,11 +257,10 @@ class WorkflowConfigLtx25:
             None,
         )
         if name is None:
-            raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigLtx25: '{scene}' not found"
-            )
+            raise scene_not_found("WorkflowConfigLtx25", scene, path)
         entry      = configs[name]
         active_set = _get_active_set(entry, take)
+        warnings   = empty_model_warnings(active_set, _MODEL_FIELDS, "WorkflowConfigLtx25")
         loras      = _get_loras(active_set)
 
         seed_obj = active_set.get("seed", {"value": 0})
@@ -331,13 +338,9 @@ class WorkflowConfigLtx25:
             active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigLTX25")
         # Held rather than loaded inline in the tuple: extended_media carries
         # this same audio as its slot 0, and it is loaded once for both.
-        # Where the sound comes from is the field's own business: an audio file,
-        # or the track of a video the take already holds, trimmed to that video's
-        # own window.
-        ref_audio = _load_audio(*resolve_audio_source(
-            active_set, active_set.get("audio_path"), "WorkflowConfigLtx25: audio"))
+        ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
-        return (
+        result = (
             unet,
             video_vae,
             audio_vae,
@@ -368,3 +371,5 @@ class WorkflowConfigLtx25:
             latent_upscaler,
             resolve_extended_media(active_set, "WorkflowConfigLTX25", ref_image, ref_audio),
         )
+        # The warnings go to the panel, which shows them under its buttons.
+        return {"ui": {"daz_warnings": warnings}, "result": result}

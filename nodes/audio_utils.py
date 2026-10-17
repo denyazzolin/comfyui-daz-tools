@@ -5,6 +5,8 @@ field) and the Sound Mixer (which resolves a path via folder_paths' annotated
 filename convention) — each keeps its own path-resolution rules, but they all
 decode the same way once they have a real file path.
 """
+import math
+
 import torch
 
 
@@ -14,9 +16,9 @@ def decode_audio_file(full_path: str, error_prefix: str,
     ({"waveform": [1, C, T], "sample_rate": int}) via PyAV.
 
     start_s and end_s bound the window that is kept, in seconds from the start of
-    the track, with end 0 meaning "to the end of it" — the pair an audio slot
-    taking its track off a video is trimmed by, so it comes out matching the
-    window that video's own frames were decoded with. The default pair is the
+    the track, with end 0 meaning "to the end of it" — the pair a video slot's
+    own track is trimmed by, so it comes out matching the window that video's
+    frames were decoded with. The default pair is the
     whole track, which is what every caller that has no window asks for.
 
     The window is reached by decoding up to it and keeping only what falls
@@ -67,3 +69,23 @@ def decode_audio_file(full_path: str, error_prefix: str,
         if not wav.dtype.is_floating_point:
             wav = wav.float() / (2 ** 15 if wav.dtype == torch.int16 else 2 ** 31)
     return {"waveform": wav.unsqueeze(0), "sample_rate": sr}
+
+
+def silent_audio(seconds: float, sample_rate: int = 44100, channels: int = 2) -> dict:
+    """An AUDIO of silence `seconds` long, never empty — what a video slot with
+    no track of its own hands on as its sound instead of failing."""
+    samples = max(1, math.ceil(seconds * sample_rate))
+    return {"waveform": torch.zeros((1, channels, samples)), "sample_rate": sample_rate}
+
+
+def fit_waveform_length(wav, samples: int):
+    """The waveform cut, or padded with silence at its tail, to exactly `samples`
+    along its last axis. Never resampled: the length is changed by what is added
+    or removed at the end, so the sound that is kept stays where it was."""
+    have = wav.shape[-1]
+    if have > samples:
+        return wav[..., :samples]
+    if have < samples:
+        pad = torch.zeros(wav.shape[:-1] + (samples - have,), dtype=wav.dtype, device=wav.device)
+        return torch.cat((wav, pad), dim=-1)
+    return wav

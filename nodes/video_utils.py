@@ -35,7 +35,7 @@ def probe_video_file(full_path: str, error_prefix: str) -> dict:
         width  = int(getattr(cc, "width",  0) or 0)
         height = int(getattr(cc, "height", 0) or 0)
 
-        # Whether the file has a track an audio slot could be pointed at. Read
+        # Whether the file has a track of its own to hand on. Read
         # here rather than in a probe of its own: the container is already open,
         # and the stream list costs nothing beyond the look.
         has_audio = bool(vf.streams.audio)

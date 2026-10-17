@@ -347,10 +347,6 @@ export function buildWorkflowConfigExtension(cfg) {
       const EM_SLOTS    = { images: 5, videos: 2, audios: 2 }
       const EM_ROOT     = { images: 1, videos: 0, audios: 1 }
       const EM_PATH_KEY = { images: 'image_path', videos: 'video_path', audios: 'audio_path' }
-      // What an audio picker holds when it is pointed at a video rather than at a
-      // file: this, then that video's media id. Nothing in the input folder can
-      // be called it, so the two kinds of pick stay tellable apart in one list.
-      const EM_FROM_VIDEO = 'video://'
       const EM_KINDS    = ['images', 'videos', 'audios']
 
       // What each picker offers out of the input folder. Narrowing only — drop
@@ -1420,20 +1416,21 @@ export function buildWorkflowConfigExtension(cfg) {
               // rule it holds resizes this slot. Audio has neither.
               id:          kind === 'audios' ? '' : (typeof r.id === 'string' ? r.id : ''),
               use_for_dim: kind !== 'audios' && r.use_for_dim === true,
-              // The id of the video an audio slot takes its track off instead of
-              // holding a file of its own. Only audio slots carry one, and it and
-              // a file are never both set — the picker is one dropdown.
+              // An audio slot's old pointer at a video. Nothing reads or sets it
+              // any more; it is only echoed back so a save leaves it where it was.
               from_video:  kind === 'audios' && typeof r.from_video === 'string'
                              ? r.from_video : '',
+              // Whether a video slot hands on its own sound beside its frames.
+              // On unless the take says otherwise, and on again for a new file.
+              include_audio: kind === 'videos' && r.include_audio !== false,
               start_frame: Number(r.start_frame) || 0,
               cap_frames:  Number(r.cap_frames)  || 0,
               // Read off the file whenever one is picked and never stored: the
               // rate, the length and the frame size belong to the clip, and a
               // reference take has nothing of its own to say about them.
               fps: 0, frames: 0, width: 0, height: 0,
-              // Whether the clip has a track an audio slot could take, and
-              // whether that has been asked yet — a reference is only ever
-              // dropped on a definite no, never on a probe that did not answer.
+              // Whether the clip has a track of its own, and whether that has
+              // been asked yet — the checkbox says silence only on a definite no.
               hasAudio: false, probed: false,
             }
           }
@@ -1732,6 +1729,18 @@ export function buildWorkflowConfigExtension(cfg) {
           if (fps) fps.textContent = st.fps ? `${+st.fps.toFixed(2)} fps` : '\u2014'
           if (fr)  fr.textContent  = st.frames ? `${st.frames} frames` : '\u2014'
           if (sz)  sz.textContent  = st.width && st.height ? `${st.width} x ${st.height}` : '\u2014'
+          const aud = q('#daz-em-videos-aud')
+          if (aud) {
+            aud.checked      = st.include_audio
+            aud.disabled     = !has
+            aud.style.cursor = has ? 'pointer' : 'not-allowed'
+            aud.parentElement.style.opacity = has ? '' : '0.45'
+          }
+          // What the box hands on for a clip with no track is silence, and it
+          // says so — but only once the probe has answered.
+          const audLbl = q('#daz-em-videos-aud-lbl')
+          if (audLbl) audLbl.textContent =
+            st.probed && !st.hasAudio ? 'Include silence' : 'Include audio'
           syncRange()
         }
 
@@ -1791,7 +1800,7 @@ export function buildWorkflowConfigExtension(cfg) {
               st.frames = Math.max(0, Math.round(Number(info.frame_count) || 0))
               st.width  = Math.max(0, Math.round(Number(info.width)  || 0))
               st.height = Math.max(0, Math.round(Number(info.height) || 0))
-              // Whether an audio slot may be pointed at this clip. Set only on an
+              // Which the checkbox offers, audio or silence. Set only on an
               // answer, so a probe that failed leaves the question open rather
               // than saying no.
               st.hasAudio = !!info.has_audio
@@ -1803,9 +1812,6 @@ export function buildWorkflowConfigExtension(cfg) {
           // The frame size is one of the dropdown's labels, and this is the only
           // place it arrives — for the slot on screen and the one behind it.
           dimsCtl.refresh()
-          // Whether the clip has a track to offer arrives here too, and that is
-          // what puts it in the audio pickers or keeps it out of them.
-          syncAudioOptions()
           if (n === active.videos) {
             syncPane('videos')
             // The rate only arrives here, and the in-point cannot be worked out
@@ -1827,7 +1833,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // ── audio playback ──────────────────────────────────────────────────
         // One player for the pane. Each line's glyph is a toggle, and starting
-        // one line stops the other, so the line showing the stop glyph is always
+        // one line stops any other, so the line showing the stop glyph is always
         // the one being heard.
         let audioEl = null
         let audioOn = 0
@@ -1850,50 +1856,14 @@ export function buildWorkflowConfigExtension(cfg) {
           syncAudioBtns()
         }
 
-        // Where a line's sound comes from: the file it picked, or the video it
-        // was pointed at and the window that video is trimmed to. Nothing is
-        // extracted to play it — the browser is handed the clip itself and reads
-        // the track out of it, which is the same file the Video tab is streaming.
-        function audioSource(n) {
-          const st = store.audios[n]
-          if (!st.from_video) {
-            const file = selOf('audios', n)?.value || ''
-            return file && !file.startsWith(EM_FROM_VIDEO)
-              ? { file, start: 0, end: 0 } : null
-          }
-          const v = videoAudioSlot(st.from_video)
-          if (!v) return null
-          const vs   = store.videos[v]
-          const file = selOf('videos', v)?.value || ''
-          if (!file) return null
-          // A row with no window of its own takes the whole track, which is what
-          // the node does with it too — so the preview is not cut short at the
-          // end of the picture on a file whose sound runs past it.
-          const t = (vs.start_frame || vs.cap_frames) ? rangeTimes(vs) : null
-          return { file, start: t ? t.start : 0, end: t ? t.end : 0 }
-        }
-
         function toggleAudio(n) {
           const playing = audioOn === n
           stopAudio()
-          const src = audioSource(n)
-          if (playing || !src) return
-          const el = new Audio(`/view?filename=${encodeURIComponent(src.file)}&type=input`)
+          const file = selOf('audios', n)?.value
+          if (playing || !file) return
+          const el = new Audio(`/view?filename=${encodeURIComponent(file)}&type=input`)
           audioEl = el
           el.addEventListener('ended', stopAudio)
-          // The window is held the way the video preview holds its own: the
-          // playhead is parked on the in-point once there is a duration to seek
-          // within, and the out-point stops it rather than the end of the file.
-          if (src.start > 0) {
-            el.addEventListener('loadedmetadata', () => {
-              try { el.currentTime = src.start } catch (e) {}
-            })
-          }
-          if (src.end > 0) {
-            el.addEventListener('timeupdate', () => {
-              if (audioEl === el && el.currentTime >= src.end) stopAudio()
-            })
-          }
           audioOn = n
           syncAudioBtns()
           el.play().catch(err => {
@@ -1914,71 +1884,6 @@ export function buildWorkflowConfigExtension(cfg) {
             if (!has && audioOn === n) stopAudio()
           }
           syncAudioBtns()
-        }
-
-        // Which video slot holds the media an id names, or 0 for none. The slot
-        // has to still have a file for its id to name anything — clearing it is
-        // exactly what ends a reference to it.
-        function videoAudioSlot(id) {
-          if (!id) return 0
-          for (let v = 1; v <= EM_SLOTS.videos; v++) {
-            if (store.videos[v].id === id && selOf('videos', v)?.value) return v
-          }
-          return 0
-        }
-
-        // The audio pickers' video entries. A loaded video that has a track of
-        // its own can be picked as a source, and the sound is then taken off it
-        // rather than off a file. Rebuilt rather than patched — a pick, an
-        // upload, a clear and a probe all land here the same way — and driven off
-        // the store rather than off the boxes, because the probe that says
-        // whether a clip has a track lands after the first paint.
-        function syncAudioOptions() {
-          syncIds()
-          const refs = new Set()
-          for (let n = 1; n <= EM_SLOTS.audios; n++) {
-            const st = store.audios[n]
-            const v  = videoAudioSlot(st.from_video)
-            // Dropped on a definite no only: the video is gone, or it has been
-            // probed and has no track. A line that loses its source goes quiet,
-            // which is what a cleared video has to mean for the audio taking it.
-            if (st.from_video &&
-                (!v || (store.videos[v].probed && !store.videos[v].hasAudio))) {
-              st.from_video = ''
-            }
-            if (st.from_video) refs.add(st.from_video)
-          }
-          for (let n = 1; n <= EM_SLOTS.audios; n++) {
-            const sel = selOf('audios', n)
-            if (!sel) continue
-            const st  = store.audios[n]
-            const cur = sel.value || ''
-            // What it had picked, if that was a file. A reference left in the box
-            // after the store dropped it is not one.
-            const file = (st.from_video || cur.startsWith(EM_FROM_VIDEO)) ? '' : cur
-            qa(`[data-em-sel="audios:${n}"] option[data-em-video]`).forEach(o => o.remove())
-            // Straight under the "no audio" entry rather than below the whole
-            // input folder: there are at most two of them, and they are the pick
-            // this list exists to offer. Each goes before the same anchor, so
-            // they come out in slot order.
-            const anchor = sel.firstElementChild?.nextElementSibling || null
-            for (let v = 1; v <= EM_SLOTS.videos; v++) {
-              const vs   = store.videos[v]
-              const vfil = selOf('videos', v)?.value || ''
-              if (!vfil || !vs.id) continue
-              // Offered once the probe says there is a track to take. One that is
-              // already picked is listed either way, so a take that is reopened
-              // shows what it points at without waiting for the probe.
-              if (!vs.hasAudio && !refs.has(vs.id)) continue
-              const o = document.createElement('option')
-              o.value           = EM_FROM_VIDEO + vs.id
-              o.dataset.emVideo = vs.id
-              o.textContent     = `\u266b video ${v}: ${vfil}`
-              sel.insertBefore(o, anchor)
-            }
-            sel.value = st.from_video ? EM_FROM_VIDEO + st.from_video : file
-          }
-          syncAudio()
         }
 
         // Programmatic writes go back through the select's own change event, so
@@ -2033,12 +1938,10 @@ export function buildWorkflowConfigExtension(cfg) {
             // whole of whatever is now in the slot.
             store.videos[n].start_frame = 0
             store.videos[n].cap_frames  = 0
+            // A new clip comes in with its sound, whatever the last one was set to.
+            store.videos[n].include_audio = true
             showVideo(n, e.target.value)
             syncPane('videos')
-            // Ahead of the probe, which is what re-adds the entry: a slot that
-            // was just cleared has to leave the audio pickers now, not when the
-            // answer for whatever replaced it comes back.
-            syncAudioOptions()
             dimsCtl.refresh()
           })
         }
@@ -2054,15 +1957,7 @@ export function buildWorkflowConfigExtension(cfg) {
           })
         })
         for (let n = 1; n <= EM_SLOTS.audios; n++) {
-          selOf('audios', n)?.addEventListener('change', e => {
-            // One dropdown, one pick: choosing a video ends whatever file the
-            // line held, and choosing a file ends the reference. Everything else
-            // the change means is worked out from the store.
-            const v = e.target.value || ''
-            store.audios[n].from_video =
-              v.startsWith(EM_FROM_VIDEO) ? v.slice(EM_FROM_VIDEO.length) : ''
-            syncAudioOptions()
-          })
+          selOf('audios', n)?.addEventListener('change', syncAudio)
           q(`[data-em-play="${n}"]`)?.addEventListener('click', () => toggleAudio(n))
         }
 
@@ -2072,6 +1967,9 @@ export function buildWorkflowConfigExtension(cfg) {
             store[kind][active[kind]].use_for_dim = e.target.checked
             syncResized(kind)
           })
+        })
+        q('#daz-em-videos-aud')?.addEventListener('change', e => {
+          store.videos[active.videos].include_audio = e.target.checked
         })
 
         // Click the preview to play or pause it — but not when the click landed
@@ -2160,26 +2058,28 @@ export function buildWorkflowConfigExtension(cfg) {
           fire(sel)
         })
 
-        // The second audio line, mirroring the first — which is the take's own
-        // audio_path and keeps its original handlers.
-        const a2 = '#daz-em-audios-2'
-        q(`${a2}-upload-btn`)?.addEventListener('click', () => q(`${a2}-upload-input`)?.click())
-        q(`${a2}-upload-input`)?.addEventListener('change', async e => {
-          const file = e.target.files?.[0]
-          e.target.value = ''
-          if (!file) return
-          const name = await uploadInput(file, `${a2}-upload-btn`)
-          if (!name) return
-          const fresh = await getFolderFiles('input')
-          const sel   = selOf('audios', 2)
-          if (sel) sel.innerHTML = selOptMedia('audios', fresh, name)
-          fire(sel)
-        })
-        q(`${a2}-clear`)?.addEventListener('click', () => {
-          const sel = selOf('audios', 2)
-          if (sel) sel.value = ''
-          fire(sel)
-        })
+        // The audio lines past the first, mirroring it — the first is the take's
+        // own audio_path and keeps its original handlers.
+        for (let n = 2; n <= EM_SLOTS.audios; n++) {
+          const an = `#daz-em-audios-${n}`
+          q(`${an}-upload-btn`)?.addEventListener('click', () => q(`${an}-upload-input`)?.click())
+          q(`${an}-upload-input`)?.addEventListener('change', async e => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (!file) return
+            const name = await uploadInput(file, `${an}-upload-btn`)
+            if (!name) return
+            const fresh = await getFolderFiles('input')
+            const sel   = selOf('audios', n)
+            if (sel) sel.innerHTML = selOptMedia('audios', fresh, name)
+            fire(sel)
+          })
+          q(`${an}-clear`)?.addEventListener('click', () => {
+            const sel = selOf('audios', n)
+            if (sel) sel.value = ''
+            fire(sel)
+          })
+        }
 
         // What the Dimensions box's reference dropdown is filled from: every
         // filled image and video slot, with the size the panel has managed to
@@ -2226,7 +2126,7 @@ export function buildWorkflowConfigExtension(cfg) {
           const nm = q(`#daz-em-audios-${n}-name`)
           if (nm) nm.value = store.audios[n].name
         }
-        syncAudioOptions()
+        syncAudio()
         dimsCtl.refresh()
 
         return {
@@ -2259,20 +2159,18 @@ export function buildWorkflowConfigExtension(cfg) {
             const out = { images: [], videos: [], audios: [] }
             for (const kind of EM_KINDS) {
               for (let n = 1 + EM_ROOT[kind]; n <= EM_SLOTS[kind]; n++) {
-                const st   = store[kind][n]
-                const from = kind === 'audios' ? st.from_video : ''
-                // A slot pointed at a video keeps no path of its own, and one
-                // holding neither is left out rather than saved as a blank row.
-                const file = from ? '' : (selOf(kind, n)?.value || '')
-                if (!file && !from) continue
+                const file = selOf(kind, n)?.value || ''
+                if (!file) continue
+                const st  = store[kind][n]
                 const row = { name: nameOf(kind, n), order: n - EM_ROOT[kind],
                               [EM_PATH_KEY[kind]]: file }
                 if (kind === 'videos') {
-                  row.start_frame = st.start_frame
-                  row.cap_frames  = st.cap_frames
+                  row.start_frame   = st.start_frame
+                  row.cap_frames    = st.cap_frames
+                  row.include_audio = st.include_audio
                 }
                 if (kind === 'audios') {
-                  row.from_video  = from
+                  row.from_video  = st.from_video
                 } else {
                   row.id          = st.id
                   row.use_for_dim = st.use_for_dim
@@ -2287,8 +2185,7 @@ export function buildWorkflowConfigExtension(cfg) {
               rootImage: { name: nameOf('images', 1), id: store.images[1].id,
                            use_for_dim: store.images[1].use_for_dim },
               rootAudio: { name: nameOf('audios', 1),
-                           path: store.audios[1].from_video
-                                   ? '' : (selOf('audios', 1)?.value || ''),
+                           path: selOf('audios', 1)?.value || '',
                            from_video: store.audios[1].from_video },
               extended_media: out,
             }
@@ -2422,6 +2319,8 @@ export function buildWorkflowConfigExtension(cfg) {
                      background:#000000;color:#ddd;border:1px solid #54af7b;
                      border-radius:3px;cursor:pointer">Prompt Editor</button>
           </div>
+          <div id="daz-run-status"
+            style="display:none;padding:0 8px 6px;font-family:monospace;font-size:11px;line-height:1.4"></div>
         `
         wrap.querySelector('#daz-new-btn')?.addEventListener('click', () => enterEditForm(node, true))
         wrap.querySelector('#daz-new-take-btn')?.addEventListener('click', () => enterEditForm(node, false, true))
@@ -2556,8 +2455,36 @@ export function buildWorkflowConfigExtension(cfg) {
           })
         })
 
+        paintRunStatus(node)
         updateOutputLabels(node, data)
         node.setDirtyCanvas(true, true)
+      }
+
+      // What the last run of this node said: the error it stopped on, in red,
+      // and the warnings it carried on with, in yellow — the same text the
+      // console got. Kept per scene and take, so picking another one does not
+      // show the last run's words against it.
+      function setRunStatus(node, patch) {
+        const scene = node.widgets?.find(w => w.name === 'scene')?.value || ''
+        const take  = String(node._dazCurrentVersion || '')
+        const prev  = node._dazRunStatus
+        const same  = prev && prev.scene === scene && prev.take === take
+        node._dazRunStatus = { scene, take, errors: same ? prev.errors : [],
+                               warnings: same ? prev.warnings : [], ...patch }
+        paintRunStatus(node)
+      }
+
+      function paintRunStatus(node) {
+        const el = node[keys.wrap]?.querySelector('#daz-run-status')
+        if (!el) return
+        const st    = node._dazRunStatus
+        const scene = node.widgets?.find(w => w.name === 'scene')?.value || ''
+        const here  = st && st.scene === scene && st.take === String(node._dazCurrentVersion || '')
+        const lines = here ? [...st.errors.map(m => ['#e06c6c', '\u2716 ' + m]),
+                              ...st.warnings.map(m => ['#d8b13a', '\u26a0 ' + m])] : []
+        el.innerHTML = lines.map(([color, m]) =>
+          `<div style="color:${color};white-space:pre-wrap;word-break:break-word">${esc(m)}</div>`).join('')
+        el.style.display = lines.length ? '' : 'none'
       }
 
       async function loadDetail(node, label, version = null) {
@@ -2822,12 +2749,19 @@ export function buildWorkflowConfigExtension(cfg) {
                 <span id="daz-em-videos-resized" data-em-ctl="1"
                   title="The size this slot is resized to by the take's dimensions rule"
                   style="${emCtlS};right:6px;top:42px;${emReadS};${emResizeS}"></span>
-                <label data-em-ctl="1" title="Resize this slot with the take's dimensions rule"
-                       style="${emCtlS};left:6px;bottom:6px;display:flex;align-items:center;
-                       gap:5px;color:#ccc;font-size:11px;cursor:pointer">
-                  <input type="checkbox" id="daz-em-videos-dim"
-                    style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Resize
-                </label>
+                <div data-em-ctl="1" style="${emCtlS};left:6px;bottom:6px;display:flex;gap:9px">
+                  <label title="Resize this slot with the take's dimensions rule"
+                         style="display:flex;align-items:center;gap:5px;color:#ccc;font-size:11px;cursor:pointer">
+                    <input type="checkbox" id="daz-em-videos-dim"
+                      style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b">Resize
+                  </label>
+                  <label title="Hand on this clip's sound beside its frames, on the Media Splitter's audio_from_video output"
+                         style="display:flex;align-items:center;gap:5px;color:#ccc;font-size:11px;cursor:pointer">
+                    <input type="checkbox" id="daz-em-videos-aud"
+                      style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b"><span
+                      id="daz-em-videos-aud-lbl">Include audio</span>
+                  </label>
+                </div>
                 <input id="daz-em-videos-name" data-em-ctl="1" type="text" maxlength="40" placeholder="name"
                   title="A label for this slot, carried to the node beside the file"
                   style="${emCtlS};right:54px;bottom:6px;width:66px;${emNameS}">
@@ -2849,7 +2783,7 @@ export function buildWorkflowConfigExtension(cfg) {
             </div>
 
             ${hideAudioPath ? '' : `<div data-em-pane="audios" style="display:none;${emPaneS}">
-              ${emAudioLine(1)}${emAudioLine(2)}
+              ${Array.from({ length: EM_SLOTS.audios }, (_, i) => emAudioLine(i + 1)).join('')}
             </div>`}`
         }
 
@@ -5802,12 +5736,33 @@ export function buildWorkflowConfigExtension(cfg) {
 
         const executedHandler = ({ detail }) => {
           if (String(detail.node) !== String(this.id)) return
+          const warnings = detail.output?.daz_warnings
+          setRunStatus(this, { errors: [], warnings: Array.isArray(warnings) ? warnings.map(String) : [] })
           if (this[keys.editMode]) return
           const cw = this.widgets?.find(w => w.name === 'scene')
           if (cw && cw.value && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
         }
         api.addEventListener('executed', executedHandler)
         this[keys.executedHandler] = executedHandler
+
+        // An error is shown as the node raised it, its own words without the
+        // console prefix. Anything that did not come from this plugin is not
+        // worded for reading, so it only points at the console.
+        const errorHandler = ({ detail }) => {
+          if (String(detail?.node_id) !== String(this.id)) return
+          const msg = String(detail.exception_message || '').trim()
+          setRunStatus(this, { errors: [msg.includes('[DAZ TOOLS]')
+            ? msg.replace(/\[DAZ TOOLS\]\s*/g, '')
+            : `the run failed (${detail.exception_type || 'error'}) — see the console`] })
+        }
+        // A new run clears the last one's error; its warnings stay until the
+        // node runs again, since a cached node is not re-run to repeat them.
+        const startHandler = () => {
+          if (this._dazRunStatus?.errors.length) setRunStatus(this, { errors: [] })
+        }
+        api.addEventListener('execution_error', errorHandler)
+        api.addEventListener('execution_start', startHandler)
+        this._dazRunHandlers = { execution_error: errorHandler, execution_start: startHandler }
       }
 
       const onRemoved = nodeType.prototype.onRemoved
@@ -5815,6 +5770,9 @@ export function buildWorkflowConfigExtension(cfg) {
         onRemoved?.apply(this, arguments)
         if (this[keys.executedHandler]) {
           api.removeEventListener('executed', this[keys.executedHandler])
+        }
+        for (const [ev, fn] of Object.entries(this._dazRunHandlers || {})) {
+          api.removeEventListener(ev, fn)
         }
         if (this[keys.editOverlay]) {
           this[keys.editOverlay].remove()

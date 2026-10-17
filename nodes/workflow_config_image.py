@@ -8,7 +8,7 @@ from .workflow_config_base import (
     _get_name, _get_text, _get_master_position, _get_file, _get_int, _get_float, _get_gguf,
     _get_seed_randomize, _get_flag_value, _get_custom_value,
     _get_active_set,
-    _resolve_path, _load_file, _write_file,
+    _resolve_path, _load_file, _write_file, scene_not_found, empty_model_warnings,
 )
 
 try:
@@ -55,6 +55,13 @@ def _load_clip(name: str, clip_type: str = "stable_diffusion"):
         embedding_directory=folder_paths.get_folder_paths("embeddings"),
         clip_type=ct,
     )
+
+
+# The model fields this node loads, as (key, label as the panel shows it). An
+# empty one is warned about on every run.
+_MODEL_FIELDS = (
+    ("checkpoint", "Checkpoint"), ("unet_high", "Diffuser"), ("vae", "VAE"), ("clip", "CLIP"),
+)
 
 
 class WorkflowConfigImage:
@@ -158,9 +165,10 @@ class WorkflowConfigImage:
             None,
         )
         if name is None:
-            raise ValueError(f"[DAZ TOOLS] WorkflowConfigImage: '{scene}' not found")
+            raise scene_not_found("WorkflowConfigImage", scene, path)
         entry      = configs[name]
         active_set = _get_active_set(entry, take)
+        warnings   = empty_model_warnings(active_set, _MODEL_FIELDS, "WorkflowConfigImage")
 
         seed_obj = active_set.get("seed", {"value": 0})
         seed_val = _get_int(seed_obj)
@@ -217,7 +225,7 @@ class WorkflowConfigImage:
         except Exception as e:
             raise RuntimeError(f"[DAZ TOOLS] ImageInference: CLIP load failed: {e}") from e
 
-        return (
+        result = (
             unet,
             ckpt_model,
             ckpt_vae,
@@ -240,3 +248,5 @@ class WorkflowConfigImage:
             _get_custom_value(active_set.get("custom", {}).get("param_1")),
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
         )
+        # The warnings go to the panel, which shows them under its buttons.
+        return {"ui": {"daz_warnings": warnings}, "result": result}

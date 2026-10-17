@@ -4,11 +4,11 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions, resolve_extended_media, resolve_audio_source,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions, resolve_extended_media,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
-    _resolve_path, _load_file, _write_file,
+    _resolve_path, _load_file, _write_file, scene_not_found, empty_model_warnings,
 )
 from .audio_utils import decode_audio_file
 
@@ -29,6 +29,11 @@ except Exception:
 _CLASS        = "m_h3"
 _NO_CONFIGS   = "(no configs)"
 _FILE_DEFAULT = "(default)"
+
+# H3's audio latent runs at 40 Hz against 24 fps video, so audio taken off a
+# video slot is fitted to a whole number of those tokens rather than to the
+# clip's own duration, which the H3 encoder rejects for a third of frame counts.
+_AUDIO_GRID   = (40, 24)
 
 
 def _load_unet(name: str, gguf: bool = False):
@@ -89,7 +94,7 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]
 
 
-def _load_audio(path: str, start_s: float = 0.0, end_s: float = 0.0):
+def _load_audio(path: str):
     if not path:
         return None
     if os.path.isabs(path):
@@ -98,7 +103,7 @@ def _load_audio(path: str, start_s: float = 0.0, end_s: float = 0.0):
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: audio not found at '{full}'")
-    return decode_audio_file(full, "WorkflowConfigMiniMaxH3", start_s=start_s, end_s=end_s)
+    return decode_audio_file(full, "WorkflowConfigMiniMaxH3")
 
 
 def _load_lora(name: str):
@@ -173,6 +178,13 @@ def _apply_sigma_shift(model, shift_video: float, shift_audio: float):
     to["minimax_h3_sigma_shift_video"] = shift_video
     to["minimax_h3_sigma_shift_audio"] = shift_audio
     return m
+
+
+# The model fields this node loads, as (key, label as the panel shows it). An
+# empty one is warned about on every run.
+_MODEL_FIELDS = (
+    ("unet_high", "Unet"), ("vae", "Video VAE"), ("audio_vae", "Audio VAE"), ("clip", "CLIP"),
+)
 
 
 class WorkflowConfigMiniMaxH3:
@@ -292,11 +304,10 @@ class WorkflowConfigMiniMaxH3:
             None,
         )
         if name is None:
-            raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: '{scene}' not found"
-            )
+            raise scene_not_found("WorkflowConfigMiniMaxH3", scene, path)
         entry      = configs[name]
         active_set = _get_active_set(entry, take)
+        warnings   = empty_model_warnings(active_set, _MODEL_FIELDS, "WorkflowConfigMiniMaxH3")
         loras      = _get_loras(active_set)
 
         seed_obj = active_set.get("seed", {"value": 0})
@@ -369,11 +380,7 @@ class WorkflowConfigMiniMaxH3:
             active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigMiniMaxH3")
         # Held rather than loaded inline in the tuple: extended_media carries
         # this same audio as its slot 0, and it is loaded once for both.
-        # Where the sound comes from is the field's own business: an audio file,
-        # or the track of a video the take already holds, trimmed to that video's
-        # own window.
-        ref_audio = _load_audio(*resolve_audio_source(
-            active_set, active_set.get("audio_path"), "WorkflowConfigMiniMaxH3: audio"))
+        ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
         # shift_high is the video shift and shift_low the audio one - the pair
         # ComfyUI's ModelSamplingMiniMaxH3 takes. Patched onto the stacked output
@@ -384,7 +391,7 @@ class WorkflowConfigMiniMaxH3:
             _get_float(active_set.get("shift_low")),
         )
 
-        return (
+        result = (
             unet,
             video_vae,
             audio_vae,
@@ -412,5 +419,8 @@ class WorkflowConfigMiniMaxH3:
             _get_custom_value(active_set.get("custom", {}).get("param_1")),
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
             lora_7_sd, lora_8_sd,
-            resolve_extended_media(active_set, "WorkflowConfigMiniMaxH3", ref_image, ref_audio),
+            resolve_extended_media(active_set, "WorkflowConfigMiniMaxH3", ref_image, ref_audio,
+                                   audio_grid=_AUDIO_GRID),
         )
+        # The warnings go to the panel, which shows them under its buttons.
+        return {"ui": {"daz_warnings": warnings}, "result": result}
