@@ -23,6 +23,9 @@ You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config LTX2.5 (`utils`) · Workflow Config Image (`utils`) · Workflow Config MiniMaxH3 (`utils`)
 
+> [!CAUTION]
+> **Breaking change in v5.** The audio track of a video slot now comes out on its own Media Splitter outputs, `audio_from_video1` and `audio_from_video2`, instead of on the regular `audio_1`/`audio_2` outputs. A workflow that takes a video's sound from `audio_1` or `audio_2` must be rewired to the new outputs, and older Media Splitter nodes must be deleted and added again to show them. This mostly affects **MiniMax H3 REF2VA** workflows. See [A video's own audio](#a-videos-own-audio).
+
 These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically for you to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
 
 The configs are mapped in this way:
@@ -325,6 +328,12 @@ The panel has three columns:
 
 When no presets exist yet, the node shows an empty state with a centred **Create** button.
 
+**Errors and warnings** — after a run, the use-mode panel shows what the node reported, under the **Prompt Editor** button, with the same text the console got:
+- **Red** — the error the run stopped on, for example a scene that could not be loaded because the movie file is missing or unreadable. An error that didn't come from these nodes only says the run failed and points at the console.
+- **Yellow** — a model field the take leaves empty. That is allowed, since the node outputs nothing for it, but whatever is wired to that output will fail. On LTX2.3 the checkpoint and transformer stand in for each other, and the two CLIPs load as one, so each pair only warns when both are empty.
+
+The messages belong to the scene and take that ran: picking another one hides them, and the next run replaces them.
+
 #### Preset library
 
 The preset library is a shared collection of model-and-parameter templates (`dx_workflow_presets.json` inside `.dx_mgr/`). Presets are not tied to any single workflow — they capture a node's key settings (models, dimensions, CFG, type, etc.) and can be applied to any config of the same class. This makes spinning up a new scene significantly faster: instead of filling in every field from scratch, you pick a preset and the edit panel is pre-filled in one click.
@@ -391,6 +400,8 @@ The numbering is the editor's, so `image_1` and `audio_1` are the take's own ref
 
 The outputs are fixed and slot-numbered, so `image_3` is always the take's image slot 3 regardless of what the other slots hold. After a run, each output whose slot has a **name** is labelled with it, cut to 40 characters. A video's audio output is labelled with the video's name after `audio:`, as in `audio:walk`, whether the clip had sound or silence. A slot with no name keeps its socket's own name. See [Extended media](#extended-media) for what goes into the slots.
 
+When an output that's wired comes out empty, the console names it and says why, for example that the take has nothing in that slot or that **Include audio** is off for that video.
+
 `preview` passes the `extended_media` input on unchanged, for wiring an [Extended Media Preview](#extended-media-preview-utils) next to the splitter. It keeps working when the splitter is bypassed. The slot outputs get no value then, so a node wired to one of them that requires its input stops the run with a missing-input error.
 
 A Media Splitter saved in a workflow before `preview` or the `audio_from_video` outputs were added doesn't show them, because ComfyUI rebuilds a loaded node's outputs from the workflow. Delete the node and add it again, then reconnect its links. A workflow saved with the short-lived `audio_3` output needs the same.
@@ -409,7 +420,7 @@ Images and frames keep their aspect ratio. Each cell shows the media's name top 
 
 Fits an audio track to a batch of frames, for frames and audio that come from a loader of their own rather than from a WorkflowConfig take — the same fix the WorkflowConfig nodes apply to a video slot's own audio. A muxed file's audio rarely ends exactly where its frames do, and an encoder that turns both back into latents rejects the pair when the audio comes out a token short or long.
 
-Inputs are **images**, **audio**, the clip's **fps** (a batch of frames carries no rate of its own, so wire the loader's fps output here) and a **target**: **Wan2.2 / LTX2.3 / LTX2.5** fits the audio to the frames' duration at that fps, and **MiniMax H3** fits it to a whole number of H3's 40 Hz audio tokens. The frames pass through untouched; the audio is padded with silence or cut at its tail, never resampled. The console says what was fixed and by how much, or that the pair was already in sync.
+Inputs are **images**, **audio**, the clip's **fps** (a batch of frames carries no rate of its own, so wire the loader's fps output here) and a **target**: **Wan2.2 / LTX2.3 / LTX2.5** fits the audio to the frames' duration at that fps, and **MiniMax H3** fits it to a whole number of H3's 40 Hz audio tokens. The frames pass through untouched; the audio is padded with silence or cut at its tail, never resampled. The console says what was fixed and by how much, or that the pair was already in sync. If nothing comes in on **images** or **audio**, the node stops and says which one is missing.
 
 ### Sound Mixer (`audio`)
 
