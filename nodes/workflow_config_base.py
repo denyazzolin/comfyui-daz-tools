@@ -116,7 +116,7 @@ _EXTENDED_MEDIA_KEYS = ("images", "videos", "audios")
 # slots per list and the nodes load only those, so a list may have holes and a
 # slot keeps its name when a neighbour is cleared. Rows past the range are the
 # user's own — a hand-edited file keeps them, they are just never loaded.
-_EXTENDED_MEDIA_SLOTS = {"images": 4, "videos": 2, "audios": 1}
+_EXTENDED_MEDIA_SLOTS = {"images": 4, "videos": 2, "audios": 2}
 
 # How many of the editor's slots for a kind are the take's own fields rather
 # than extended_media rows: image slot 1 is image_path and audio slot 1 is
@@ -629,6 +629,18 @@ def _video_by_id(active_set: dict, media_id: str):
     return None
 
 
+def _video_slot_by_id(active_set: dict, media_id: str) -> int:
+    """The editor's video slot holding this id, or 0 when no slot the editor
+    shows does — the number an audio taken off it is labelled with."""
+    if not media_id:
+        return 0
+    limit = _EXTENDED_MEDIA_SLOTS["videos"]
+    for item in _coerce_extended_media(active_set.get("extended_media"))["videos"]:
+        if item["id"] == media_id and 1 <= item["order"] <= limit:
+            return item["order"] + _MEDIA_ROOT_SLOTS["videos"]
+    return 0
+
+
 def _audio_source_path(active_set: dict, value) -> str:
     """The file an audio field's sound comes from — its own, or the video whose
     track it takes. "" when a reference has lost the video it named."""
@@ -1003,6 +1015,8 @@ def resolve_extended_media(active_set: dict, node_name: str,
             # What it actually came out of, which for a slot pointed at a video
             # is that video rather than an audio file of its own.
             "path": _audio_source_path(active_set, aud),
+            "from_video_slot": _video_slot_by_id(
+                active_set, str(aud.get("from_video") or "") if isinstance(aud, dict) else ""),
             "audio": root_audio,
         })
     for kind in _EXTENDED_MEDIA_KEYS:
@@ -1030,6 +1044,8 @@ def resolve_extended_media(active_set: dict, node_name: str,
             taken.add(order)
             full   = _resolve_media_path(path, prefix)
             entry  = {"slot": order, "name": item["name"], "path": full}
+            if kind == "audios":
+                entry["from_video_slot"] = _video_slot_by_id(active_set, item["from_video"])
             if kind != "audios":
                 entry["use_for_dim"] = item["use_for_dim"]
             if kind == "images":

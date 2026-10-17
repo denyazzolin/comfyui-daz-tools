@@ -2,6 +2,9 @@ from .workflow_config_base import _EXTENDED_MEDIA_SLOTS, _MEDIA_ROOT_SLOTS
 
 _KINDS = ("images", "videos", "audios")
 
+# The longest a slot's own name is shown on its output.
+_LABEL_MAX = 40
+
 
 def _slots(kind):
     """The slot numbers this node fans a kind out into, in output order.
@@ -12,6 +15,21 @@ def _slots(kind):
     number the editor shows: image slot 0 is the editor's image 1.
     """
     return range(1 - _MEDIA_ROOT_SLOTS[kind], _EXTENDED_MEDIA_SLOTS[kind] + 1)
+
+
+def _label(kind, entry):
+    """What an output is labelled with for this slot, or "" to keep its own name.
+
+    The slot's name, cut to _LABEL_MAX. An audio taken off a video says which
+    video slot, after the name when there is one and on its own when not.
+    """
+    if not isinstance(entry, dict):
+        return ""
+    name = str(entry.get("name") or "").strip()[:_LABEL_MAX].strip()
+    v    = entry.get("from_video_slot") if kind == "audios" else 0
+    if v:
+        return f"{name} (from video {v})" if name else f"from video {v}"
+    return name
 
 
 class MediaSplitter:
@@ -52,11 +70,17 @@ class MediaSplitter:
 
     def split(self, extended_media=None):
         block = extended_media if isinstance(extended_media, dict) else {}
-        out = []
+        out, labels = [], []
         for kind in _KINDS:
             key     = self._PAYLOAD_KEYS[kind]
-            by_slot = {e.get("slot"): e.get(key)
+            by_slot = {e.get("slot"): e
                        for e in block.get(kind, []) if isinstance(e, dict)}
-            out.extend(by_slot.get(s) for s in _slots(kind))
+            for s in _slots(kind):
+                entry = by_slot.get(s)
+                out.append(entry.get(key) if entry else None)
+                labels.append([f"{kind[:-1]}_{s + _MEDIA_ROOT_SLOTS[kind]}",
+                               _label(kind, entry)])
         out.append(extended_media)
-        return tuple(out)
+        # An [output name, label] pair for every output but preview; the editor
+        # side relabels the sockets with them once the run comes back.
+        return {"ui": {"labels": labels}, "result": tuple(out)}

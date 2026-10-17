@@ -344,7 +344,7 @@ export function buildWorkflowConfigExtension(cfg) {
       // and handlers they have always had and the rest of the panel goes on
       // reading them. Every other slot is an extended_media row, numbered from
       // 1 there: EM_ROOT is the offset, so order = slot - EM_ROOT[kind].
-      const EM_SLOTS    = { images: 5, videos: 2, audios: 2 }
+      const EM_SLOTS    = { images: 5, videos: 2, audios: 3 }
       const EM_ROOT     = { images: 1, videos: 0, audios: 1 }
       const EM_PATH_KEY = { images: 'image_path', videos: 'video_path', audios: 'audio_path' }
       // What an audio picker holds when it is pointed at a video rather than at a
@@ -1827,7 +1827,7 @@ export function buildWorkflowConfigExtension(cfg) {
 
         // ── audio playback ──────────────────────────────────────────────────
         // One player for the pane. Each line's glyph is a toggle, and starting
-        // one line stops the other, so the line showing the stop glyph is always
+        // one line stops any other, so the line showing the stop glyph is always
         // the one being heard.
         let audioEl = null
         let audioOn = 0
@@ -2162,26 +2162,28 @@ export function buildWorkflowConfigExtension(cfg) {
           fire(sel)
         })
 
-        // The second audio line, mirroring the first — which is the take's own
-        // audio_path and keeps its original handlers.
-        const a2 = '#daz-em-audios-2'
-        q(`${a2}-upload-btn`)?.addEventListener('click', () => q(`${a2}-upload-input`)?.click())
-        q(`${a2}-upload-input`)?.addEventListener('change', async e => {
-          const file = e.target.files?.[0]
-          e.target.value = ''
-          if (!file) return
-          const name = await uploadInput(file, `${a2}-upload-btn`)
-          if (!name) return
-          const fresh = await getFolderFiles('input')
-          const sel   = selOf('audios', 2)
-          if (sel) sel.innerHTML = selOptMedia('audios', fresh, name)
-          fire(sel)
-        })
-        q(`${a2}-clear`)?.addEventListener('click', () => {
-          const sel = selOf('audios', 2)
-          if (sel) sel.value = ''
-          fire(sel)
-        })
+        // The audio lines past the first, mirroring it — the first is the take's
+        // own audio_path and keeps its original handlers.
+        for (let n = 2; n <= EM_SLOTS.audios; n++) {
+          const an = `#daz-em-audios-${n}`
+          q(`${an}-upload-btn`)?.addEventListener('click', () => q(`${an}-upload-input`)?.click())
+          q(`${an}-upload-input`)?.addEventListener('change', async e => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (!file) return
+            const name = await uploadInput(file, `${an}-upload-btn`)
+            if (!name) return
+            const fresh = await getFolderFiles('input')
+            const sel   = selOf('audios', n)
+            if (sel) sel.innerHTML = selOptMedia('audios', fresh, name)
+            fire(sel)
+          })
+          q(`${an}-clear`)?.addEventListener('click', () => {
+            const sel = selOf('audios', n)
+            if (sel) sel.value = ''
+            fire(sel)
+          })
+        }
 
         // What the Dimensions box's reference dropdown is filled from: every
         // filled image and video slot, with the size the panel has managed to
@@ -2853,7 +2855,7 @@ export function buildWorkflowConfigExtension(cfg) {
             </div>
 
             ${hideAudioPath ? '' : `<div data-em-pane="audios" style="display:none;${emPaneS}">
-              ${emAudioLine(1)}${emAudioLine(2)}
+              ${Array.from({ length: EM_SLOTS.audios }, (_, i) => emAudioLine(i + 1)).join('')}
             </div>`}`
         }
 
