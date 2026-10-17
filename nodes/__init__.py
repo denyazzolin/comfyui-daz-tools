@@ -16,6 +16,7 @@ from .prompt_stack_splitter import PromptStackSplitter
 from .media_splitter import MediaSplitter
 from .media_preview import MediaPreview
 from .sound_mixer import SoundMixer
+from .dx_av_sync_fixer import AVSyncFixer
 
 NODE_CLASS_MAPPINGS = {
     "CheckNull": CheckNullNode,
@@ -33,6 +34,7 @@ NODE_CLASS_MAPPINGS = {
     "daz_media_splitter": MediaSplitter,
     "daz_media_preview": MediaPreview,
     "daz_sound_mixer": SoundMixer,
+    "daz_av_sync_fixer": AVSyncFixer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -51,4 +53,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "daz_media_splitter": "Media Splitter",
     "daz_media_preview": "Extended Media Preview",
     "daz_sound_mixer": "Sound Mixer",
+    "daz_av_sync_fixer": "AV Sync Fixer",
 }

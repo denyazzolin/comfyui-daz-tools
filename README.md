@@ -405,6 +405,12 @@ Images and frames keep their aspect ratio. Each cell shows the media's name top 
 
 ---
 
+### AV Sync Fixer (`utils`)
+
+Fits an audio track to a batch of frames, for frames and audio that come from a loader of their own rather than from a WorkflowConfig take — the same fix the WorkflowConfig nodes apply to audio taken off a video slot. A muxed file's audio rarely ends exactly where its frames do, and an encoder that turns both back into latents rejects the pair when the audio comes out a token short or long.
+
+Inputs are **images**, **audio**, the clip's **fps** (a batch of frames carries no rate of its own, so wire the loader's fps output here) and a **target**: **Wan2.2 / LTX2.3 / LTX2.5** fits the audio to the frames' duration at that fps, and **MiniMax H3** fits it to a whole number of H3's 40 Hz audio tokens. The frames pass through untouched; the audio is padded with silence or cut at its tail, never resampled. The console says what was fixed and by how much, or that the pair was already in sync.
+
 ### Sound Mixer (`audio`)
 
 Mixes multiple audio files into one `AUDIO` output. Click **Edit Mix** to open the mix editor.
