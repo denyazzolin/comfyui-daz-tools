@@ -64,7 +64,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 14
+CURRENT_SCHEMA = 15
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -116,7 +116,7 @@ _EXTENDED_MEDIA_KEYS = ("images", "videos", "audios")
 # slots per list and the nodes load only those, so a list may have holes and a
 # slot keeps its name when a neighbour is cleared. Rows past the range are the
 # user's own — a hand-edited file keeps them, they are just never loaded.
-_EXTENDED_MEDIA_SLOTS = {"images": 4, "videos": 2, "audios": 2}
+_EXTENDED_MEDIA_SLOTS = {"images": 4, "videos": 2, "audios": 1}
 
 # How many of the editor's slots for a kind are the take's own fields rather
 # than extended_media rows: image slot 1 is image_path and audio slot 1 is
@@ -189,8 +189,8 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
     # nothing pointed at.
     backfilled |= _backfill_media_ids(configs)
     backfilled |= _backfill_dimensions(configs)
-    # Last, and after the ids above: a from_video names one of them, so which
-    # ones are live can only be known once every filled video slot has one.
+    # Last, and after the ids above: a stale from_video names one of them, so
+    # which ones are live can only be known once every filled video slot has one.
     backfilled |= _backfill_audio_refs(configs)
 
     if migrated or backfilled:
@@ -496,10 +496,13 @@ def _coerce_media_item(kind: str, val) -> dict:
         # work, and cap_frames counts on from there with 0 meaning "to the end".
         item["start_frame"] = max(0, _get_int(src.get("start_frame"), 0))
         item["cap_frames"]  = max(0, _get_int(src.get("cap_frames"), 0))
+        # Whether the clip's own sound rides along beside its frames — its track,
+        # or silence the clip's length when it has none. On unless turned off.
+        item["include_audio"] = bool(src.get("include_audio", True))
     if kind == "audios":
-        # The id of the video this slot takes its track off, instead of holding a
-        # file of its own. Empty is the ordinary case, a picked audio file — the
-        # two are never both set, the picker being one dropdown.
+        # The id of a video this slot once took its track off. No longer read or
+        # offered — a video hands on its own sound now — and kept only so a file
+        # that carries it keeps its shape.
         item["from_video"] = str(src.get("from_video") or "")
     else:
         # Whether the dimensions rule resizes this one. Any number of slots may
@@ -612,113 +615,6 @@ def _media_by_id(active_set: dict, media_id: str):
             if item["id"] == media_id:
                 return kind, item[_MEDIA_PATH_KEYS[kind]]
     return None
-
-
-def _video_by_id(active_set: dict, media_id: str):
-    """The video row carrying this id, as (path, start_frame, cap_frames), or None.
-
-    Every video row is searched, not only the ones the editor shows, for the same
-    reason _media_by_id searches them: an id is only ever there because something
-    wrote it, and a hand-edited file naming one means it.
-    """
-    if not media_id:
-        return None
-    for item in _coerce_extended_media(active_set.get("extended_media"))["videos"]:
-        if item["id"] == media_id:
-            return item["video_path"], item["start_frame"], item["cap_frames"]
-    return None
-
-
-def _video_slot_by_id(active_set: dict, media_id: str) -> int:
-    """The editor's video slot holding this id, or 0 when no slot the editor
-    shows does — the number an audio taken off it is labelled with."""
-    if not media_id:
-        return 0
-    limit = _EXTENDED_MEDIA_SLOTS["videos"]
-    for item in _coerce_extended_media(active_set.get("extended_media"))["videos"]:
-        if item["id"] == media_id and 1 <= item["order"] <= limit:
-            return item["order"] + _MEDIA_ROOT_SLOTS["videos"]
-    return 0
-
-
-def _audio_source_path(active_set: dict, value) -> str:
-    """The file an audio field's sound comes from — its own, or the video whose
-    track it takes. "" when a reference has lost the video it named."""
-    ref = str(value.get("from_video") or "") if isinstance(value, dict) else ""
-    if not ref:
-        return _get_path(value)
-    found = _video_by_id(active_set, ref)
-    return found[0] if found else ""
-
-
-def resolve_audio_source(active_set: dict, value, prefix: str) -> tuple:
-    """What an audio field points at, as (path, start_s, end_s, silent_s).
-
-    A field carrying from_video takes its sound off that video's track rather
-    than off an audio file of its own, trimmed to the window the video row is
-    set to — so what arrives matches the frames that same row decodes. The
-    seconds are worked out here and not in the decoder because only this side
-    knows the clip's rate, which is read off the file and never kept in the take.
-
-    silent_s is None for a track there is to decode. For a video with no track
-    of its own it is the length of that window instead, and the field stands
-    for that much silence: the pick is allowed, the editor warns about it, and
-    a run must not fail over it.
-
-    ("", 0.0, 0.0, None) when there is nothing to load. A from_video whose video
-    is gone lands there too: a reference that has lost what it named is no audio
-    at all, not a failure.
-
-    value is the take's own audio_path object, whose own file sits under "path".
-    An extended row keeps its file under "audio_path" instead, so it is handed in
-    here only for the reference it carries, its path having been read already.
-    """
-    ref = str(value.get("from_video") or "") if isinstance(value, dict) else ""
-    if not ref:
-        return _get_path(value), 0.0, 0.0, None
-    found = _video_by_id(active_set, ref)
-    if found is None:
-        return "", 0.0, 0.0, None
-    path, start_frame, cap_frames = found
-    if not path:
-        return "", 0.0, 0.0, None
-    # Probed whatever the window, since only the file can say whether it has a
-    # track to take.
-    try:
-        from .video_utils import probe_video_file
-        info = probe_video_file(_resolve_media_path(path, prefix), prefix)
-        fps  = float(info.get("fps") or 0.0)
-    except Exception as e:
-        print(f"[DAZ TOOLS] {prefix}: could not read '{path}' — "
-              f"taking the whole track ({e})")
-        return path, 0.0, 0.0, None
-    # start_frame is 1-based with 0 meaning the first frame, and cap_frames counts
-    # on from there with 0 meaning "to the end" — decode_video_frames' pair, read
-    # the same way here so the audio window is the frame window.
-    first   = max(0, int(start_frame) - 1)
-    start_s = first / fps if (start_frame or cap_frames) else 0.0
-    end_s   = (first + int(cap_frames)) / fps if cap_frames else 0.0
-    if not info.get("has_audio"):
-        frames   = int(cap_frames) or max(0, int(info.get("frame_count") or 0) - first)
-        silent_s = frames / fps
-        print(f"[DAZ TOOLS] {prefix}: video '{path}' has no audio track — "
-              f"producing {silent_s:.3f}s of silence in its place")
-        return path, start_s, end_s, silent_s
-    return path, start_s, end_s, None
-
-
-def load_audio_field(active_set: dict, value, prefix: str, load):
-    """The AUDIO a take's own audio_path stands for, or None for nothing.
-
-    load is the node's own file loader, called as load(path, start_s, end_s).
-    A field pointed at a video with no track comes out as silence of the
-    window's length instead — the fit to the decoded frames then makes it exact.
-    """
-    path, start_s, end_s, silent_s = resolve_audio_source(active_set, value, prefix)
-    if silent_s is not None:
-        from .audio_utils import silent_audio
-        return silent_audio(silent_s)
-    return load(path, start_s, end_s)
 
 
 def _dim_reference_size(active_set: dict, node_name: str) -> tuple:
@@ -914,14 +810,13 @@ def _get_media_name(value) -> str:
 
 
 def _fit_audio_to_video(audio: dict, video, audio_grid, prefix: str) -> None:
-    """Fit an AUDIO taken off a video slot to that slot's decoded frames, in place.
+    """Fit a video slot's own sound to that slot's decoded frames, in place.
 
     A muxed file's audio stream rarely ends exactly where its frames do, and an
     encoder that turns both back into latents rejects the pair when the audio
     comes out a token short or long. video is the slot's (frame_count, fps, path)
-    as decoded, so whatever window the user trimmed is what the audio is fitted to;
-    None means that video was not loaded, and with no frames there is nothing
-    to keep in step.
+    as decoded, so whatever window the user trimmed is what the audio is fitted
+    to; with None for either there is nothing to keep in step.
 
     audio_grid is the node's (audio latent rate, video rate). With it, the audio
     is fitted to a whole number of audio tokens — round(frames * audio_rate /
@@ -968,6 +863,43 @@ def _fit_audio_to_video(audio: dict, video, audio_grid, prefix: str) -> None:
               f"so it was {'padded with silence' if short else 'trimmed'} to {samples} samples")
 
 
+def _video_audio(full: str, src: str, start_frame: int, frames: int, fps: float,
+                 audio_grid, prefix: str):
+    """The sound a video slot hands on beside its frames, or None for none.
+
+    Its own track, over the window its frames were decoded from: start_frame is
+    read the way decode_video_frames reads it, and frames is the count that came
+    back, so a ceiling that cut the clip short cuts its sound there too. A clip
+    with no track stands for silence that long instead — a run must not fail
+    over it. Either way the result is fitted to the frames, see
+    _fit_audio_to_video.
+    """
+    if fps <= 0 or frames <= 0:
+        print(f"[DAZ TOOLS] {prefix}: no rate to time '{src}' by — no audio for it")
+        return None
+    import av
+    from .audio_utils import decode_audio_file, silent_audio
+    with av.open(full) as vf:
+        has_track = bool(vf.streams.audio)
+    audio = None
+    if has_track:
+        first = max(0, int(start_frame) - 1)
+        try:
+            audio = decode_audio_file(full, prefix, start_s=first / fps,
+                                      end_s=(first + frames) / fps)
+        except ValueError as e:
+            # A track that ends before the window starts has nothing in it,
+            # which is silence the same as no track at all.
+            print(f"{e} — producing {frames / fps:.3f}s of silence in its place")
+    else:
+        print(f"[DAZ TOOLS] {prefix}: video '{src}' has no audio track — "
+              f"producing {frames / fps:.3f}s of silence in its place")
+    if audio is None:
+        audio = silent_audio(frames / fps)
+    _fit_audio_to_video(audio, (frames, fps, src), audio_grid, prefix)
+    return audio
+
+
 def resolve_extended_media(active_set: dict, node_name: str,
                            root_image=None, root_audio=None, audio_grid=None) -> dict:
     """Load a take's extended_media into decoded, slot-numbered lists.
@@ -984,8 +916,9 @@ def resolve_extended_media(active_set: dict, node_name: str,
     each. Passing them in rather than loading them here is what keeps that
     free: the splitter hands on the very tensor the node already output.
 
-    Every audio taken off a video slot is fitted to that slot's decoded frames;
-    audio_grid is the node's own rule for it, see _fit_audio_to_video.
+    Every video slot set to include its audio carries it under "audio", fitted
+    to that slot's decoded frames; audio_grid is the node's own rule for it, see
+    _fit_audio_to_video. A slot set not to carries None there.
     """
     block  = _coerce_extended_media(active_set.get("extended_media"))
     result: dict = {kind: [] for kind in _EXTENDED_MEDIA_KEYS}
@@ -993,10 +926,6 @@ def resolve_extended_media(active_set: dict, node_name: str,
     # rule, each against its own size. Read from the files rather than from
     # root_image, which the caller has already had resized by resolve_dimensions.
     plan = _dim_plan(active_set, node_name)
-    # Each decoded video's (frame_count, fps, path) by its id, for the audio
-    # that takes its track off it. Videos are loaded before audios, so it is
-    # filled in time.
-    decoded: dict = {}
 
     # These two carry a name of their own, beside their path, the way an
     # extended row does. Nothing in the editor writes it yet, so it is empty
@@ -1011,12 +940,7 @@ def resolve_extended_media(active_set: dict, node_name: str,
     if root_audio is not None:
         aud = active_set.get("audio_path")
         result["audios"].append({
-            "slot": 0, "name": _get_media_name(aud),
-            # What it actually came out of, which for a slot pointed at a video
-            # is that video rather than an audio file of its own.
-            "path": _audio_source_path(active_set, aud),
-            "from_video_slot": _video_slot_by_id(
-                active_set, str(aud.get("from_video") or "") if isinstance(aud, dict) else ""),
+            "slot": 0, "name": _get_media_name(aud), "path": _get_path(aud),
             "audio": root_audio,
         })
     for kind in _EXTENDED_MEDIA_KEYS:
@@ -1026,26 +950,15 @@ def resolve_extended_media(active_set: dict, node_name: str,
             order = item["order"]
             if not (1 <= order <= limit) or order in taken:
                 continue
-            prefix  = f"{node_name}: {kind[:-1]} slot {order}"
-            path    = item[_MEDIA_PATH_KEYS[kind]]
-            start_s = end_s = 0.0
-            silent_s = None
-            if kind == "audios" and item["from_video"]:
-                # A slot pointed at a video holds no path of its own: what it
-                # sounds, and the window it takes of it, come off that video's
-                # row. Only asked when there is a reference — a row holding a
-                # file of its own already has its path, read out above.
-                path, start_s, end_s, silent_s = resolve_audio_source(active_set, item, prefix)
-            # Checked after the reference is resolved, and only then does the slot
-            # count as taken — a row with nothing behind it leaves its slot free
-            # for a later one, as it always has.
+            path = item[_MEDIA_PATH_KEYS[kind]]
+            # Only a row with a path counts as taking its slot — one with nothing
+            # behind it leaves the slot free for a later one.
             if not path:
                 continue
             taken.add(order)
+            prefix = f"{node_name}: {kind[:-1]} slot {order}"
             full   = _resolve_media_path(path, prefix)
             entry  = {"slot": order, "name": item["name"], "path": full}
-            if kind == "audios":
-                entry["from_video_slot"] = _video_slot_by_id(active_set, item["from_video"])
             if kind != "audios":
                 entry["use_for_dim"] = item["use_for_dim"]
             if kind == "images":
@@ -1066,29 +979,15 @@ def resolve_extended_media(active_set: dict, node_name: str,
                     scale=((lambda batch: _apply_dim_rule(batch, plan, node_name))
                            if item["use_for_dim"] else None),
                 )
-                if item["id"]:
-                    decoded[item["id"]] = (entry["frame_count"], entry["fps"], path)
-            elif silent_s is not None:
-                from .audio_utils import silent_audio
-                entry["audio"] = silent_audio(silent_s)
-                _fit_audio_to_video(entry["audio"], decoded.get(item["from_video"]),
-                                    audio_grid, prefix)
+                entry["audio"] = (_video_audio(full, path, item["start_frame"],
+                                               entry["frame_count"], entry["fps"],
+                                               audio_grid, prefix)
+                                  if item["include_audio"] else None)
             else:
                 from .audio_utils import decode_audio_file
-                entry["audio"] = decode_audio_file(full, prefix,
-                                                   start_s=start_s, end_s=end_s)
-                if item["from_video"]:
-                    _fit_audio_to_video(entry["audio"], decoded.get(item["from_video"]),
-                                        audio_grid, prefix)
+                entry["audio"] = decode_audio_file(full, prefix)
             result[kind].append(entry)
         result[kind].sort(key=lambda e: e["slot"])
-    # The take's own audio was decoded by the caller before any video was, so it
-    # is fitted only now. In place, because the node outputs this same dict as
-    # its audio: both that output and slot 0 carry the fitted track.
-    aud = active_set.get("audio_path")
-    if root_audio is not None and isinstance(aud, dict) and aud.get("from_video"):
-        _fit_audio_to_video(root_audio, decoded.get(str(aud["from_video"])),
-                            audio_grid, f"{node_name}: audio")
     return result
 
 
@@ -1911,6 +1810,14 @@ def _migrate(configs: dict, from_version: int) -> dict:
             for s in entry.get("sets", []):
                 if not isinstance(s.get("latent_upscale"), dict):
                     s["latent_upscale"] = {"name": ""}
+    if from_version < 15:
+        for entry in configs.values():
+            for s in entry.get("sets", []):
+                block = s.get("extended_media")
+                if isinstance(block, dict) and isinstance(block.get("videos"), list):
+                    for row in block["videos"]:
+                        if isinstance(row, dict):
+                            row.setdefault("include_audio", True)
     return configs
 
 
@@ -1988,11 +1895,10 @@ def _backfill_extended_media(configs: dict) -> bool:
 def _backfill_audio_refs(configs: dict) -> bool:
     """Drop a from_video that no longer names a filled video in its own take.
 
-    A reference outlives the video only when that video was cleared or its row
-    removed, and an audio slot pointing at nothing is no audio at all — so it is
-    ended here rather than left to come up empty at run time. Additive and
-    idempotent like every other backfill: a second pass finds nothing to do, and
-    a file written by an older node or edited by hand is tidied the same way.
+    from_video is no longer read — a video slot hands on its own sound now — and
+    is only kept so older files keep their shape. This just stops a stale one
+    from naming a video that is gone. Additive and idempotent like every other
+    backfill: a second pass finds nothing to do.
     """
     changed = False
     for entry in configs.values():
@@ -2000,8 +1906,8 @@ def _backfill_audio_refs(configs: dict) -> bool:
             live = {item["id"] for item
                     in _coerce_extended_media(s.get("extended_media"))["videos"]
                     if item["id"] and item["video_path"]}
-            # The take's own audio_path and every extended audio row: both carry
-            # the reference, and both lose it the same way.
+            # The take's own audio_path and every extended audio row: both may
+            # still carry one.
             targets = [s.get("audio_path")]
             block   = s.get("extended_media")
             if isinstance(block, dict) and isinstance(block.get("audios"), list):

@@ -20,15 +20,14 @@ def _slots(kind):
 def _label(kind, entry):
     """What an output is labelled with for this slot, or "" to keep its own name.
 
-    The slot's name, cut to _LABEL_MAX. An audio taken off a video says which
-    video slot, after the name when there is one and on its own when not.
+    The slot's name, cut to _LABEL_MAX. A video's own sound is the video's name
+    behind "audio:", silent or not.
     """
     if not isinstance(entry, dict):
         return ""
     name = str(entry.get("name") or "").strip()[:_LABEL_MAX].strip()
-    v    = entry.get("from_video_slot") if kind == "audios" else 0
-    if v:
-        return f"{name} (from video {v})" if name else f"from video {v}"
+    if kind == "video_audio":
+        return f"audio:{name}" if name else ""
     return name
 
 
@@ -50,16 +49,20 @@ class MediaSplitter:
         }
 
     # Derived from the same slot counts the editor and the loader use, so the
-    # three stay in step. "preview" hands the input on untouched, last so that
-    # existing links keep their indices. Typed like the input, it is also the
-    # one output ComfyUI still feeds when the node is bypassed.
+    # three stay in step. "preview" hands the input on untouched, behind the
+    # slots so that existing links keep their indices. Typed like the input, it
+    # is also the one output ComfyUI still feeds when the node is bypassed.
+    # Each video slot's own sound follows it, one output per video slot.
     RETURN_TYPES = (("IMAGE",) * len(_slots("images"))
                     + ("IMAGE",) * len(_slots("videos"))
                     + ("AUDIO",) * len(_slots("audios"))
-                    + ("DX_EXTENDED_MEDIA",))
-    RETURN_NAMES = tuple(
+                    + ("DX_EXTENDED_MEDIA",)
+                    + ("AUDIO",) * len(_slots("videos")))
+    RETURN_NAMES = (tuple(
         f"{kind[:-1]}_{s + _MEDIA_ROOT_SLOTS[kind]}"
         for kind in _KINDS for s in _slots(kind)) + ("preview",)
+        + tuple(f"audio_from_video{s + _MEDIA_ROOT_SLOTS['videos']}"
+                for s in _slots("videos")))
     FUNCTION     = "split"
     CATEGORY     = "utils"
     OUTPUT_NODE  = False
@@ -81,6 +84,13 @@ class MediaSplitter:
                 labels.append([f"{kind[:-1]}_{s + _MEDIA_ROOT_SLOTS[kind]}",
                                _label(kind, entry)])
         out.append(extended_media)
+        videos = {e.get("slot"): e
+                  for e in block.get("videos", []) if isinstance(e, dict)}
+        for s in _slots("videos"):
+            entry = videos.get(s)
+            out.append(entry.get("audio") if entry else None)
+            labels.append([f"audio_from_video{s + _MEDIA_ROOT_SLOTS['videos']}",
+                           _label("video_audio", entry)])
         # An [output name, label] pair for every output but preview; the editor
         # side relabels the sockets with them once the run comes back.
         return {"ui": {"labels": labels}, "result": tuple(out)}

@@ -5,7 +5,7 @@ import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
     all_versions_for_class, parse_movie_file, load_unet_gguf, load_latent_upscale_model,
-    resolve_dimensions, resolve_extended_media, load_audio_field,
+    resolve_dimensions, resolve_extended_media,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -93,7 +93,7 @@ def _load_image(path: str):
     return torch.from_numpy(arr)[None,]
 
 
-def _load_audio(path: str, start_s: float = 0.0, end_s: float = 0.0):
+def _load_audio(path: str):
     if not path:
         return None
     if os.path.isabs(path):
@@ -102,7 +102,7 @@ def _load_audio(path: str, start_s: float = 0.0, end_s: float = 0.0):
         full = os.path.join(folder_paths.get_input_directory(), path)
     if not os.path.exists(full):
         raise ValueError(f"[DAZ TOOLS] WorkflowConfigLtx23: audio not found at '{full}'")
-    return decode_audio_file(full, "WorkflowConfigLtx23", start_s=start_s, end_s=end_s)
+    return decode_audio_file(full, "WorkflowConfigLtx23")
 
 
 def _load_lora(name: str):
@@ -345,11 +345,7 @@ class WorkflowConfigLtx23:
             active_set, _load_image(_get_path(active_set.get("image_path"))), "WorkflowConfigLTX23")
         # Held rather than loaded inline in the tuple: extended_media carries
         # this same audio as its slot 0, and it is loaded once for both.
-        # Where the sound comes from is the field's own business: an audio file,
-        # or the track of a video the take already holds, trimmed to that video's
-        # own window — or silence that long, for a video with no track of its own.
-        ref_audio = load_audio_field(
-            active_set, active_set.get("audio_path"), "WorkflowConfigLtx23: audio", _load_audio)
+        ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
         return (
             ckpt_model,
