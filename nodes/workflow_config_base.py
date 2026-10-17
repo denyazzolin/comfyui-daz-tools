@@ -130,6 +130,9 @@ _MEDIA_PATH_KEYS = {"images": "image_path", "videos": "video_path", "audios": "a
 _SCHEMA_DEFAULTS: dict[int, dict] = {}
 
 _warned_missing: set = set()
+# Why the last read of a config file came back empty, by path, so a node that
+# then cannot find its scene can say why. Cleared by the next good read.
+_load_problems: dict = {}
 
 
 # ── Path resolution ───────────────────────────────────────────────────────────
@@ -147,6 +150,7 @@ def _resolve_path(file: str = None) -> str:
 
 def _load_file(path: str) -> tuple[dict, dict, int]:
     if not os.path.exists(path):
+        _load_problems[path] = f"config file not found at {path}"
         if path not in _warned_missing:
             print(f"[DAZ TOOLS] WorkflowConfig: config file not found at {path}")
             _warned_missing.add(path)
@@ -155,12 +159,15 @@ def _load_file(path: str) -> tuple[dict, dict, int]:
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except Exception as e:
-        print(f"[DAZ TOOLS] WorkflowConfig: could not read {os.path.basename(path)} — {e}")
+        _load_problems[path] = f"could not read {os.path.basename(path)} — {e}"
+        print(f"[DAZ TOOLS] WorkflowConfig: {_load_problems[path]}")
         return {}, {}, CURRENT_SCHEMA
 
     if not isinstance(raw, dict):
-        print(f"[DAZ TOOLS] WorkflowConfig: {os.path.basename(path)} has unexpected format")
+        _load_problems[path] = f"{os.path.basename(path)} has unexpected format"
+        print(f"[DAZ TOOLS] WorkflowConfig: {_load_problems[path]}")
         return {}, {}, CURRENT_SCHEMA
+    _load_problems.pop(path, None)
 
     file_meta    = raw.get(_META_KEY, {})
     file_version = file_meta.get("schema_version", 1)
@@ -303,6 +310,36 @@ def _get_active_set(entry: dict, version: str = None) -> dict:
             if str(s.get("version", "")) == raw:
                 return s
     return sets[-1]
+
+
+def scene_not_found(node_name: str, scene: str, path: str) -> ValueError:
+    """The error a node raises when its scene is not in the file it read.
+
+    A file that could not be read reads as empty, so the scene is missing from
+    it too — but the reason is the file, and that is what is said then."""
+    problem = _load_problems.get(path)
+    if problem:
+        return ValueError(f"[DAZ TOOLS] {node_name}: '{scene}' could not be loaded — {problem}")
+    return ValueError(f"[DAZ TOOLS] {node_name}: '{scene}' not found in "
+                      f"{os.path.basename(path)}")
+
+
+def empty_model_warnings(active_set: dict, fields, node_name: str) -> list:
+    """A warning for each model field the take leaves empty, printed and returned.
+
+    fields is the node's own (key, label) pairs; key may be a tuple of fields
+    that stand in for each other, warned about only when all are empty. An
+    empty field is allowed — the node outputs None for it — but whatever is
+    wired to that output fails, so the node says so up front, on the console
+    and on its panel."""
+    warnings = []
+    for key, label in fields:
+        keys = key if isinstance(key, tuple) else (key,)
+        if not any(_get_name(active_set.get(k)) for k in keys):
+            msg = f"{node_name}: no {label} set — its output is empty"
+            print(f"[DAZ TOOLS] {msg}")
+            warnings.append(msg)
+    return warnings
 
 
 def _next_version(entry: dict) -> str:
@@ -983,6 +1020,10 @@ def resolve_extended_media(active_set: dict, node_name: str,
                                                entry["frame_count"], entry["fps"],
                                                audio_grid, prefix)
                                   if item["include_audio"] else None)
+                # Why a slot that asked for its sound has none, for the Media
+                # Splitter to say if that output is wired.
+                if item["include_audio"] and entry["audio"] is None:
+                    entry["audio_note"] = "its clip has no frame rate to time the audio by"
             else:
                 from .audio_utils import decode_audio_file
                 entry["audio"] = decode_audio_file(full, prefix)

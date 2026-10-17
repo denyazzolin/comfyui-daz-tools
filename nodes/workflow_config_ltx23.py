@@ -9,7 +9,7 @@ from .workflow_config_base import (
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
-    _resolve_path, _load_file, _write_file,
+    _resolve_path, _load_file, _write_file, scene_not_found, empty_model_warnings,
 )
 from .audio_utils import decode_audio_file
 
@@ -137,6 +137,17 @@ def _apply_loras(model, lora_pairs):
     return result
 
 
+# The model fields this node loads, as (key, label as the panel shows it). An
+# empty one is warned about on every run. A checkpoint or a transformer is the
+# model, and the two CLIPs load as one dual_clip, so each pair warns only when
+# both are empty.
+_MODEL_FIELDS = (
+    (("checkpoint", "unet_high"), "Checkpoint or Transformer"), ("vae", "Video VAE"),
+    ("audio_vae", "Audio VAE"), (("clip_2", "clip"), "CLIP"),
+    ("latent_upscale", "Latent Upscaler"),
+)
+
+
 class WorkflowConfigLtx23:
     @classmethod
     def INPUT_TYPES(cls):
@@ -258,11 +269,10 @@ class WorkflowConfigLtx23:
             None,
         )
         if name is None:
-            raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigLtx23: '{scene}' not found"
-            )
+            raise scene_not_found("WorkflowConfigLtx23", scene, path)
         entry      = configs[name]
         active_set = _get_active_set(entry, take)
+        warnings   = empty_model_warnings(active_set, _MODEL_FIELDS, "WorkflowConfigLtx23")
         loras      = _get_loras(active_set)
 
         seed_obj = active_set.get("seed", {"value": 0})
@@ -347,7 +357,7 @@ class WorkflowConfigLtx23:
         # this same audio as its slot 0, and it is loaded once for both.
         ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
-        return (
+        result = (
             ckpt_model,
             ckpt_vae,
             ckpt_clip,
@@ -382,3 +392,5 @@ class WorkflowConfigLtx23:
             latent_upscaler,
             resolve_extended_media(active_set, "WorkflowConfigLTX23", ref_image, ref_audio),
         )
+        # The warnings go to the panel, which shows them under its buttons.
+        return {"ui": {"daz_warnings": warnings}, "result": result}

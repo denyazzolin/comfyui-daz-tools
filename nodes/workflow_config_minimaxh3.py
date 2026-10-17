@@ -8,7 +8,7 @@ from .workflow_config_base import (
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
-    _resolve_path, _load_file, _write_file,
+    _resolve_path, _load_file, _write_file, scene_not_found, empty_model_warnings,
 )
 from .audio_utils import decode_audio_file
 
@@ -180,6 +180,13 @@ def _apply_sigma_shift(model, shift_video: float, shift_audio: float):
     return m
 
 
+# The model fields this node loads, as (key, label as the panel shows it). An
+# empty one is warned about on every run.
+_MODEL_FIELDS = (
+    ("unet_high", "Unet"), ("vae", "Video VAE"), ("audio_vae", "Audio VAE"), ("clip", "CLIP"),
+)
+
+
 class WorkflowConfigMiniMaxH3:
     @classmethod
     def INPUT_TYPES(cls):
@@ -297,11 +304,10 @@ class WorkflowConfigMiniMaxH3:
             None,
         )
         if name is None:
-            raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigMiniMaxH3: '{scene}' not found"
-            )
+            raise scene_not_found("WorkflowConfigMiniMaxH3", scene, path)
         entry      = configs[name]
         active_set = _get_active_set(entry, take)
+        warnings   = empty_model_warnings(active_set, _MODEL_FIELDS, "WorkflowConfigMiniMaxH3")
         loras      = _get_loras(active_set)
 
         seed_obj = active_set.get("seed", {"value": 0})
@@ -385,7 +391,7 @@ class WorkflowConfigMiniMaxH3:
             _get_float(active_set.get("shift_low")),
         )
 
-        return (
+        result = (
             unet,
             video_vae,
             audio_vae,
@@ -416,3 +422,5 @@ class WorkflowConfigMiniMaxH3:
             resolve_extended_media(active_set, "WorkflowConfigMiniMaxH3", ref_image, ref_audio,
                                    audio_grid=_AUDIO_GRID),
         )
+        # The warnings go to the panel, which shows them under its buttons.
+        return {"ui": {"daz_warnings": warnings}, "result": result}

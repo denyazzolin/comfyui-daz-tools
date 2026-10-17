@@ -2319,6 +2319,8 @@ export function buildWorkflowConfigExtension(cfg) {
                      background:#000000;color:#ddd;border:1px solid #54af7b;
                      border-radius:3px;cursor:pointer">Prompt Editor</button>
           </div>
+          <div id="daz-run-status"
+            style="display:none;padding:0 8px 6px;font-family:monospace;font-size:11px;line-height:1.4"></div>
         `
         wrap.querySelector('#daz-new-btn')?.addEventListener('click', () => enterEditForm(node, true))
         wrap.querySelector('#daz-new-take-btn')?.addEventListener('click', () => enterEditForm(node, false, true))
@@ -2453,8 +2455,36 @@ export function buildWorkflowConfigExtension(cfg) {
           })
         })
 
+        paintRunStatus(node)
         updateOutputLabels(node, data)
         node.setDirtyCanvas(true, true)
+      }
+
+      // What the last run of this node said: the error it stopped on, in red,
+      // and the warnings it carried on with, in yellow — the same text the
+      // console got. Kept per scene and take, so picking another one does not
+      // show the last run's words against it.
+      function setRunStatus(node, patch) {
+        const scene = node.widgets?.find(w => w.name === 'scene')?.value || ''
+        const take  = String(node._dazCurrentVersion || '')
+        const prev  = node._dazRunStatus
+        const same  = prev && prev.scene === scene && prev.take === take
+        node._dazRunStatus = { scene, take, errors: same ? prev.errors : [],
+                               warnings: same ? prev.warnings : [], ...patch }
+        paintRunStatus(node)
+      }
+
+      function paintRunStatus(node) {
+        const el = node[keys.wrap]?.querySelector('#daz-run-status')
+        if (!el) return
+        const st    = node._dazRunStatus
+        const scene = node.widgets?.find(w => w.name === 'scene')?.value || ''
+        const here  = st && st.scene === scene && st.take === String(node._dazCurrentVersion || '')
+        const lines = here ? [...st.errors.map(m => ['#e06c6c', '\u2716 ' + m]),
+                              ...st.warnings.map(m => ['#d8b13a', '\u26a0 ' + m])] : []
+        el.innerHTML = lines.map(([color, m]) =>
+          `<div style="color:${color};white-space:pre-wrap;word-break:break-word">${esc(m)}</div>`).join('')
+        el.style.display = lines.length ? '' : 'none'
       }
 
       async function loadDetail(node, label, version = null) {
@@ -5706,12 +5736,33 @@ export function buildWorkflowConfigExtension(cfg) {
 
         const executedHandler = ({ detail }) => {
           if (String(detail.node) !== String(this.id)) return
+          const warnings = detail.output?.daz_warnings
+          setRunStatus(this, { errors: [], warnings: Array.isArray(warnings) ? warnings.map(String) : [] })
           if (this[keys.editMode]) return
           const cw = this.widgets?.find(w => w.name === 'scene')
           if (cw && cw.value && cw.value !== '(no configs)') loadDetail(this, cw.value, this._dazCurrentVersion)
         }
         api.addEventListener('executed', executedHandler)
         this[keys.executedHandler] = executedHandler
+
+        // An error is shown as the node raised it, its own words without the
+        // console prefix. Anything that did not come from this plugin is not
+        // worded for reading, so it only points at the console.
+        const errorHandler = ({ detail }) => {
+          if (String(detail?.node_id) !== String(this.id)) return
+          const msg = String(detail.exception_message || '').trim()
+          setRunStatus(this, { errors: [msg.includes('[DAZ TOOLS]')
+            ? msg.replace(/\[DAZ TOOLS\]\s*/g, '')
+            : `the run failed (${detail.exception_type || 'error'}) — see the console`] })
+        }
+        // A new run clears the last one's error; its warnings stay until the
+        // node runs again, since a cached node is not re-run to repeat them.
+        const startHandler = () => {
+          if (this._dazRunStatus?.errors.length) setRunStatus(this, { errors: [] })
+        }
+        api.addEventListener('execution_error', errorHandler)
+        api.addEventListener('execution_start', startHandler)
+        this._dazRunHandlers = { execution_error: errorHandler, execution_start: startHandler }
       }
 
       const onRemoved = nodeType.prototype.onRemoved
@@ -5719,6 +5770,9 @@ export function buildWorkflowConfigExtension(cfg) {
         onRemoved?.apply(this, arguments)
         if (this[keys.executedHandler]) {
           api.removeEventListener('executed', this[keys.executedHandler])
+        }
+        for (const [ev, fn] of Object.entries(this._dazRunHandlers || {})) {
+          api.removeEventListener(ev, fn)
         }
         if (this[keys.editOverlay]) {
           this[keys.editOverlay].remove()

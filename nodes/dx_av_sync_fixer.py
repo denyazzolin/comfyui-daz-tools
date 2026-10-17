@@ -40,6 +40,11 @@ class AVSyncFixer:
     CATEGORY     = "utils"
 
     def fix(self, images, audio, fps, target):
+        if images is None or not hasattr(images, "shape"):
+            raise ValueError("[DAZ TOOLS] AV Sync Fixer: no frames came in on images")
+        if not isinstance(audio, dict) or audio.get("waveform") is None or "sample_rate" not in audio:
+            raise ValueError("[DAZ TOOLS] AV Sync Fixer: no audio came in — "
+                             "the loader wired to audio handed on nothing")
         # A copy, so the fit never reaches back into the loader's own output —
         # the fit replaces the waveform rather than writing into it.
         fixed = dict(audio)

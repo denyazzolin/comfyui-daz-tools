@@ -31,6 +31,20 @@ def _label(kind, entry):
     return name
 
 
+def _wired_outputs(prompt, unique_id) -> set:
+    """The indices of this node's outputs that something in the prompt reads."""
+    wired = set()
+    if not isinstance(prompt, dict) or unique_id is None:
+        return wired
+    for node in prompt.values():
+        inputs = node.get("inputs", {}) if isinstance(node, dict) else {}
+        for v in inputs.values():
+            if (isinstance(v, list) and len(v) == 2 and str(v[0]) == str(unique_id)
+                    and isinstance(v[1], int)):
+                wired.add(v[1])
+    return wired
+
+
 class MediaSplitter:
     """Fan a WorkflowConfig's extended_media bundle out into one output per slot.
 
@@ -45,7 +59,10 @@ class MediaSplitter:
         return {
             "required": {
                 "extended_media": ("DX_EXTENDED_MEDIA",),
-            }
+            },
+            # Only to tell which outputs are wired, so an empty one that is can
+            # be named on the console before whatever it feeds fails on it.
+            "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
         }
 
     # Derived from the same slot counts the editor and the loader use, so the
@@ -71,9 +88,9 @@ class MediaSplitter:
     # than a still's.
     _PAYLOAD_KEYS = {"images": "image", "videos": "frames", "audios": "audio"}
 
-    def split(self, extended_media=None):
+    def split(self, extended_media=None, prompt=None, unique_id=None):
         block = extended_media if isinstance(extended_media, dict) else {}
-        out, labels = [], []
+        out, labels, why = [], [], []
         for kind in _KINDS:
             key     = self._PAYLOAD_KEYS[kind]
             by_slot = {e.get("slot"): e
@@ -83,7 +100,10 @@ class MediaSplitter:
                 out.append(entry.get(key) if entry else None)
                 labels.append([f"{kind[:-1]}_{s + _MEDIA_ROOT_SLOTS[kind]}",
                                _label(kind, entry)])
+                why.append("the take has nothing in that slot" if block
+                           else "no extended_media came in")
         out.append(extended_media)
+        why.append("no extended_media came in")
         videos = {e.get("slot"): e
                   for e in block.get("videos", []) if isinstance(e, dict)}
         for s in _slots("videos"):
@@ -91,6 +111,14 @@ class MediaSplitter:
             out.append(entry.get("audio") if entry else None)
             labels.append([f"audio_from_video{s + _MEDIA_ROOT_SLOTS['videos']}",
                            _label("video_audio", entry)])
+            n = s + _MEDIA_ROOT_SLOTS["videos"]
+            why.append("no extended_media came in" if not block
+                       else f"video slot {n} is empty in the take" if not entry
+                       else f"video slot {n}: {entry.get('audio_note') or 'Include audio is off'}")
+        for i in sorted(_wired_outputs(prompt, unique_id)):
+            if i < len(out) and out[i] is None:
+                print(f"[DAZ TOOLS] Media Splitter: '{self.RETURN_NAMES[i]}' is connected "
+                      f"but empty — {why[i]}")
         # An [output name, label] pair for every output but preview; the editor
         # side relabels the sockets with them once the run comes back.
         return {"ui": {"labels": labels}, "result": tuple(out)}

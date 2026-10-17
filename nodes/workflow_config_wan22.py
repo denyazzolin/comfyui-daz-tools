@@ -8,7 +8,7 @@ from .workflow_config_base import (
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
-    _resolve_path, _load_file, _write_file,
+    _resolve_path, _load_file, _write_file, scene_not_found, empty_model_warnings,
 )
 from .audio_utils import decode_audio_file
 
@@ -137,6 +137,13 @@ def _apply_loras(model, lora_pairs):
     return result
 
 
+# The model fields this node loads, as (key, label as the panel shows it). An
+# empty one is warned about on every run.
+_MODEL_FIELDS = (
+    ("unet_high", "UNet High"), ("unet_low", "UNet Low"), ("vae", "VAE"), ("clip", "CLIP"),
+)
+
+
 class WorkflowConfigWan22:
     @classmethod
     def INPUT_TYPES(cls):
@@ -255,11 +262,10 @@ class WorkflowConfigWan22:
             None,
         )
         if name is None:
-            raise ValueError(
-                f"[DAZ TOOLS] WorkflowConfigWan22: '{scene}' not found"
-            )
+            raise scene_not_found("WorkflowConfigWan22", scene, path)
         entry      = configs[name]
         active_set = _get_active_set(entry, take)
+        warnings   = empty_model_warnings(active_set, _MODEL_FIELDS, "WorkflowConfigWan22")
         loras      = _get_loras(active_set)
 
         seed_obj = active_set.get("seed", {"value": 0})
@@ -330,7 +336,7 @@ class WorkflowConfigWan22:
         # this same audio as its slot 0, and it is loaded once for both.
         ref_audio = _load_audio(_get_path(active_set.get("audio_path")))
 
-        return (
+        result = (
             unet_high,
             unet_low,
             _load_vae( _get_name(active_set.get("vae"))),
@@ -367,3 +373,5 @@ class WorkflowConfigWan22:
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
             resolve_extended_media(active_set, "WorkflowConfigWan22", ref_image, ref_audio),
         )
+        # The warnings go to the panel, which shows them under its buttons.
+        return {"ui": {"daz_warnings": warnings}, "result": result}
