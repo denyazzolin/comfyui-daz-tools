@@ -4,7 +4,7 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions, resolve_extended_media, resolve_audio_source,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions, resolve_extended_media, load_audio_field,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -29,6 +29,11 @@ except Exception:
 _CLASS        = "m_h3"
 _NO_CONFIGS   = "(no configs)"
 _FILE_DEFAULT = "(default)"
+
+# H3's audio latent runs at 40 Hz against 24 fps video, so audio taken off a
+# video slot is fitted to a whole number of those tokens rather than to the
+# clip's own duration, which the H3 encoder rejects for a third of frame counts.
+_AUDIO_GRID   = (40, 24)
 
 
 def _load_unet(name: str, gguf: bool = False):
@@ -371,9 +376,9 @@ class WorkflowConfigMiniMaxH3:
         # this same audio as its slot 0, and it is loaded once for both.
         # Where the sound comes from is the field's own business: an audio file,
         # or the track of a video the take already holds, trimmed to that video's
-        # own window.
-        ref_audio = _load_audio(*resolve_audio_source(
-            active_set, active_set.get("audio_path"), "WorkflowConfigMiniMaxH3: audio"))
+        # own window — or silence that long, for a video with no track of its own.
+        ref_audio = load_audio_field(
+            active_set, active_set.get("audio_path"), "WorkflowConfigMiniMaxH3: audio", _load_audio)
 
         # shift_high is the video shift and shift_low the audio one - the pair
         # ComfyUI's ModelSamplingMiniMaxH3 takes. Patched onto the stacked output
@@ -412,5 +417,6 @@ class WorkflowConfigMiniMaxH3:
             _get_custom_value(active_set.get("custom", {}).get("param_1")),
             _get_custom_value(active_set.get("custom", {}).get("param_2")),
             lora_7_sd, lora_8_sd,
-            resolve_extended_media(active_set, "WorkflowConfigMiniMaxH3", ref_image, ref_audio),
+            resolve_extended_media(active_set, "WorkflowConfigMiniMaxH3", ref_image, ref_audio,
+                                   audio_grid=_AUDIO_GRID),
         )

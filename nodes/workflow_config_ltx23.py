@@ -5,7 +5,7 @@ import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
     all_versions_for_class, parse_movie_file, load_unet_gguf, load_latent_upscale_model,
-    resolve_dimensions, resolve_extended_media, resolve_audio_source,
+    resolve_dimensions, resolve_extended_media, load_audio_field,
     _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
@@ -347,9 +347,9 @@ class WorkflowConfigLtx23:
         # this same audio as its slot 0, and it is loaded once for both.
         # Where the sound comes from is the field's own business: an audio file,
         # or the track of a video the take already holds, trimmed to that video's
-        # own window.
-        ref_audio = _load_audio(*resolve_audio_source(
-            active_set, active_set.get("audio_path"), "WorkflowConfigLtx23: audio"))
+        # own window — or silence that long, for a video with no track of its own.
+        ref_audio = load_audio_field(
+            active_set, active_set.get("audio_path"), "WorkflowConfigLtx23: audio", _load_audio)
 
         return (
             ckpt_model,

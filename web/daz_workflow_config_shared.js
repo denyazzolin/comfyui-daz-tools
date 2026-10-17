@@ -1912,6 +1912,16 @@ export function buildWorkflowConfigExtension(cfg) {
             if (chip) chip.setAttribute('style', emChipStyle(has))
             if (nm)   nm.disabled = !has
             if (!has && audioOn === n) stopAudio()
+            // A clip with no track of its own may still be picked: the node hands
+            // on silence for it, the length of the clip, and this says so. Only
+            // on a probe's definite no, so a clip still being read shows nothing.
+            const warn = q(`[data-em-warn="audios:${n}"]`)
+            const v    = videoAudioSlot(store.audios[n].from_video)
+            const mute = !!v && store.videos[v].probed && !store.videos[v].hasAudio
+            if (warn) {
+              warn.textContent   = mute ? `⚠ Video ${v} has no audio track — the node will output silence` : ''
+              warn.style.display = mute ? '' : 'none'
+            }
           }
           syncAudioBtns()
         }
@@ -1927,26 +1937,21 @@ export function buildWorkflowConfigExtension(cfg) {
           return 0
         }
 
-        // The audio pickers' video entries. A loaded video that has a track of
-        // its own can be picked as a source, and the sound is then taken off it
-        // rather than off a file. Rebuilt rather than patched — a pick, an
-        // upload, a clear and a probe all land here the same way — and driven off
-        // the store rather than off the boxes, because the probe that says
-        // whether a clip has a track lands after the first paint.
+        // The audio pickers' video entries. Any loaded video can be picked as a
+        // source, and the sound is then taken off it rather than off a file — one
+        // with no track of its own stands for silence, and the line warns about
+        // it. Rebuilt rather than patched — a pick, an upload, a clear and a
+        // probe all land here the same way — and driven off the store rather than
+        // off the boxes, because the probe that says whether a clip has a track
+        // lands after the first paint.
         function syncAudioOptions() {
           syncIds()
-          const refs = new Set()
           for (let n = 1; n <= EM_SLOTS.audios; n++) {
             const st = store.audios[n]
-            const v  = videoAudioSlot(st.from_video)
-            // Dropped on a definite no only: the video is gone, or it has been
-            // probed and has no track. A line that loses its source goes quiet,
-            // which is what a cleared video has to mean for the audio taking it.
-            if (st.from_video &&
-                (!v || (store.videos[v].probed && !store.videos[v].hasAudio))) {
-              st.from_video = ''
-            }
-            if (st.from_video) refs.add(st.from_video)
+            // Dropped only when the video is gone. A line that loses its source
+            // goes quiet, which is what a cleared video has to mean for the audio
+            // taking it.
+            if (st.from_video && !videoAudioSlot(st.from_video)) st.from_video = ''
           }
           for (let n = 1; n <= EM_SLOTS.audios; n++) {
             const sel = selOf('audios', n)
@@ -1966,14 +1971,11 @@ export function buildWorkflowConfigExtension(cfg) {
               const vs   = store.videos[v]
               const vfil = selOf('videos', v)?.value || ''
               if (!vfil || !vs.id) continue
-              // Offered once the probe says there is a track to take. One that is
-              // already picked is listed either way, so a take that is reopened
-              // shows what it points at without waiting for the probe.
-              if (!vs.hasAudio && !refs.has(vs.id)) continue
               const o = document.createElement('option')
               o.value           = EM_FROM_VIDEO + vs.id
               o.dataset.emVideo = vs.id
-              o.textContent     = `\u266b video ${v}: ${vfil}`
+              o.textContent     = `\u266b video ${v}: ${vfil}` +
+                                  (vs.probed && !vs.hasAudio ? ' (no audio)' : '')
               sel.insertBefore(o, anchor)
             }
             sel.value = st.from_video ? EM_FROM_VIDEO + st.from_video : file
@@ -2746,6 +2748,8 @@ export function buildWorkflowConfigExtension(cfg) {
             <input id="daz-em-audios-${n}-name" type="text" maxlength="40" placeholder="name"
               title="A label for this slot, carried to the node beside the file"
               style="width:100%;box-sizing:border-box;${emNameS}">
+            <div data-em-warn="audios:${n}"
+              style="color:#d8b13a;font-size:10px;margin-top:4px;display:none"></div>
           </div>`
         }
 
