@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 15,                  // internal schema version; do not change
+    "schema_version": 16,                  // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -78,7 +78,7 @@
           "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7: 7 and 8 will be seen as high and low loras
           "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
         },
-        "filename": { "file": "" },        // output filename (without extension)
+        "filename": { "file": "", "from_take": false },  // output filename (without extension); from_take names it after the take
         "flags": {
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
           "flag_2": { "label": "flag 2", "value": false }, // custom boolean toggle 2
@@ -163,7 +163,7 @@
           "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
           "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
         },
-        "filename": { "file": "" },        // output filename (without extension)
+        "filename": { "file": "", "from_take": false },  // output filename (without extension); from_take names it after the take
         "flags": {
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
           "flag_2": { "label": "flag 2", "value": false },  // custom boolean toggle 2
@@ -230,7 +230,7 @@
           "lora_7": { "name": "", "strength": 1.0, "enabled": true },
           "lora_8": { "name": "", "strength": 1.0, "enabled": true }
         },
-        "filename": { "file": "" },        // output filename (without extension)
+        "filename": { "file": "", "from_take": false },  // output filename (without extension); from_take names it after the take
         "flags": {
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
           "flag_2": { "label": "flag 2", "value": false },  // custom boolean toggle 2
@@ -315,7 +315,7 @@
           "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
           "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
         },
-        "filename": { "file": "" },        // output filename (without extension)
+        "filename": { "file": "", "from_take": false },  // output filename (without extension); from_take names it after the take
         "flags": {
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
           "flag_2": { "label": "flag 2", "value": false }, // custom boolean toggle 2
@@ -400,7 +400,7 @@
           "lora_7": { "name": "", "strength": 1.0, "enabled": true }, // LoRA slot 7
           "lora_8": { "name": "", "strength": 1.0, "enabled": true }  // LoRA slot 8
         },
-        "filename": { "file": "" },        // output filename (without extension)
+        "filename": { "file": "", "from_take": false },  // output filename (without extension); from_take names it after the take
         "flags": {
           "flag_1": { "label": "flag 1", "value": false }, // custom boolean toggle 1; label is the display name
           "flag_2": { "label": "flag 2", "value": false }, // custom boolean toggle 2

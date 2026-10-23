@@ -4,8 +4,8 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_dimensions, resolve_extended_media,
-    _get_name, _get_text, _get_master_position, _get_path, _get_file, _get_int, _get_float, _get_loras,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_filename, resolve_dimensions, resolve_extended_media,
+    _get_name, _get_text, _get_master_position, _get_path, _get_int, _get_float, _get_loras,
     _get_seed_randomize, _get_flag_value, _get_custom_value, _get_gguf,
     _get_active_set,
     _resolve_path, _load_file, _write_file, scene_not_found, empty_model_warnings,
@@ -410,7 +410,7 @@ class WorkflowConfigMiniMaxH3:
             _get_int(active_set.get("total_frames")),
             _get_float(active_set.get("fps")),
             lora_1_sd, lora_2_sd, lora_3_sd, lora_4_sd, lora_5_sd, lora_6_sd,
-            _get_file(active_set.get("filename")),
+            resolve_filename(active_set),
             unet_stack,
             active_set.get("type", "") == "T2V",
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),

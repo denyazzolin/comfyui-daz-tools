@@ -95,7 +95,7 @@ All five nodes share a common set of configurable fields:
 | **Master prompt** | Base text combined with the positive prompt (see Prompts below) |
 | **Positive / Negative prompts** | Conditioning text sent to the sampler |
 | **LoRA slots** | Up to 8 LoRA slots, each with a model name, strength, and enabled toggle. Disabled or empty slots are skipped automatically |
-| **Filename** | Output path, relative to ComfyUI's output folder |
+| **Filename** | Output path, relative to ComfyUI's output folder. It is cleaned so it works on Windows, Linux and macOS: backslashes become `/`, characters Windows refuses become `_`, and `..`, a leading `/` or a drive letter are dropped so the path stays inside the output folder. Tick **Use take's name** to replace the file name (the last part of the path) with the take's version and label, made safe for any OS — `video/h3/tests/video` on take 4 "Jennifer Scene 1 - Test" becomes `video/h3/tests/4_Jennifer_Scene_1-Test` |
 | **Flags 1 / 2 / 3** | Three boolean toggles with configurable labels — useful for routing or switching behaviour downstream |
 
 **WAN2.2** additionally stores:

@@ -4,8 +4,8 @@ import random
 import folder_paths
 from .workflow_config_base import (
     load_configs, labels_for_class, make_label, CONFIG_FILE, load_checkpoint, scan_config_files,
-    all_versions_for_class, parse_movie_file, load_unet_gguf,
-    _get_name, _get_text, _get_master_position, _get_file, _get_int, _get_float, _get_gguf,
+    all_versions_for_class, parse_movie_file, load_unet_gguf, resolve_filename,
+    _get_name, _get_text, _get_master_position, _get_int, _get_float, _get_gguf,
     _get_seed_randomize, _get_flag_value, _get_custom_value,
     _get_active_set,
     _resolve_path, _load_file, _write_file, scene_not_found, empty_model_warnings,
@@ -241,7 +241,7 @@ class WorkflowConfigImage:
             pos_out,
             _get_text(active_set.get("negative_prompt")),
             is_relay,
-            _get_file(active_set.get("filename")),
+            resolve_filename(active_set),
             _get_flag_value(active_set.get("flags", {}).get("flag_1")),
             _get_flag_value(active_set.get("flags", {}).get("flag_2")),
             _get_flag_value(active_set.get("flags", {}).get("flag_3")),

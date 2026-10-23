@@ -7,6 +7,7 @@ import math
 import os
 import re
 import json
+import unicodedata
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -64,7 +65,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 15
+CURRENT_SCHEMA = 16
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -406,6 +407,81 @@ def _get_file(val, default: str = "") -> str:
     if isinstance(val, dict):
         return str(val.get("file") or default)
     return str(val or default)
+
+# Names Windows keeps for devices, whatever the extension — a file called
+# "con.mp4" cannot be created there.
+_WIN_RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL",
+                       *(f"COM{i}" for i in range(1, 10)),
+                       *(f"LPT{i}" for i in range(1, 10))}
+
+# Long enough for any version and label someone types, short enough that the
+# output directory still has room under Windows' 260-character path limit.
+_TAKE_NAME_MAX = 100
+
+
+def _safe_name_part(text) -> str:
+    """One piece of a file name that every OS accepts.
+
+    Accents are folded to their ASCII letter, and every run of anything that is
+    not a letter, digit or dash becomes one underscore — which covers spaces,
+    separators, brackets and the characters Windows refuses (<>:"/\\|?*).
+    A run that holds a dash becomes a single dash, so "Scene 1 - Test" gives
+    "Scene_1-Test"."""
+    ascii_text = (unicodedata.normalize("NFKD", str(text or ""))
+                  .encode("ascii", "ignore").decode("ascii"))
+    name = re.sub(r"[^A-Za-z0-9-]+", "_", ascii_text)
+    return re.sub(r"_*-[-_]*", "-", name).strip("_-")
+
+
+# Characters Windows refuses in a file or folder name; Unix and macOS accept them.
+_WIN_BAD_CHARS = re.compile(r'[<>:"|?*\x00-\x1f]')
+
+
+def _clean_path(path: str) -> str:
+    """A typed output path made valid on Windows, Linux and macOS, changing only
+    what would break: "\\" becomes "/", refused characters become "_", trailing
+    dots and spaces go, device names get a "_" in front, and empty, "." and ".."
+    parts are dropped along with a leading "/" or drive letter — so the path
+    stays inside the output folder. "video/h3/My Tests" is left as it is."""
+    path = re.sub(r"^[A-Za-z]:", "", str(path or "").replace("\\", "/"))
+    parts = []
+    for seg in path.split("/"):
+        seg = _WIN_BAD_CHARS.sub("_", seg).rstrip(". ")
+        if seg in ("", ".", ".."):
+            continue
+        if seg.split(".")[0].upper() in _WIN_RESERVED_NAMES:
+            seg = f"_{seg}"
+        parts.append(seg)
+    # A trailing "/" means "this folder, no name of its own" — keep it.
+    return "/".join(parts) + ("/" if parts and path.endswith("/") else "")
+
+
+def resolve_filename(active_set: dict) -> str:
+    """The filename output of a take, always passed through _clean_path.
+
+    With from_take on, the last part of the path — the file's own name — is
+    replaced by the take's version and label, so "video/h3/test" on take 4
+    "Jennifer Scene 1" becomes "video/h3/4_Jennifer_Scene_1". A take whose
+    version and label both sanitise to nothing keeps the typed name."""
+    val  = active_set.get("filename")
+    file = _get_file(val)
+    if isinstance(val, dict) and val.get("from_take"):
+        name = "_".join(p for p in (_safe_name_part(active_set.get("version")),
+                                    _safe_name_part(active_set.get("label"))) if p)
+        name = name[:_TAKE_NAME_MAX].rstrip("_-")
+        if name:
+            cut  = max(file.rfind("/"), file.rfind("\\"))
+            file = file[:cut + 1] + name
+    return _clean_path(file)
+
+
+def _stamp_filename(s: dict) -> None:
+    """Store the resolved filename, so the saved file is the cleaned path with
+    the version and label the take was saved with."""
+    v = s.get("filename")
+    if isinstance(v, dict):
+        v["file"] = resolve_filename(s)
+
 
 def _get_int(val, default: int = 0) -> int:
     if isinstance(val, dict):
@@ -1106,7 +1182,7 @@ def _apply_set_fields(target: dict, data: dict) -> None:
 
     if "filename" in data:
         v = data["filename"]
-        target["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
+        target["filename"] = v if isinstance(v, dict) else {"file": str(v or ""), "from_take": False}
 
     for f in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
         if f in data:
@@ -1174,6 +1250,8 @@ def _apply_set_fields(target: dict, data: dict) -> None:
         v = data["note"]
         target["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
 
+    _stamp_filename(target)
+
 
 def _build_set_from_data(data: dict, version: str, now: str,
                          source_set: Optional[dict] = None) -> dict:
@@ -1201,7 +1279,7 @@ def _build_set_from_data(data: dict, version: str, now: str,
     v = data.get("audio_path")
     s["audio_path"] = v if isinstance(v, dict) else {"path": str(v or "")}
     v = data.get("filename")
-    s["filename"] = v if isinstance(v, dict) else {"file": str(v or "")}
+    s["filename"] = v if isinstance(v, dict) else {"file": str(v or ""), "from_take": False}
     for f in ("master_prompt", "positive_prompt", "negative_prompt", "trail_prompt"):
         v = data.get(f)
         s[f] = v if isinstance(v, dict) else {"text": str(v or "")}
@@ -1247,6 +1325,7 @@ def _build_set_from_data(data: dict, version: str, now: str,
         (source_set or {}).get("extended_media"), data.get("extended_media"))
     v = data.get("note")
     s["note"] = v if isinstance(v, dict) else {"value": str(v or "")}
+    _stamp_filename(s)
     return s
 
 
@@ -1291,7 +1370,9 @@ def _normalize_set(set_obj: dict) -> dict:
 
     v = result.get("filename")
     if not isinstance(v, dict):
-        result["filename"] = {"file": str(v or "")}
+        result["filename"] = {"file": str(v or ""), "from_take": False}
+    elif "from_take" not in v:
+        result["filename"] = {**v, "from_take": False}
 
     for f in ("master_prompt", "negative_prompt", "trail_prompt"):
         v = result.get(f)
@@ -1859,6 +1940,12 @@ def _migrate(configs: dict, from_version: int) -> dict:
                     for row in block["videos"]:
                         if isinstance(row, dict):
                             row.setdefault("include_audio", True)
+    if from_version < 16:
+        for entry in configs.values():
+            for s in entry.get("sets", []):
+                v = s.get("filename")
+                if isinstance(v, dict):
+                    v.setdefault("from_take", False)
     return configs
 
 
