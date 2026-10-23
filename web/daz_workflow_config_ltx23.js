@@ -286,7 +286,8 @@ function buildPayload(wrap) {
     },
     negative_prompt: { text:  wrap.querySelector('#daz-negative-prompt')?.value  ?? '' },
     trail_prompt:    { text:  wrap.querySelector('#daz-trail-prompt')?.value    ?? '' },
-    filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '' },
+    filename:        { file:  wrap.querySelector('#daz-filename')?.value         ?? '',
+                       from_take: wrap.querySelector('#daz-filename-from-take')?.checked ?? false },
     dimensions: {
       use_image:     wrap.querySelector('#daz-dim-use-image')?.checked ?? false,
       dim_reference: wrap.querySelector('#daz-dim-reference')?.value ?? '',

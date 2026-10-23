@@ -851,6 +851,9 @@
     // segments and the qualifiers with its parts - or only the segments, with
     // "segments only" ticked. Stopping at either question goes back to the
     // paste box with the text still in it.
+    //
+    // With showFull the same box shows the full prompt the node outputs, and
+    // "parse" becomes "copy", which copies the text and closes the box.
 
     const PASTE_TYPE_NAMES = { h3: 'H3', beats: 'Beats', timecode: 'Timecode', smart: 'Smart' }
     const PASTE_MARK_HINTS = {
@@ -860,7 +863,26 @@
       smart:    '"[X-Y]"',
     }
 
-    function specialPastePopup(initial = '', segmentsOnly = false) {
+    // The positive output a WorkflowConfig node builds from this prompt - as
+    // the class nodes do at run time: Smart relays its master separately.
+    function fullPromptText() {
+      saveDomState()
+      const f     = parseFloat(panel.querySelector('#pe-fps')?.value) || fps
+      const pos   = writeSegments(segments, promptType, f)
+      const parts = promptType === 'smart' ? [pos]
+        : masterPosition === 'after' ? [pos, masterText] : [masterText, pos]
+      return [...parts, trailText].filter(Boolean).join('\n\n')
+    }
+
+    async function copyToClipboard(ta) {
+      try { await navigator.clipboard.writeText(ta.value); return true } catch {}
+      // navigator.clipboard is missing outside a secure context, e.g. ComfyUI
+      // opened over plain http from another machine.
+      ta.select()
+      try { return document.execCommand('copy') } catch { return false }
+    }
+
+    function specialPastePopup(initial = '', segmentsOnly = false, showFull = false) {
       const ov  = el('div',
         'position:fixed;top:0;left:0;right:0;bottom:0;' +
         'background:rgba(0,0,0,0.6);z-index:10001;' +
@@ -871,14 +893,16 @@
         'display:flex;flex-direction:column;gap:8px;width:600px')
       box.innerHTML = `
         <div style="display:flex;justify-content:space-between">
-          <span style="color:#999;font-size:11px">Paste a full ${PASTE_TYPE_NAMES[promptType]} prompt</span>${sectionLabel('PASTE SPECIAL')}
+          <span style="color:#999;font-size:11px">${showFull
+            ? 'The full prompt the node outputs'
+            : `Paste a full ${PASTE_TYPE_NAMES[promptType]} prompt`}</span>${sectionLabel(showFull ? 'FULL PROMPT' : 'PASTE SPECIAL')}
         </div>
         <textarea id="pe-sp-text" style="${TA_STYLE};min-height:420px"></textarea>
         <div style="display:flex;align-items:center;gap:8px">
-          ${mkCheckbox('pe-sp-segments', 'segments only', segmentsOnly)}
+          ${mkCheckbox('pe-sp-segments', 'segments only', segmentsOnly, showFull)}
           <span style="flex:1"></span>
           ${mkBtn('pe-sp-cancel', 'cancel', '#555', '#333', '#bbb')}
-          ${mkBtn('pe-sp-parse',  'parse',  '#2a8050', '#1a5c35', '#cde')}
+          ${mkBtn('pe-sp-parse',  showFull ? 'copy' : 'parse',  '#2a8050', '#1a5c35', '#cde')}
         </div>
       `
       ov.appendChild(box)
@@ -888,7 +912,13 @@
       ta.value = initial
       ta.focus()
       box.querySelector('#pe-sp-cancel').addEventListener('click', () => ov.remove())
-      box.querySelector('#pe-sp-parse').addEventListener('click', () => {
+      box.querySelector('#pe-sp-parse').addEventListener('click', async () => {
+        if (showFull) {
+          // Left open on a failed copy, with the text selected for Ctrl+C.
+          if (await copyToClipboard(ta)) ov.remove()
+          else infoPopup('Could not copy to the clipboard. The text is selected - press Ctrl+C to copy it.')
+          return
+        }
         const text    = ta.value
         const segOnly = box.querySelector('#pe-sp-segments').checked
         if (!text.trim()) return
@@ -1523,6 +1553,7 @@
         ${mkBtn('pe-clear-all', 'clear all', '#803030', '#5c1a1a', '#f99')}
         ${mkBtn('pe-undo', 'undo', '#555', '#333', '#ccc', !canUndo())}
         <span style="flex:1"></span>
+        ${mkBtn('pe-show-full', 'Show full Prompt', '#2a5878', '#1a3c52', '#cde')}
         ${mkBtn('pe-cancel', 'cancel', '#555', '#333', '#bbb')}
         ${mkBtn('pe-ok',     'ok',     '#2a8050', '#1a5c35', '#cde')}
       `
@@ -1537,6 +1568,7 @@
         render()
       })
       footer.querySelector('#pe-undo').addEventListener('click', () => doUndo())
+      footer.querySelector('#pe-show-full').addEventListener('click', () => specialPastePopup(fullPromptText(), false, true))
       footer.querySelector('#pe-cancel').addEventListener('click', () => doCancel())
       footer.querySelector('#pe-ok').addEventListener('click',     () => doSave())
     }

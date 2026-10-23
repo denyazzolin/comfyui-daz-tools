@@ -95,7 +95,7 @@ All five nodes share a common set of configurable fields:
 | **Master prompt** | Base text combined with the positive prompt (see Prompts below) |
 | **Positive / Negative prompts** | Conditioning text sent to the sampler |
 | **LoRA slots** | Up to 8 LoRA slots, each with a model name, strength, and enabled toggle. Disabled or empty slots are skipped automatically |
-| **Filename** | Output path, relative to ComfyUI's output folder |
+| **Filename** | Output path, relative to ComfyUI's output folder. It is cleaned so it works on Windows, Linux and macOS: backslashes become `/`, characters Windows refuses become `_`, and `..`, a leading `/` or a drive letter are dropped so the path stays inside the output folder. Tick **Use take's name** to replace the file name (the last part of the path) with the take's version and label, made safe for any OS — `video/h3/tests/video` on take 4 "Jennifer Scene 1 - Test" becomes `video/h3/tests/4_Jennifer_Scene_1-Test` |
 | **Flags 1 / 2 / 3** | Three boolean toggles with configurable labels — useful for routing or switching behaviour downstream |
 
 **WAN2.2** additionally stores:
@@ -286,6 +286,7 @@ Click **Prompt Editor** inside the edit panel to open a full-screen editor. It l
 - **Qualifiers** — free-form text area for the trail prompt, with its own **Default** button (same class-specific-template mechanism as Master) aligned to the left, like Negative's. When re-opening a saved prompt, text at the end of the last segment that matches the saved Qualifiers text (after a newline) is stripped back out so it isn't shown duplicated inside the segment.
 - **Negative** — free-form text area with a **Default** button that fills in a class-specific default negative prompt, when one is defined.
 - **Clear All** — resets Master, Positive, Negative, and Qualifiers to empty and collapses to a single segment.
+- **Show full Prompt** — opens the Paste Special box with the full positive prompt the node outputs: the Master (before or after, per its Append setting), the segments written out in the prompt's type, and the Qualifiers, each separated by a blank line. Smart leaves the Master out, as the node relays it separately. **copy** puts the text on the clipboard and closes the box; **segments only** is greyed out.
 - **Undo** — first discards the edits made since the editor opened, then steps back through the prompts saved earlier with **OK**, one at a time. The history is kept in memory for the browser session — per take, per edit panel and per prompt-stack slot — so you can click OK, reopen the editor and still undo; it is lost on a page reload. **Cancel** drops an undo that was not saved, and a prompt changed outside the editor starts a fresh history. It covers Master (with its Append setting), Positive with its type, Negative and Qualifiers, but not Frames or FPS.
 
 Clicking **OK** sends all values back to the edit panel. It does **not** save to disk — use **Save** or **+ Take** in the edit panel to persist.

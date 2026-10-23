@@ -207,6 +207,34 @@ export function buildWorkflowConfigExtension(cfg) {
       function fText(val)  { return (val && typeof val === 'object') ? (val.text  ?? '') : (val ?? '') }
       function fPath(val)  { return (val && typeof val === 'object') ? (val.path  ?? '') : (val ?? '') }
       function fFile(val)  { return (val && typeof val === 'object') ? (val.file  ?? '') : (val ?? '') }
+
+      // Mirrors _safe_name_part / resolve_filename in workflow_config_base.py —
+      // keep the two in step.
+      const WIN_RESERVED_NAMES = new Set(['CON', 'PRN', 'AUX', 'NUL',
+        ...Array.from({ length: 9 }, (_, i) => `COM${i + 1}`),
+        ...Array.from({ length: 9 }, (_, i) => `LPT${i + 1}`)])
+      function safeNamePart(text) {
+        return String(text ?? '').normalize('NFKD').replace(/[^\x00-\x7f]/g, '')
+          .replace(/[^A-Za-z0-9-]+/g, '_').replace(/_*-[-_]*/g, '-').replace(/^[_-]+|[_-]+$/g, '')
+      }
+      function takeFileName(file, version, label) {
+        let name = [safeNamePart(version), safeNamePart(label)].filter(Boolean).join('_')
+        name = name.slice(0, 100).replace(/[_-]+$/, '')
+        if (!name) return file
+        const cut = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'))
+        return file.slice(0, cut + 1) + name
+      }
+      function cleanPath(path) {
+        path = String(path ?? '').replace(/\\/g, '/').replace(/^[A-Za-z]:/, '')
+        const parts = []
+        for (let seg of path.split('/')) {
+          seg = seg.replace(/[<>:"|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '')
+          if (seg === '' || seg === '.' || seg === '..') continue
+          if (WIN_RESERVED_NAMES.has(seg.split('.')[0].toUpperCase())) seg = `_${seg}`
+          parts.push(seg)
+        }
+        return parts.join('/') + (parts.length && path.endsWith('/') ? '/' : '')
+      }
       function fType(val)       { return (val && typeof val === 'object') ? (val.type      || 'smart') : 'smart'  }
       function fPosition(val)   {
         return (val && typeof val === 'object' && (val.position === 'before' || val.position === 'after'))
@@ -2950,6 +2978,13 @@ export function buildWorkflowConfigExtension(cfg) {
                     placeholder="subdir/output_name" style="${fs}"></div>
                 <button id="daz-filename-clear" style="${cb};margin-bottom:1px">clear</button>
               </div>
+              <label style="display:flex;align-items:center;gap:5px;color:#ccc;font-size:11px;
+                            cursor:pointer;margin-top:4px"
+                     title="Replace the file name (the last part of the path) with this take's version and label">
+                <input type="checkbox" id="daz-filename-from-take"${data.filename?.from_take ? ' checked' : ''}
+                  style="width:13px;height:13px;cursor:pointer;accent-color:#54af7b;flex-shrink:0">
+                <span>Use take's name</span>
+              </label>
             </div>
             <div style="margin-bottom:4px"><label style="${lbl}">Flag 1</label>
               <div style="display:flex;align-items:center;gap:6px">
@@ -3332,9 +3367,32 @@ export function buildWorkflowConfigExtension(cfg) {
         })
         panel.querySelector('#daz-filename-clear')?.addEventListener('click', () => {
           const el = panel.querySelector('#daz-filename'); if (el) el.value = ''
+          const ft = panel.querySelector('#daz-filename-from-take'); if (ft) ft.checked = false
         })
+        // The filename is always shown cleaned for every OS. With "Use take's
+        // name" on, the file name is also the take's version and label: a typed
+        // name is put back on change, a typed path is kept. The version is the
+        // one this save gives the take — the next free one for a new take. The
+        // server stamps the final path on save either way.
+        const takeVersion = isNew ? '1' : !newTake ? curVer
+          : String(Math.max(0, ...(node._dazVersionData || [])
+              .map(v => parseInt(v.version, 10)).filter(Number.isFinite)) + 1)
+        const refreshFileName = () => {
+          const fn = panel.querySelector('#daz-filename')
+          if (!fn) return
+          const file = panel.querySelector('#daz-filename-from-take')?.checked
+            ? takeFileName(fn.value, takeVersion, panel.querySelector('#daz-version-label')?.value ?? '')
+            : fn.value
+          fn.value = cleanPath(file)
+        }
+        panel.querySelector('#daz-filename')?.addEventListener('change', refreshFileName)
+        panel.querySelector('#daz-filename-from-take')?.addEventListener('change', refreshFileName)
+        panel.querySelector('#daz-version-label')?.addEventListener('input', refreshFileName)
+        panel.querySelector('#daz-name-clear')?.addEventListener('click', refreshFileName)
+        refreshFileName()
         panel.querySelector('#daz-other-clear')?.addEventListener('click', () => {
           const fn = panel.querySelector('#daz-filename');     if (fn) fn.value = ''
+          const ft = panel.querySelector('#daz-filename-from-take'); if (ft) ft.checked = false
           const l1 = panel.querySelector('#daz-flag-1-label'); if (l1) l1.value = 'flag 1'
           const v1 = panel.querySelector('#daz-flag-1-value'); if (v1) v1.checked = false
           const l2 = panel.querySelector('#daz-flag-2-label'); if (l2) l2.value = 'flag 2'
