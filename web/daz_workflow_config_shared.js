@@ -2245,6 +2245,9 @@ export function buildWorkflowConfigExtension(cfg) {
         const base = buildPayloadFn(wrap)
         const root = wrap?._dazRootMedia || {}
         const out  = { ...base }
+        out.state  = wrap?.querySelector('#daz-state-final')?.checked ? 'final'
+                   : wrap?.querySelector('#daz-state-candidate')?.checked ? 'candidate'
+                   : 'draft'
         for (const key of ['image_path', 'audio_path']) {
           if (key in base) out[key] = { ...(root[key] || {}), ...base[key] }
         }
@@ -2882,6 +2885,14 @@ export function buildWorkflowConfigExtension(cfg) {
               <input id="daz-version-label" type="text" value="${esc(newTake ? 'NEW TAKE - CHANGE ME' : (data.label || ''))}"
                 data-original="${esc(data.label || '')}"
                 placeholder="Optional version label…" style="${fs}">
+              <div style="display:flex;gap:16px;margin-top:4px">
+                <label style="display:flex;align-items:center;gap:4px;color:#ccc;font-size:11px;cursor:pointer">
+                  <input type="checkbox" id="daz-state-candidate"${data.state === 'candidate' ? ' checked' : ''}>Candidate
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;color:#ccc;font-size:11px;cursor:pointer">
+                  <input type="checkbox" id="daz-state-final"${data.state === 'final' ? ' checked' : ''}>Final
+                </label>
+              </div>
             </div>
             <div style="display:flex;justify-content:flex-end">
               <button id="daz-name-clear" style="${cb}">clear</button>
@@ -3275,6 +3286,14 @@ export function buildWorkflowConfigExtension(cfg) {
             console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not save seed randomize`, err)
           }
         })
+
+        // Take state: checking one unchecks the other; neither checked is draft
+        for (const [id, other] of [['#daz-state-candidate', '#daz-state-final'],
+                                   ['#daz-state-final', '#daz-state-candidate']]) {
+          panel.querySelector(id)?.addEventListener('change', e => {
+            if (e.target.checked) { const o = panel.querySelector(other); if (o) o.checked = false }
+          })
+        }
 
         // Clear buttons
         panel.querySelector('#daz-name-clear')?.addEventListener('click', () => {

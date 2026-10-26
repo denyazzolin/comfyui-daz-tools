@@ -65,7 +65,7 @@ if os.path.exists(_OLD_CONFIG_FILE) and not os.path.exists(CONFIG_FILE):
     except Exception as _e:
         print(f"[DAZ TOOLS] WorkflowConfig: could not migrate dx_workflow_configs.json — {_e}")
 
-CURRENT_SCHEMA = 16
+CURRENT_SCHEMA = 17
 _META_KEY      = "_meta"
 
 # Filenames in _MGR_DIR that match the "dx_*.json" WorkflowConfig pattern but
@@ -535,6 +535,12 @@ def _get_custom_value(val, default: str = "") -> str:
         return str(v) if v is not None else default
     return str(val) if val else default
     return False
+
+# A take's state. "" (the default) and null both read as "draft".
+_TAKE_STATES = ("draft", "candidate", "final")
+
+def _get_state(val) -> str:
+    return val if val in _TAKE_STATES else ""
 
 def _get_seed_randomize(val) -> bool:
     if isinstance(val, dict):
@@ -1225,6 +1231,9 @@ def _apply_set_fields(target: dict, data: dict) -> None:
     if "version_label" in data:
         target["label"] = str(data.get("version_label") or "")
 
+    if "state" in data:
+        target["state"] = _get_state(data["state"])
+
     if "flags" in data and isinstance(data["flags"], dict):
         if not isinstance(target.get("flags"), dict):
             target["flags"] = {}
@@ -1261,6 +1270,7 @@ def _build_set_from_data(data: dict, version: str, now: str,
     so the new take inherits the extended media rows the editor never saw.
     """
     s: dict = {"version": version, "label": str(data.get("version_label") or ""), "created_at": now, "updated_at": now}
+    s["state"] = _get_state(data.get("state"))
     s["type"] = data.get("type", "")
     s["clip_type"] = str(data.get("clip_type") or "stable_diffusion")
     for f in ("unet_high", "unet_low"):
@@ -1416,6 +1426,8 @@ def _normalize_set(set_obj: dict) -> dict:
 
     if not isinstance(result.get("label"), str):
         result["label"] = ""
+
+    result["state"] = _get_state(result.get("state"))
 
     flags = result.get("flags")
     if not isinstance(flags, dict):
@@ -1946,6 +1958,10 @@ def _migrate(configs: dict, from_version: int) -> dict:
                 v = s.get("filename")
                 if isinstance(v, dict):
                     v.setdefault("from_take", False)
+    if from_version < 17:
+        for entry in configs.values():
+            for s in entry.get("sets", []):
+                s.setdefault("state", "")
     return configs
 
 
