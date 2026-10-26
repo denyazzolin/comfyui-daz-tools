@@ -10,7 +10,7 @@ import { api } from '../../scripts/api.js'
 //   dimsClearIds, modelsClearIds
 //   unetGgufFields: [{ select, checkbox }] — pairs whose select should swap
 //     between the 'diffusion_models' and 'unet_gguf' folder listings
-//   hideType, hideAudioPath, hideLorasBox, hideExtendedMedia
+//   hideType, hideAudioPath, hideLorasBox, hideExtendedMedia, hideStateFilter
 //   durationModel: { toFrames(secs, fps), toSeconds(frames, fps) } — how the
 //     Duration (s) field maps to Total frames and back. Omit for the usual
 //     "duration * fps plus the first frame"
@@ -35,6 +35,7 @@ export function buildWorkflowConfigExtension(cfg) {
         hideAudioPath = false,
         hideLorasBox  = false,
         hideExtendedMedia = false,
+        hideStateFilter   = false,
         renderDetailHtml:   renderDetailHtmlFn,
         updateOutputLabels: updateOutputLabelsFn,
         buildModelsHtml:    buildModelsHtmlFn,
@@ -115,6 +116,18 @@ export function buildWorkflowConfigExtension(cfg) {
         }
       }
 
+      // The take state filter's choices and the state each one keeps; a take
+      // with an empty or missing state is a draft.
+      const STATE_FILTERS = { 'All Takes': null, 'Draft Takes': 'draft',
+                              'Candidate Takes': 'candidate', 'Final Takes': 'final' }
+      const STATE_FILTER_NAMES = Object.keys(STATE_FILTERS)
+      const takeState = v => v.state || 'draft'
+
+      function setStateFilter(node, value) {
+        node._dazStateFilter = value
+        if (node._dazStateFilterWidget) node._dazStateFilterWidget.value = value
+      }
+
       async function reloadVersionWidget(node, configLabel, selectVersion = null) {
         const vw = node._dazVersionWidget
         if (!vw) return
@@ -140,8 +153,18 @@ export function buildWorkflowConfigExtension(cfg) {
           if (typeFilter  !== 'All') visible = visible.filter(v => v.type === 'all' || (v.type  || '') === typeFilter)
           if (groupFilter !== 'All') visible = visible.filter(v => (v.group || '') === groupFilter)
           if (!visible.length) visible = versions
-          const makeDisplay = v => v.label ? `${v.version} - ${v.label}` : String(v.version)
           const selectRaw   = selectVersion != null ? rawVersion(String(selectVersion)) : null
+          // A take asked for by version (just saved, created or restored) stays
+          // reachable: the state filter switches to that take's state.
+          const wanted = selectRaw ? visible.find(v => String(v.version) === selectRaw) : null
+          const want   = () => STATE_FILTERS[node._dazStateFilter || 'All Takes']
+          if (wanted && want() && takeState(wanted) !== want())
+            setStateFilter(node, STATE_FILTER_NAMES.find(n => STATE_FILTERS[n] === takeState(wanted)))
+          if (want()) {
+            const byState = visible.filter(v => takeState(v) === want())
+            if (byState.length) visible = byState
+          }
+          const makeDisplay = v => v.label ? `${v.version} - ${v.label}` : String(v.version)
           const vList = visible.map(makeDisplay).filter(Boolean)
           vw.options.values = vList.length ? vList : ['1']
           const selectDisplay = selectRaw ? vList.find(d => rawVersion(d) === selectRaw) : null
@@ -5722,6 +5745,28 @@ export function buildWorkflowConfigExtension(cfg) {
           }
         }
 
+        // Moved in front of take, the list it filters
+        this._dazStateFilter = 'All Takes'
+        if (!hideStateFilter) {
+          const sw = this._dazStateFilterWidget = this.addWidget('combo', 'state', 'All Takes', async (value) => {
+            this._dazStateFilter = value
+            if (!this[keys.editMode]) {
+              const cw = this.widgets?.find(w => w.name === 'scene')
+              if (cw && cw.value !== '(no configs)') {
+                const myGen = (this._dazVersionReloadGen || 0) + 1
+                await reloadVersionWidget(this, cw.value)
+                if (this._dazVersionReloadGen === myGen)
+                  loadDetail(this, cw.value, this._dazVersionWidget?.value)
+              }
+            }
+          }, { values: STATE_FILTER_NAMES })
+          const ti = this.widgets.findIndex(w => w.name === 'take')
+          if (ti >= 0) {
+            this.widgets.splice(this.widgets.indexOf(sw), 1)
+            this.widgets.splice(ti, 0, sw)
+          }
+        }
+
         const typeFilterWidget = this.addWidget('combo', 'Type', 'All', async (value) => {
           this._dazTypeFilter = value
           updateGroupFilterWidget(this)
@@ -5860,6 +5905,13 @@ export function buildWorkflowConfigExtension(cfg) {
       const onConfigure = nodeType.prototype.onConfigure
       nodeType.prototype.onConfigure = function (config) {
         onConfigure?.apply(this, arguments)
+        // A workflow saved before the state filter existed has the take's value
+        // in the slot the filter now holds, so it is handed back to take.
+        const sw = this._dazStateFilterWidget
+        if (sw && !STATE_FILTER_NAMES.includes(sw.value)) {
+          if (sw.value && this._dazVersionWidget) this._dazVersionWidget.value = sw.value
+          sw.value = 'All Takes'
+        }
         const savedVersion = this._dazVersionWidget?.value || '1'
         const self = this
         queueMicrotask(async () => {
@@ -5871,6 +5923,7 @@ export function buildWorkflowConfigExtension(cfg) {
           }
           if (self._dazTypeFilterWidget)  self._dazTypeFilter  = self._dazTypeFilterWidget.value  || 'All'
           if (self._dazGroupFilterWidget) self._dazGroupFilter = self._dazGroupFilterWidget.value || 'All'
+          if (self._dazStateFilterWidget) self._dazStateFilter = self._dazStateFilterWidget.value
           updateGroupFilterWidget(self)
           if (!(self._dazAllConfigs || []).length) {
             if (!self[keys.editMode]) renderUseMode(self, {})
