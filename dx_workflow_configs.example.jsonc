@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "schema_version": 16,                  // internal schema version; do not change
+    "schema_version": 17,                  // internal schema version; do not change
     "name": "dx_movie_default",            // file/"movie" identifier
     "version": "1.0",                      // file format version string
     "created_at": "2026-06-02T00:00:00",   // file creation timestamp (ISO 8601)
@@ -14,6 +14,7 @@
       {
         "version": "1",                    // set version number (auto-incremented on save)
         "label": "My First Version",       // optional user-friendly label for this set version
+        "state": "",                       // take state: "draft", "candidate" or "final"; "" or null reads as "draft"
         "created_at": "2026-06-02T00:00:00", // set creation timestamp
         "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
         "type": "I2V",                     // generation mode (e.g. I2V, T2V)
@@ -99,6 +100,7 @@
       {
         "version": "1",                    // set version number (auto-incremented on save)
         "label": "My First Version",       // optional user-friendly label for this set version
+        "state": "",                       // take state: "draft", "candidate" or "final"; "" or null reads as "draft"
         "created_at": "2026-06-02T00:00:00", // set creation timestamp
         "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
         "type": "T2V",                     // generation mode (e.g. I2V, T2V); used by UI for filtering
@@ -184,6 +186,7 @@
       {
         "version": "1",                    // set version number (auto-incremented on save)
         "label": "My First Version",       // optional user-friendly label for this set version
+        "state": "",                       // take state: "draft", "candidate" or "final"; "" or null reads as "draft"
         "created_at": "2026-06-02T00:00:00", // set creation timestamp
         "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
         "type": "all",                     // always "all" for ImageInference; hidden in UI
@@ -251,6 +254,7 @@
       {
         "version": "1",                    // set version number (auto-incremented on save)
         "label": "My First Version",       // optional user-friendly label for this set version
+        "state": "",                       // take state: "draft", "candidate" or "final"; "" or null reads as "draft"
         "created_at": "2026-06-02T00:00:00", // set creation timestamp
         "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
         "type": "I2V",                     // generation mode (e.g. I2V, T2V, MULTI); used by UI for filtering
@@ -336,6 +340,7 @@
       {
         "version": "1",                    // set version number (auto-incremented on save)
         "label": "My First Version",       // optional user-friendly label for this set version
+        "state": "",                       // take state: "draft", "candidate" or "final"; "" or null reads as "draft"
         "created_at": "2026-06-02T00:00:00", // set creation timestamp
         "updated_at": "2026-06-02T00:00:00", // set last-modified timestamp
         "type": "I2V",                     // generation mode (e.g. I2V, T2V, MULTI); also picks the master prompt default template

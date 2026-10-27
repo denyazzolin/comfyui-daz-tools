@@ -64,13 +64,14 @@ All destructive actions ask for confirmation first, and the popup stays open and
 
 #### Filters
 
-Five possible filters at the top of the node let you narrow down which scenes/takes are shown:
+Six possible filters at the top of the node let you narrow down which scenes/takes are shown:
 
 - **Movie** - filter among movie files found (only visible if more than one file with scenes for the node's class are found)
 - **Type** — filter by workflow type: `All`, `I2V` (image-to-video), `T2V` (text-to-video), or `MULTI`, or none.
 - **Group** — filter by a custom group name you assign to presets, or `All` to show everything.
 - **Scene** - Selects which scene to load
-- **Take** - selects which take of the selected scene to load.
+- **State** - filter the takes by state: `All Takes`, `Draft Takes`, `Candidate Takes` or `Final Takes` (not shown on the Image node).
+- **Take** - selects which take of the selected scene to load. Under `All Takes`, candidate and final takes show their state at the end of the name, e.g. `3 - closeup (final)`.
 
 Filters check across all takes of a scene, so a scene that has both an I2V and a T2V version (in the case of videos) appears under both type filters. The take dropdown also updates to show only matching takes.
 
@@ -137,7 +138,7 @@ You can fill in either the checkpoint path or the standalone model paths — bot
 
 The node outputs a ready-to-use model stack (`transformer_stack`) with all enabled LoRAs already applied.
 
-**Workflow Config Image** is designed for still-image pipelines. It has no LoRA slots, no audio field, and no video parameters (frames / FPS). The Type filter is also not shown — all scenes/takes are listed regardless of type.
+**Workflow Config Image** is designed for still-image pipelines. It has no LoRA slots, no audio field, and no video parameters (frames / FPS). The Type and State filters are also not shown — all scenes/takes are listed regardless of type or state.
 
 | Field | What it controls |
 |---|---|
@@ -185,6 +186,8 @@ Below is a picture of the scene editor.
 In order to expedite the experimentation with scenes, you can create as many **takes** as you want. Each named scene can hold multiple takes — independent snapshots of the scene's settings, numbered from 1 and with an optional label. The takes cover all of a scene's settings (like model paths, vae paths, resolution, steps, prompts, loras, etc). So you can vary everything, experiment with new prompts, add other reference images, other loras, etc, all in the context of the same scene.
 
 Each take can have an optional short **label** shown in the dropdown (e.g. `2 - cinematic`). To create a new take, just change whatever you want and hit the "Save as New Take" button — or hit **New/Duplicate Take** on the node, which opens the editor on the current take and saves it as a new take in the same scene.
+
+Each take also has a **state** — `draft` (the default), `candidate` or `final` — set with the **Candidate** and **Final** checkboxes below the take label in the editor. Checking one unchecks the other; leaving both unchecked makes the take a draft. Use the node's **State** filter to list only the takes in one state.
 
 #### Dimensions and scaling
 

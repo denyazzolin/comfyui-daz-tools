@@ -315,7 +315,7 @@ class WorkflowConfigMiniMaxH3:
         if _get_seed_randomize(seed_obj):
             seed_val = random.randint(1, 2**31 - 1)
             sets = entry.get("sets", [])
-            raw_take = str(take).split(" - ")[0].strip()
+            raw_take = str(take).split(" - ")[0].split(" (")[0].strip()
             for i, s in enumerate(sets):
                 if str(s.get("version", "")) == raw_take:
                     sets[i]["seed"] = {**(seed_obj if isinstance(seed_obj, dict) else {}), "value": seed_val}
