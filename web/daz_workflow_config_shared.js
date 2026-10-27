@@ -101,8 +101,9 @@ export function buildWorkflowConfigExtension(cfg) {
       function rawVersion(display) {
         if (!display) return display
         const s = String(display)
-        const dash = s.indexOf(' - ')
-        return dash !== -1 ? s.substring(0, dash) : s
+        // Cut at " - label" or at the " (state)" suffix of an unlabelled take
+        const cut = s.search(/ - | \(/)
+        return cut !== -1 ? s.substring(0, cut) : s
       }
 
       async function reloadNodeConfigs(node) {
@@ -164,15 +165,17 @@ export function buildWorkflowConfigExtension(cfg) {
             const byState = visible.filter(v => takeState(v) === want())
             if (byState.length) visible = byState
           }
-          const makeDisplay = v => v.label ? `${v.version} - ${v.label}` : String(v.version)
+          // Under "All Takes", candidate and final takes show their state at the end.
+          const suffix = v => !hideStateFilter && !want() && takeState(v) !== 'draft' ? ` (${takeState(v)})` : ''
+          const makeDisplay = v => (v.label ? `${v.version} - ${v.label}` : String(v.version)) + suffix(v)
           const vList = visible.map(makeDisplay).filter(Boolean)
           vw.options.values = vList.length ? vList : ['1']
           const selectDisplay = selectRaw ? vList.find(d => rawVersion(d) === selectRaw) : null
-          if (selectDisplay) {
-            vw.value = selectDisplay
-          } else if (!vList.some(d => rawVersion(d) === rawVersion(String(vw.value || '')))) {
-            vw.value = vList[vList.length - 1] ?? '1'
-          }
+          // Keep the current take, re-reading its display so the state suffix
+          // follows the filter.
+          const currentRaw = rawVersion(String(vw.value || ''))
+          vw.value = selectDisplay ?? vList.find(d => rawVersion(d) === currentRaw)
+                     ?? vList[vList.length - 1] ?? '1'
           node._dazCurrentVersion = rawVersion(vw.value)
         } catch (e) {
           console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not reload versions`, e)
