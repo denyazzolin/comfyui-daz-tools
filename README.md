@@ -23,8 +23,11 @@ You can also install using the ComfyUI Manager. Look for **comfyui-daz-tools**
 
 ### Workflow Config WAN2.2 (`utils`) · Workflow Config LTX2.3 (`utils`) · Workflow Config LTX2.5 (`utils`) · Workflow Config Image (`utils`) · Workflow Config MiniMaxH3 (`utils`)
 
-> [!CAUTION]
-> **Breaking change in v5.** The audio track of a video slot now comes out on its own Media Splitter outputs, `audio_from_video1` and `audio_from_video2`, instead of on the regular `audio_1`/`audio_2` outputs. A workflow that takes a video's sound from `audio_1` or `audio_2` must be rewired to the new outputs, and older Media Splitter nodes must be deleted and added again to show them. This mostly affects **MiniMax H3 REF2VA** workflows. See [A video's own audio](#a-videos-own-audio).
+> [!TIP]
+> **What's new in v5.4**
+>
+> - **Know which take is rendering.** While a workflow runs, the node shows the take it is generating, right below the Prompt Editor button.
+> - **Remember what you just made.** When the run ends, that line switches to the last take you ran, so you can browse other takes in the dropdowns and still know which one produced the result on screen.
 
 These nodes let you store named workflow configurations **"scenes"** — models, prompts, dimensions, LoRAs, and sampling parameters — and switch between them using a dropdown. When you select a scene, the node loads all the models, vae, loras, etc and sends every value downstream automatically for you to wire to your ComfyUI workflows. There is no need to rewire anything when switching between scenes in a given workflow.
 
