@@ -2376,6 +2376,8 @@ export function buildWorkflowConfigExtension(cfg) {
                      background:#000000;color:#ddd;border:1px solid #54af7b;
                      border-radius:3px;cursor:pointer">Prompt Editor</button>
           </div>
+          <div id="daz-run-take"
+            style="display:none;padding:0 8px 6px;font-family:monospace;font-size:11px;line-height:1.4"></div>
           <div id="daz-run-status"
             style="display:none;padding:0 8px 6px;font-family:monospace;font-size:11px;line-height:1.4"></div>
         `
@@ -2542,6 +2544,19 @@ export function buildWorkflowConfigExtension(cfg) {
         el.innerHTML = lines.map(([color, m]) =>
           `<div style="color:${color};white-space:pre-wrap;word-break:break-word">${esc(m)}</div>`).join('')
         el.style.display = lines.length ? '' : 'none'
+        paintRunTake(node)
+      }
+
+      // The take the node last loaded, as the run received it, whatever the
+      // dropdowns show now.
+      function paintRunTake(node) {
+        const el = node[keys.wrap]?.querySelector('#daz-run-take')
+        if (!el) return
+        const rt = node._dazRunTake
+        el.innerHTML = rt ? (rt.running
+          ? `<span style="color:#54af7b">Running : ${esc(rt.take)}</span>`
+          : `<span style="color:#999">Last run: ${esc(rt.take)}</span>`) : ''
+        el.style.display = rt ? '' : 'none'
       }
 
       async function loadDetail(node, label, version = null) {
@@ -5874,6 +5889,7 @@ export function buildWorkflowConfigExtension(cfg) {
         // console prefix. Anything that did not come from this plugin is not
         // worded for reading, so it only points at the console.
         const errorHandler = ({ detail }) => {
+          endHandler({ detail })
           if (String(detail?.node_id) !== String(this.id)) return
           const msg = String(detail.exception_message || '').trim()
           setRunStatus(this, { errors: [msg.includes('[DAZ TOOLS]')
@@ -5882,12 +5898,41 @@ export function buildWorkflowConfigExtension(cfg) {
         }
         // A new run clears the last one's error; its warnings stay until the
         // node runs again, since a cached node is not re-run to repeat them.
-        const startHandler = () => {
+        // The take is read from the queued prompt rather than from the node's
+        // output: a cached node is never re-run, so it sends no output.
+        const startHandler = async ({ detail }) => {
           if (this._dazRunStatus?.errors.length) setRunStatus(this, { errors: [] })
+          const promptId = detail?.prompt_id
+          // Inside a subgraph the prompt keys a node by its full path, not by
+          // this.id, so the lookup could land on another node.
+          if (this.graph && this.graph !== (app.rootGraph ?? app.graph)) return
+          try {
+            const q     = await (await fetch('/queue')).json()
+            const item  = (q.queue_running || []).find(x => x[1] === promptId)
+            const entry = item?.[2]?.[String(this.id)]
+            const take  = entry?.class_type === cfg.nodeDataName ? entry.inputs?.take : null
+            if (take == null) return
+            this._dazRunTake = { take: String(take), promptId,
+                                 running: this._dazEndedPrompt !== promptId }
+            paintRunTake(this)
+          } catch (e) {
+            console.warn(`[DAZ TOOLS] ${cfg.nodeDataName}: could not read the running take`, e)
+          }
+        }
+        // However the prompt ends, the take it loaded becomes the last run.
+        const endHandler = ({ detail }) => {
+          this._dazEndedPrompt = detail?.prompt_id
+          const rt = this._dazRunTake
+          if (!rt?.running || rt.promptId !== detail?.prompt_id) return
+          rt.running = false
+          paintRunTake(this)
         }
         api.addEventListener('execution_error', errorHandler)
         api.addEventListener('execution_start', startHandler)
-        this._dazRunHandlers = { execution_error: errorHandler, execution_start: startHandler }
+        api.addEventListener('execution_success', endHandler)
+        api.addEventListener('execution_interrupted', endHandler)
+        this._dazRunHandlers = { execution_error: errorHandler, execution_start: startHandler,
+                                 execution_success: endHandler, execution_interrupted: endHandler }
       }
 
       const onRemoved = nodeType.prototype.onRemoved
